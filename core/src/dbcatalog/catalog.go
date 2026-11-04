@@ -225,6 +225,20 @@ var catalog = []ConnectableDatabase{
 		SSLModes:       sslModesFor(engine.DatabaseType_Memcached),
 	},
 	{
+		ID:         engine.DatabaseType_TDengine,
+		Label:      "TDengine",
+		PluginType: engine.DatabaseType_TDengine,
+		Extra:      map[string]source.ConnectionExtraField{"Port": {DefaultValue: "6041"}},
+		Fields: FieldVisibility{
+			Hostname: true,
+			Username: true,
+			Password: true,
+			Database: true,
+		},
+		RequiredFields: FieldRequirements{Hostname: true, Username: true, Password: true},
+		SSLModes:       sslModesFor(engine.DatabaseType_TDengine),
+	},
+	{
 		ID:         engine.DatabaseType_TiDB,
 		Label:      "TiDB",
 		PluginType: engine.DatabaseType_TiDB,

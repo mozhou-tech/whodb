@@ -80,7 +80,15 @@ export type SupportedLanguage =
     // | 'zh_HK'  // TODO: Google Translate has no zh-HK variant (produces same as zh-TW) — add back when we have distinct translations
     | 'zh_TW';
 
-export const DEFAULT_LANGUAGE: SupportedLanguage = 'en_US';
+/** Language shown when the user has not chosen one. */
+export const DEFAULT_LANGUAGE: SupportedLanguage = 'zh_CN';
+
+/**
+ * Bundled translations and the fallback for a missing key.
+ * Must stay `en_US`: locale files are authored in English, and
+ * `defaultLanguage` in `frontend/vite.config.ts` has to match this value.
+ */
+export const FALLBACK_LANGUAGE: SupportedLanguage = 'en_US';
 
 export const SUPPORTED_LANGUAGES: Record<SupportedLanguage, string> = {
     en_US: 'English (US)',

@@ -15,7 +15,7 @@
  */
 
 import { useLazyQuery, useMutation, useQuery } from "@apollo/client/react";
-import { Alert, AlertDescription, AlertTitle, Badge, Button, Card, cn, Label, ModeToggle, Separator, toast, useTheme, IconSliders as AdjustmentsHorizontalIcon, IconChat as ChatBubbleLeftRightIcon, IconCheckCircle as CheckCircleIcon, IconChevronDown as ChevronDownIcon, IconCode as CodeBracketIcon, IconInfo as InformationCircleIcon, IconShare as ShareIcon, IconAi as SparklesIcon, IconTable as TableCellsIcon, SearchSelect } from '@clidey/ux';
+import { Alert, AlertDescription, AlertTitle, Badge, Button, Card, cn, Input, Label, ModeToggle, Separator, toast, useTheme, IconSliders as AdjustmentsHorizontalIcon, IconChat as ChatBubbleLeftRightIcon, IconCheckCircle as CheckCircleIcon, IconChevronDown as ChevronDownIcon, IconCode as CodeBracketIcon, IconInfo as InformationCircleIcon, IconShare as ShareIcon, IconAi as SparklesIcon, IconTable as TableCellsIcon, SearchSelect } from '@clidey/ux';
 import {
     SettingsConfigDocument,
     SourceFieldOptionsDocument,
@@ -23,6 +23,10 @@ import {
     LoginSourceDocument,
     TestSourceConnectionDocument,
     LoginWithSourceProfileDocument,
+    OpsControlPlaneStatusDocument,
+    LoginOpsControlPlaneDocument,
+    SyncOpsControlPlaneProfilesDocument,
+    LogoutOpsControlPlaneDocument,
 } from '@graphql';
 import classNames from "classnames";
 import type {FC, ReactElement} from "react";
@@ -194,8 +198,13 @@ export const LoginForm: FC<LoginFormProps> = ({
     const [login, { loading: loginLoading }] = useMutation(LoginSourceDocument);
     const [testConnection, { loading: testConnectionLoading }] = useMutation(TestSourceConnectionDocument);
     const [loginWithSourceProfile, { loading: loginWithSourceProfileLoading }] = useMutation(LoginWithSourceProfileDocument);
+    const [loginOpsControlPlane, { loading: opsLoginLoading }] = useMutation(LoginOpsControlPlaneDocument);
+    const [syncOpsControlPlane, { loading: opsSyncLoading }] = useMutation(SyncOpsControlPlaneProfilesDocument);
+    const [logoutOpsControlPlane, { loading: opsLogoutLoading }] = useMutation(LogoutOpsControlPlaneDocument);
     const [getDatabases, { loading: databasesLoading, data: foundDatabases }] = useLazyQuery(SourceFieldOptionsDocument);
-    const { loading: profilesLoading, data: profiles, error: profilesError } = useQuery(SourceProfilesDocument);
+    const { loading: profilesLoading, data: profiles, error: profilesError, refetch: refetchProfiles } = useQuery(SourceProfilesDocument);
+    const { data: opsStatusData, refetch: refetchOpsStatus } = useQuery(OpsControlPlaneStatusDocument);
+    const opsStatus = opsStatusData?.OpsControlPlaneStatus;
     const { data: settingsData } = useQuery(SettingsConfigDocument);
     const disableCredentialForm = settingsData?.SettingsConfig?.DisableCredentialForm ?? false;
     const maxPageSize = settingsData?.SettingsConfig?.MaxPageSize ?? 10000;
@@ -212,6 +221,9 @@ export const LoginForm: FC<LoginFormProps> = ({
     const [database, setDatabase] = useState("");
     const [username, setUsername] = useState("");
     const [password, setPassword] = useState("");
+    const [opsEndpoint, setOpsEndpoint] = useState("");
+    const [opsUsername, setOpsUsername] = useState("");
+    const [opsPassword, setOpsPassword] = useState("");
     const [error, setError] = useState<string>();
     const [testResult, setTestResult] = useState<{ status: 'success' | 'error'; message: string; duration?: number }>();
     const [advancedForm, setAdvancedForm] = useState<Record<string, string>>({});
@@ -496,6 +508,12 @@ export const LoginForm: FC<LoginFormProps> = ({
 
                 updateProfileLastAccessed(profileId);
                 await clearGraphqlStore();
+                const allEnvProfiles = (profiles?.SourceProfiles ?? [])
+                    .filter(p => p.Source !== "builtin")
+                    .map(p => createProfilePayloadFromSourceProfile(p));
+                if (allEnvProfiles.length > 0) {
+                    dispatch(AuthActions.syncSourceProfiles(allEnvProfiles));
+                }
                 if (profile != null) {
                     dispatch(AuthActions.login(createProfilePayloadFromSourceProfile(profile)));
                 }
@@ -737,6 +755,109 @@ export const LoginForm: FC<LoginFormProps> = ({
     }, [profiles?.SourceProfiles]);
 
     const hasAvailableProfiles = availableProfiles.length > 0;
+
+    useEffect(() => {
+        if (opsStatus?.Endpoint && !opsEndpoint) {
+            setOpsEndpoint(opsStatus.Endpoint);
+        }
+    }, [opsEndpoint, opsStatus?.Endpoint]);
+
+    useEffect(() => {
+        if (availableProfiles.length === 0) {
+            if (selectedAvailableProfile != null) {
+                setSelectedAvailableProfile(undefined);
+            }
+            return;
+        }
+        const exists = availableProfiles.some(p => p.value === selectedAvailableProfile);
+        if (!exists) {
+            setSelectedAvailableProfile(availableProfiles[0].value);
+        }
+    }, [availableProfiles, selectedAvailableProfile]);
+
+    useEffect(() => {
+        if (!opsStatus?.Authenticated || !profiles?.SourceProfiles) {
+            return;
+        }
+        const syncedPayloads = profiles.SourceProfiles
+            .filter(p => p.Source !== "builtin")
+            .map(p => createProfilePayloadFromSourceProfile(p));
+        if (syncedPayloads.length > 0) {
+            dispatch(AuthActions.syncSourceProfiles(syncedPayloads));
+        }
+    }, [dispatch, opsStatus?.Authenticated, profiles?.SourceProfiles]);
+
+    const handleOpsPlaneLogin = useCallback(() => {
+        if (!opsUsername.trim() || !opsPassword) {
+            toast.error(t('opsPlane.credentialsRequired'));
+            return;
+        }
+        setError(undefined);
+        void (async () => {
+            try {
+                const { data } = await loginOpsControlPlane({
+                    variables: {
+                        input: {
+                            Endpoint: opsEndpoint.trim() || undefined,
+                            Username: opsUsername.trim(),
+                            Password: opsPassword,
+                        },
+                    },
+                });
+                const status = data?.LoginOpsControlPlane;
+                setOpsPassword("");
+                await refetchOpsStatus();
+                const refreshed = await refetchProfiles();
+                const syncedList = (refreshed.data?.SourceProfiles ?? []).filter(p => p.Source !== "builtin");
+                if (syncedList.length > 0) {
+                    dispatch(AuthActions.syncSourceProfiles(syncedList.map(p => createProfilePayloadFromSourceProfile(p))));
+                    setSelectedAvailableProfile(syncedList[0].Id);
+                }
+                toast.success(t('opsPlane.loginSuccess', { count: status?.ProfileCount ?? syncedList.length }));
+            } catch (e: unknown) {
+                const msg = e instanceof Error ? e.message : String(e);
+                toast.error(t('loginFailedWithError', { error: msg }));
+            }
+        })();
+    }, [dispatch, loginOpsControlPlane, opsEndpoint, opsPassword, opsUsername, refetchOpsStatus, refetchProfiles, t]);
+
+    const handleOpsPlaneSync = useCallback(() => {
+        void (async () => {
+            try {
+                const { data } = await syncOpsControlPlane();
+                const status = data?.SyncOpsControlPlaneProfiles;
+                await refetchOpsStatus();
+                const refreshed = await refetchProfiles();
+                const syncedList = (refreshed.data?.SourceProfiles ?? []).filter(p => p.Source !== "builtin");
+                if (syncedList.length > 0) {
+                    dispatch(AuthActions.syncSourceProfiles(syncedList.map(p => createProfilePayloadFromSourceProfile(p))));
+                    if (!selectedAvailableProfile || !syncedList.some(p => p.Id === selectedAvailableProfile)) {
+                        setSelectedAvailableProfile(syncedList[0].Id);
+                    }
+                }
+                toast.success(t('opsPlane.syncSuccess', { count: status?.ProfileCount ?? syncedList.length }));
+            } catch (e: unknown) {
+                const msg = e instanceof Error ? e.message : String(e);
+                toast.error(t('loginFailedWithError', { error: msg }));
+            }
+        })();
+    }, [dispatch, refetchOpsStatus, refetchProfiles, selectedAvailableProfile, syncOpsControlPlane, t]);
+
+    const handleOpsPlaneLogout = useCallback(() => {
+        void (async () => {
+            try {
+                await logoutOpsControlPlane();
+                dispatch(AuthActions.clearEnvironmentProfiles());
+                setSelectedAvailableProfile(undefined);
+                await refetchOpsStatus();
+                await refetchProfiles();
+                toast.success(t('opsPlane.logoutSuccess'));
+            } catch (e: unknown) {
+                const msg = e instanceof Error ? e.message : String(e);
+                toast.error(t('loginFailedWithError', { error: msg }));
+            }
+        })();
+    }, [dispatch, logoutOpsControlPlane, refetchOpsStatus, refetchProfiles, t]);
 
     const sampleProfile = useMemo(() => {
         return profiles?.SourceProfiles.find(p => p.Source === "builtin");
@@ -986,7 +1107,7 @@ export const LoginForm: FC<LoginFormProps> = ({
                                 ['postgres', 'mysql', 'mariadb'],
                                 ['sqlite3', 'mongodb', 'redis'],
                                 ['clickhouse', 'elasticsearch'],
-                                ['duckdb'],
+                                ['duckdb', 'tdengine'],
                             ].map(row => <div className="ce-connect-engine-row" key={row[0]}>{row.map(id => {
                                 const item = databaseTypeItems.find(type => type.id.toLowerCase() === id && !type.platformOnly);
                                 return item && <span className={cn(item.id === databaseType.id && 'is-selected')} key={id}>{id === 'sqlite3' ? t('sqliteLabel') : item.label}</span>;
@@ -1154,17 +1275,119 @@ export const LoginForm: FC<LoginFormProps> = ({
                         }
                     </div>
                 )}
-                {
-                    availableProfiles.length > 0 &&
-                    <>
-                        {!disableCredentialForm && <Separator className="my-8" />}
+                {!disableCredentialForm && <Separator className="my-6" />}
+                <div className="flex flex-col gap-lg" data-testid="ops-control-plane-section">
+                    <div className="flex items-center justify-between gap-sm">
+                        <Label className="text-base font-semibold">{t('opsPlane.title')}</Label>
+                        {opsStatus?.Authenticated && (
+                            <Badge variant="secondary" data-testid="ops-plane-user-badge">
+                                {t('opsPlane.loggedInAs', {
+                                    username: opsStatus.Username ?? '',
+                                    role: opsStatus.Role ?? '',
+                                })}
+                            </Badge>
+                        )}
+                    </div>
+                    {!opsStatus?.Authenticated ? (
+                        <Card className="flex flex-col gap-md p-4" data-testid="ops-plane-login-card">
+                            <p className="text-xs text-muted-foreground">
+                                {t('opsPlane.description')}
+                            </p>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-sm">
+                                <div className="flex flex-col gap-xs">
+                                    <Label htmlFor="ops-plane-username">{t('opsPlane.username')}</Label>
+                                    <Input
+                                        id="ops-plane-username"
+                                        value={opsUsername}
+                                        onChange={(e) => { setOpsUsername(e.target.value); }}
+                                        placeholder={t('opsPlane.enterUsername')}
+                                        data-testid="ops-plane-username-input"
+                                        onKeyDown={(e) => {
+                                            if (e.key === 'Enter') {
+                                                handleOpsPlaneLogin();
+                                            }
+                                        }}
+                                    />
+                                </div>
+                                <div className="flex flex-col gap-xs">
+                                    <Label htmlFor="ops-plane-password">{t('opsPlane.password')}</Label>
+                                    <Input
+                                        id="ops-plane-password"
+                                        type="password"
+                                        value={opsPassword}
+                                        onChange={(e) => { setOpsPassword(e.target.value); }}
+                                        placeholder={t('opsPlane.enterPassword')}
+                                        data-testid="ops-plane-password-input"
+                                        onKeyDown={(e) => {
+                                            if (e.key === 'Enter') {
+                                                handleOpsPlaneLogin();
+                                            }
+                                        }}
+                                    />
+                                </div>
+                            </div>
+                            <div className="flex flex-col gap-xs">
+                                <Label htmlFor="ops-plane-endpoint">{t('opsPlane.endpoint')}</Label>
+                                <Input
+                                    id="ops-plane-endpoint"
+                                    value={opsEndpoint}
+                                    onChange={(e) => { setOpsEndpoint(e.target.value); }}
+                                    placeholder={t('opsPlane.enterEndpoint')}
+                                    data-testid="ops-plane-endpoint-input"
+                                />
+                            </div>
+                            <Button
+                                onClick={handleOpsPlaneLogin}
+                                disabled={opsLoginLoading || !opsUsername.trim() || !opsPassword}
+                                data-testid="ops-plane-login-button"
+                            >
+                                {opsLoginLoading ? <Spinner className="size-4" aria-hidden="true" /> : <CheckCircleIcon className="w-4 h-4" />}
+                                {opsLoginLoading ? t('opsPlane.loggingIn') : t('opsPlane.loginAndSync')}
+                            </Button>
+                        </Card>
+                    ) : (
+                        <Alert data-testid="ops-plane-synced-alert">
+                            <CheckCircleIcon className="h-4 w-4" aria-hidden="true" />
+                            <AlertTitle>
+                                {t('opsPlane.loggedInAs', {
+                                    username: opsStatus.Username ?? '',
+                                    role: opsStatus.Role ?? '',
+                                })}
+                            </AlertTitle>
+                            <AlertDescription className="flex flex-wrap items-center justify-between gap-sm mt-1">
+                                <span>
+                                    {t('opsPlane.syncSummary', {
+                                        envCount: opsStatus.EnvironmentCount,
+                                        profileCount: opsStatus.ProfileCount,
+                                    })}
+                                </span>
+                                <span className="flex items-center gap-xs">
+                                    <Button
+                                        size="sm"
+                                        variant="secondary"
+                                        onClick={handleOpsPlaneSync}
+                                        disabled={opsSyncLoading}
+                                        data-testid="ops-plane-sync-button"
+                                    >
+                                        {opsSyncLoading ? t('opsPlane.syncing') : t('opsPlane.resync')}
+                                    </Button>
+                                    <Button
+                                        size="sm"
+                                        variant="outline"
+                                        onClick={handleOpsPlaneLogout}
+                                        disabled={opsLogoutLoading}
+                                        data-testid="ops-plane-logout-button"
+                                    >
+                                        {t('opsPlane.logout')}
+                                    </Button>
+                                </span>
+                            </AlertDescription>
+                        </Alert>
+                    )}
+                    {
+                        availableProfiles.length > 0 &&
                         <div className="flex flex-col gap-lg">
                             <Label>{t('availableProfiles')}</Label>
-                            <Alert data-testid="profile-access-notice">
-                                <InformationCircleIcon className="h-4 w-4" aria-hidden="true" />
-                                <AlertTitle>{t('profileAccessNoticeTitle')}</AlertTitle>
-                                <AlertDescription>{t('profileAccessNoticeDescription')}</AlertDescription>
-                            </Alert>
                             <SearchSelect
                                 value={selectedAvailableProfile}
                                 onChange={handleAvailableProfileChange}
@@ -1180,8 +1403,8 @@ export const LoginForm: FC<LoginFormProps> = ({
                                 <CheckCircleIcon className="w-4 h-4" /> {t('title')}
                             </Button>
                         </div>
-                    </>
-                }
+                    }
+                </div>
             </div>
             {
                 showSidePanel && !landing && advancedDirection === "horizontal" && (

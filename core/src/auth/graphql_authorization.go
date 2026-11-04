@@ -28,17 +28,21 @@ import (
 )
 
 var publicQueryFields = map[string]struct{}{
-	"Health":         {},
-	"SettingsConfig": {},
-	"SourceProfiles": {},
-	"SourceTypes":    {},
-	"Version":        {},
+	"Health":                {},
+	"OpsControlPlaneStatus": {},
+	"SettingsConfig":        {},
+	"SourceProfiles":        {},
+	"SourceTypes":           {},
+	"Version":               {},
 }
 
 var publicMutationFields = map[string]struct{}{
-	"LoginSource":            {},
-	"LoginWithSourceProfile": {},
-	"TestSourceConnection":   {},
+	"LoginOpsControlPlane":        {},
+	"LoginSource":                 {},
+	"LoginWithSourceProfile":      {},
+	"LogoutOpsControlPlane":       {},
+	"SyncOpsControlPlaneProfiles": {},
+	"TestSourceConnection":        {},
 }
 
 // GraphQLAuthorizationMiddleware authorizes the selected GraphQL operation

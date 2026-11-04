@@ -25,8 +25,10 @@ import (
 	"github.com/clidey/whodb/core/src/log"
 	"github.com/clidey/whodb/core/src/migrate"
 	"github.com/clidey/whodb/core/src/mockdata"
+	"github.com/clidey/whodb/core/src/opsplane"
 	"github.com/clidey/whodb/core/src/plugins/sqlite3"
 	"github.com/clidey/whodb/core/src/sourcecatalog"
+	"github.com/clidey/whodb/core/src/sourcedial"
 	_ "github.com/clidey/whodb/core/src/sources/database"
 	"github.com/clidey/whodb/core/src/types"
 )
@@ -48,6 +50,8 @@ func InitializeEngine() *engine.Engine {
 	registerDuckDB(MainEngine)
 
 	MainEngine.AddLoginProfile(sqlite3.GetSampleProfile())
+	sourcedial.SetDialer(opsplane.DialContext)
+	MainEngine.RegisterProfileRetriever(opsplane.RetrieveProfiles)
 
 	// Parse and register generic AI providers from environment configuration.
 	for _, provider := range envconfig.ParseGenericProviders() {

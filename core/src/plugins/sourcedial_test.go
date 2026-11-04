@@ -16,6 +16,7 @@ import (
 	"github.com/clidey/whodb/core/src/plugins/mysql"
 	"github.com/clidey/whodb/core/src/plugins/postgres"
 	"github.com/clidey/whodb/core/src/plugins/redis"
+	"github.com/clidey/whodb/core/src/plugins/tdengine"
 	"github.com/clidey/whodb/core/src/sourcedial"
 )
 
@@ -99,6 +100,10 @@ func TestConnectorsDialThroughTheRegisteredSourceDialer(t *testing.T) {
 		}},
 		{"memcached", "11211", func() error {
 			_, err := memcached.DB(credentials(engine.DatabaseType_Memcached, "11211"))
+			return err
+		}},
+		{"tdengine", "6041", func() error {
+			_, err := tdengine.NewTDenginePlugin().GetDatabases(credentials(engine.DatabaseType_TDengine, "6041"))
 			return err
 		}},
 	}

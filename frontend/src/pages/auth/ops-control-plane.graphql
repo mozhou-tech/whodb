@@ -1,0 +1,41 @@
+query OpsControlPlaneStatus {
+  OpsControlPlaneStatus {
+    Authenticated
+    Username
+    Role
+    Endpoint
+    EnvironmentCount
+    ProfileCount
+    SyncedAt
+  }
+}
+
+mutation LoginOpsControlPlane($input: OpsControlPlaneLoginInput!) {
+  LoginOpsControlPlane(input: $input) {
+    Authenticated
+    Username
+    Role
+    Endpoint
+    EnvironmentCount
+    ProfileCount
+    SyncedAt
+  }
+}
+
+mutation SyncOpsControlPlaneProfiles {
+  SyncOpsControlPlaneProfiles {
+    Authenticated
+    Username
+    Role
+    Endpoint
+    EnvironmentCount
+    ProfileCount
+    SyncedAt
+  }
+}
+
+mutation LogoutOpsControlPlane {
+  LogoutOpsControlPlane {
+    Status
+  }
+}

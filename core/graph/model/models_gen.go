@@ -243,6 +243,22 @@ type OperationWhereCondition struct {
 	Children []*WhereCondition `json:"Children"`
 }
 
+type OpsControlPlaneLoginInput struct {
+	Endpoint *string `json:"Endpoint,omitempty"`
+	Username string  `json:"Username"`
+	Password string  `json:"Password"`
+}
+
+type OpsControlPlaneStatus struct {
+	Authenticated    bool    `json:"Authenticated"`
+	Username         *string `json:"Username,omitempty"`
+	Role             *string `json:"Role,omitempty"`
+	Endpoint         string  `json:"Endpoint"`
+	EnvironmentCount int     `json:"EnvironmentCount"`
+	ProfileCount     int     `json:"ProfileCount"`
+	SyncedAt         *string `json:"SyncedAt,omitempty"`
+}
+
 type Query struct {
 }
 

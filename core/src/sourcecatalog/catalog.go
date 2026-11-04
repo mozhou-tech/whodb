@@ -66,6 +66,7 @@ const (
 	connectorMongoDB       = "MongoDB"
 	connectorRedis         = "Redis"
 	connectorMemcached     = "Memcached"
+	connectorTDengine      = "TDengine"
 	connectorElasticSearch = "ElasticSearch"
 )
 
@@ -250,6 +251,19 @@ var familySpecs = map[string]FamilySpec{
 		DefaultObject: objectKindItem,
 		ObjectTypes: []source.ObjectType{
 			keyValueExistingMutableObjectType(objectKindItem, "Item", "Items"),
+		},
+	},
+	connectorTDengine: {
+		Category:       source.CategoryDatabase,
+		Traits:         withExecutionTraits(tdengineTraits(), false, false),
+		Model:          source.ModelRelational,
+		Surfaces:       []source.Surface{source.SurfaceBrowser, source.SurfaceQuery, source.SurfaceChat, source.SurfaceGraph},
+		BrowsePath:     []source.ObjectKind{objectKindDatabase, objectKindTable},
+		DefaultObject:  objectKindTable,
+		GraphScopeKind: new(objectKindDatabase),
+		ObjectTypes: []source.ObjectType{
+			metadataObjectType(objectKindDatabase, "Database", "Databases", true),
+			tdengineObjectType(objectKindTable, "Table", "Tables"),
 		},
 	},
 	connectorElasticSearch: {
@@ -733,6 +747,23 @@ func questDBObjectType(kind source.ObjectKind, singular string, plural string) s
 	}
 }
 
+func tdengineObjectType(kind source.ObjectKind, singular string, plural string) source.ObjectType {
+	return source.ObjectType{
+		Kind:      kind,
+		DataShape: source.DataShapeTabular,
+		Actions: []source.Action{
+			source.ActionInspect,
+			source.ActionViewRows,
+			source.ActionViewDefinition,
+			source.ActionInsertData,
+			source.ActionDeleteData,
+		},
+		Views:         []source.View{source.ViewGrid, source.ViewMetadata},
+		SingularLabel: singular,
+		PluralLabel:   plural,
+	}
+}
+
 func documentObjectType(kind source.ObjectKind, singular string, plural string, extraActions ...source.Action) source.ObjectType {
 	actions := []source.Action{
 		source.ActionInspect,
@@ -970,6 +1001,19 @@ func memcachedTraits() source.TypeTraits {
 		},
 		nil,
 	)
+}
+
+func tdengineTraits() source.TypeTraits {
+	traits := withHiddenObjectRules(
+		networkTraits(source.HostInputModeHostname, source.HostInputURLParserNone),
+		map[source.ObjectKind][]string{
+			source.ObjectKindDatabase: {"information_schema", "performance_schema"},
+		},
+		nil,
+	)
+	traits.Metadata.Constraints = source.MetadataFidelityUnsupported
+	traits.Metadata.Graph = source.MetadataFidelityInferred
+	return traits
 }
 
 func elasticSearchTraits() source.TypeTraits {

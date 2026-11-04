@@ -21,6 +21,7 @@ import path from 'path';
 import type { Plugin, ResolvedConfig } from 'vite';
 import tailwindcss from '@tailwindcss/vite'
 import localePacksPlugin from './plugins/vite-plugin-locale-packs.mjs';
+import {FALLBACK_LANGUAGE} from './src/utils/languages';
 
 const baseHrefPlaceholder = '__WHODB_BASE_HREF__';
 const frontendEditionMarkerFile = '.whodb-edition';
@@ -102,7 +103,7 @@ export default defineConfig(async ({command}) => {
       plugins: [
         localePacksPlugin({
           roots: [{ layer: 'base', dir: path.resolve(__dirname, 'src/locales') }],
-          defaultLanguage: 'en_US',
+          defaultLanguage: FALLBACK_LANGUAGE,
         }),
         react(),
         tailwindcss(),

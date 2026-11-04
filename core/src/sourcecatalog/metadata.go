@@ -147,6 +147,10 @@ func registerSessionMetadata() {
 		string(engine.DatabaseType_Memcached),
 		SessionMetadataFromOperatorMap(nil, specs.MemcachedOperators, nil),
 	)
+	RegisterSessionMetadata(
+		string(engine.DatabaseType_TDengine),
+		SessionMetadataFromOperatorMap(specs.TDengineTypeDefinitions, specs.TDengineSupportedOperators, specs.TDengineAliasMap),
+	)
 
 	RegisterObjectCreationMetadataAliases(
 		relationalObjectCreationMetadata(specs.PostgresTypeDefinitions, "GENERATED ALWAYS AS IDENTITY"),
@@ -193,6 +197,10 @@ func registerSessionMetadata() {
 	RegisterObjectCreationMetadata(
 		string(engine.DatabaseType_QuestDB),
 		questDBObjectCreationMetadata(specs.QuestDBTypeDefinitions),
+	)
+	RegisterObjectCreationMetadata(
+		string(engine.DatabaseType_TDengine),
+		questDBObjectCreationMetadata(specs.TDengineTypeDefinitions),
 	)
 	RegisterObjectCreationMetadata(
 		string(engine.DatabaseType_ElasticSearch),

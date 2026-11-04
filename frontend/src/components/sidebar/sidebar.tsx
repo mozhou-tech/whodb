@@ -333,6 +333,16 @@ export const Sidebar: FC = () => {
         void handleProfileChange(current.Id, value);
     }, [current, handleProfileChange, navigate, pathname]);
 
+    useEffect(() => {
+        if (!supportsDatabaseSwitching || current == null || current.Database || databaseOptions.length === 0) {
+            return;
+        }
+        const defaultDatabase = databaseOptions[0]?.value;
+        if (defaultDatabase) {
+            handleDatabaseChange(defaultDatabase);
+        }
+    }, [current, databaseOptions, handleDatabaseChange, supportsDatabaseSwitching]);
+
     // Schema select logic
     const schemaOptions = useMemo(() => {
         const schemas = availableSchemaNames.length > 0

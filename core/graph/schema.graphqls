@@ -688,10 +688,27 @@ type HealthStatus {
   Database: String!
 }
 
+type OpsControlPlaneStatus {
+  Authenticated: Boolean!
+  Username: String
+  Role: String
+  Endpoint: String!
+  EnvironmentCount: Int!
+  ProfileCount: Int!
+  SyncedAt: String
+}
+
+input OpsControlPlaneLoginInput {
+  Endpoint: String
+  Username: String!
+  Password: String!
+}
+
 type Query {
   Version: String!
   UpdateInfo: UpdateInfo!
   Health: HealthStatus!
+  OpsControlPlaneStatus: OpsControlPlaneStatus!
   SourceProfiles: [SourceProfile!]!
   SourceTypes: [SourceType!]!
   SourceFieldOptions(sourceType: String!, fieldKey: String!, values: [RecordInput!]): [String!]!
@@ -732,6 +749,9 @@ type GenerateChatTitleResponse {
 }
 
 type Mutation {
+  LoginOpsControlPlane(input: OpsControlPlaneLoginInput!): OpsControlPlaneStatus!
+  SyncOpsControlPlaneProfiles: OpsControlPlaneStatus!
+  LogoutOpsControlPlane: StatusResponse!
   LoginSource(credentials: SourceLoginInput!): StatusResponse!
   LoginWithSourceProfile(profile: SourceProfileLoginInput!): StatusResponse!
   Logout: StatusResponse!

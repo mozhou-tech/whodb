@@ -364,3 +364,42 @@ var DuckDBTypeDefinitions = []engine.TypeDefinition{
 	{ID: "UNION", Label: "union", Category: engine.TypeCategoryOther},
 	{ID: "UUID", Label: "uuid", Category: engine.TypeCategoryOther},
 }
+
+// TDengineSupportedOperators lists the SQL operators supported by TDengine.
+var TDengineSupportedOperators = map[string]string{
+	"=": "=", ">=": ">=", ">": ">", "<=": "<=", "<": "<", "<>": "<>", "!=": "!=",
+	opBetween: opBetween, opNotBetween: opNotBetween,
+	opLike: opLike, opNotLike: opNotLike,
+	"IN": "IN", opNotIn: opNotIn, opIsNull: opIsNull, opIsNotNull: opIsNotNull,
+	"AND": "AND", "OR": "OR", "NOT": "NOT",
+}
+
+// TDengineAliasMap maps SQL type aliases to canonical TDengine type IDs.
+var TDengineAliasMap = map[string]string{
+	typeInteger:   "INT",
+	typeBoolean:   "BOOL",
+	"CHAR":        typeVarchar,
+	typeText:      typeVarchar,
+	"STRING":      typeVarchar,
+}
+
+// TDengineTypeDefinitions lists the column types supported by TDengine.
+var TDengineTypeDefinitions = []engine.TypeDefinition{
+	{ID: typeTimestamp, Label: "TIMESTAMP", Category: engine.TypeCategoryDatetime},
+	{ID: "TINYINT", Label: "TINYINT", Category: engine.TypeCategoryNumeric},
+	{ID: typeSmallint, Label: "SMALLINT", Category: engine.TypeCategoryNumeric},
+	{ID: "INT", Label: "INT", Category: engine.TypeCategoryNumeric},
+	{ID: typeBigint, Label: "BIGINT", Category: engine.TypeCategoryNumeric},
+	{ID: "TINYINT UNSIGNED", Label: "TINYINT UNSIGNED", Category: engine.TypeCategoryNumeric},
+	{ID: "SMALLINT UNSIGNED", Label: "SMALLINT UNSIGNED", Category: engine.TypeCategoryNumeric},
+	{ID: "INT UNSIGNED", Label: "INT UNSIGNED", Category: engine.TypeCategoryNumeric},
+	{ID: "BIGINT UNSIGNED", Label: "BIGINT UNSIGNED", Category: engine.TypeCategoryNumeric},
+	{ID: "FLOAT", Label: "FLOAT", Category: engine.TypeCategoryNumeric},
+	{ID: "DOUBLE", Label: "DOUBLE", Category: engine.TypeCategoryNumeric},
+	{ID: "BOOL", Label: "BOOL", Category: engine.TypeCategoryBoolean},
+	{ID: typeVarchar, Label: "VARCHAR", HasLength: true, DefaultLength: new(64), Category: engine.TypeCategoryText},
+	{ID: "BINARY", Label: "BINARY", HasLength: true, DefaultLength: new(64), Category: engine.TypeCategoryText},
+	{ID: "NCHAR", Label: "NCHAR", HasLength: true, DefaultLength: new(64), Category: engine.TypeCategoryText},
+	{ID: "VARBINARY", Label: "VARBINARY", HasLength: true, DefaultLength: new(64), Category: engine.TypeCategoryBinary},
+	{ID: "JSON", Label: "JSON", Category: engine.TypeCategoryJSON},
+}

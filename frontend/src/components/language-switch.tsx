@@ -53,6 +53,10 @@ export const LanguageGate: FC<{children: ReactNode}> = ({children}) => {
     const [ready, setReady] = useState(() => isLanguageLoaded(language));
 
     useEffect(() => {
+        document.documentElement.lang = language.replace('_', '-');
+    }, [language]);
+
+    useEffect(() => {
         if (isLanguageLoaded(language)) {
             setReady(true);
             return;

@@ -282,9 +282,12 @@ export type Mutation = {
   ImportPreview: ImportPreview;
   ImportSQL: ImportResult;
   ImportSourceObjectFile: ImportResult;
+  LoginOpsControlPlane: OpsControlPlaneStatus;
   LoginSource: StatusResponse;
   LoginWithSourceProfile: StatusResponse;
   Logout: StatusResponse;
+  LogoutOpsControlPlane: StatusResponse;
+  SyncOpsControlPlaneProfiles: OpsControlPlaneStatus;
   TestSourceConnection: StatusResponse;
   UpdateSettings: StatusResponse;
   UpdateSourceObject: StatusResponse;
@@ -356,6 +359,11 @@ export type MutationImportSourceObjectFileArgs = {
 };
 
 
+export type MutationLoginOpsControlPlaneArgs = {
+  input: OpsControlPlaneLoginInput;
+};
+
+
 export type MutationLoginSourceArgs = {
   credentials: SourceLoginInput;
 };
@@ -398,6 +406,23 @@ export type OperationWhereCondition = {
   Children: Array<WhereCondition>;
 };
 
+export type OpsControlPlaneLoginInput = {
+  Endpoint?: InputMaybe<Scalars['String']['input']>;
+  Password: Scalars['String']['input'];
+  Username: Scalars['String']['input'];
+};
+
+export type OpsControlPlaneStatus = {
+  __typename?: 'OpsControlPlaneStatus';
+  Authenticated: Scalars['Boolean']['output'];
+  Endpoint: Scalars['String']['output'];
+  EnvironmentCount: Scalars['Int']['output'];
+  ProfileCount: Scalars['Int']['output'];
+  Role?: Maybe<Scalars['String']['output']>;
+  SyncedAt?: Maybe<Scalars['String']['output']>;
+  Username?: Maybe<Scalars['String']['output']>;
+};
+
 export type Query = {
   __typename?: 'Query';
   AIModel: Array<Scalars['String']['output']>;
@@ -405,6 +430,7 @@ export type Query = {
   AnalyzeMockDataDependencies: MockDataDependencyAnalysis;
   Health: HealthStatus;
   MockDataMaxRowCount: Scalars['Int']['output'];
+  OpsControlPlaneStatus: OpsControlPlaneStatus;
   RunSourceQuery: RowsResult;
   SSLStatus?: Maybe<SslStatus>;
   SettingsConfig: SettingsConfig;

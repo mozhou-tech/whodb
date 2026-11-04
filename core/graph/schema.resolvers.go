@@ -26,12 +26,57 @@ import (
 	"github.com/clidey/whodb/core/src/llm"
 	"github.com/clidey/whodb/core/src/log"
 	"github.com/clidey/whodb/core/src/mockdata"
+	"github.com/clidey/whodb/core/src/opsplane"
 	"github.com/clidey/whodb/core/src/settings"
 	"github.com/clidey/whodb/core/src/source"
 	"github.com/clidey/whodb/core/src/sourcecatalog"
 	"github.com/clidey/whodb/core/src/sqlguard"
 	"github.com/clidey/whodb/core/src/version"
 )
+
+// LoginOpsControlPlane is the resolver for the LoginOpsControlPlane field.
+func (r *mutationResolver) LoginOpsControlPlane(ctx context.Context, input model.OpsControlPlaneLoginInput) (*model.OpsControlPlaneStatus, error) {
+	endpoint := ""
+	if input.Endpoint != nil {
+		endpoint = *input.Endpoint
+	}
+	status, err := opsplane.Login(ctx, endpoint, input.Username, input.Password)
+	if err != nil {
+		return nil, err
+	}
+	return &model.OpsControlPlaneStatus{
+		Authenticated:    status.Authenticated,
+		Username:         stringPtr(status.Username),
+		Role:             stringPtr(status.Role),
+		Endpoint:         status.Endpoint,
+		EnvironmentCount: status.EnvironmentCount,
+		ProfileCount:     status.ProfileCount,
+		SyncedAt:         stringPtr(status.SyncedAt),
+	}, nil
+}
+
+// SyncOpsControlPlaneProfiles is the resolver for the SyncOpsControlPlaneProfiles field.
+func (r *mutationResolver) SyncOpsControlPlaneProfiles(ctx context.Context) (*model.OpsControlPlaneStatus, error) {
+	status, err := opsplane.SyncProfiles(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return &model.OpsControlPlaneStatus{
+		Authenticated:    status.Authenticated,
+		Username:         stringPtr(status.Username),
+		Role:             stringPtr(status.Role),
+		Endpoint:         status.Endpoint,
+		EnvironmentCount: status.EnvironmentCount,
+		ProfileCount:     status.ProfileCount,
+		SyncedAt:         stringPtr(status.SyncedAt),
+	}, nil
+}
+
+// LogoutOpsControlPlane is the resolver for the LogoutOpsControlPlane field.
+func (r *mutationResolver) LogoutOpsControlPlane(ctx context.Context) (*model.StatusResponse, error) {
+	opsplane.Logout()
+	return &model.StatusResponse{Status: true}, nil
+}
 
 // LoginSource is the resolver for the LoginSource field.
 func (r *mutationResolver) LoginSource(ctx context.Context, credentials model.SourceLoginInput) (*model.StatusResponse, error) {
@@ -486,6 +531,20 @@ func (r *queryResolver) Health(ctx context.Context) (*model.HealthStatus, error)
 	}
 
 	return status, nil
+}
+
+// OpsControlPlaneStatus is the resolver for the OpsControlPlaneStatus field.
+func (r *queryResolver) OpsControlPlaneStatus(ctx context.Context) (*model.OpsControlPlaneStatus, error) {
+	status := opsplane.GetAuthStatus()
+	return &model.OpsControlPlaneStatus{
+		Authenticated:    status.Authenticated,
+		Username:         stringPtr(status.Username),
+		Role:             stringPtr(status.Role),
+		Endpoint:         status.Endpoint,
+		EnvironmentCount: status.EnvironmentCount,
+		ProfileCount:     status.ProfileCount,
+		SyncedAt:         stringPtr(status.SyncedAt),
+	}, nil
 }
 
 // SourceProfiles is the resolver for the SourceProfiles field.

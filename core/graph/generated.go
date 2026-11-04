@@ -185,9 +185,12 @@ type ComplexityRoot struct {
 		ImportPreview                    func(childComplexity int, file graphql.Upload, options model.ImportFileOptions, ref *model.SourceObjectRefInput, useHeaderMapping *bool) int
 		ImportSQL                        func(childComplexity int, input model.ImportSQLInput) int
 		ImportSourceObjectFile           func(childComplexity int, input model.ImportFileInput) int
+		LoginOpsControlPlane             func(childComplexity int, input model.OpsControlPlaneLoginInput) int
 		LoginSource                      func(childComplexity int, credentials model.SourceLoginInput) int
 		LoginWithSourceProfile           func(childComplexity int, profile model.SourceProfileLoginInput) int
 		Logout                           func(childComplexity int) int
+		LogoutOpsControlPlane            func(childComplexity int) int
+		SyncOpsControlPlaneProfiles      func(childComplexity int) int
 		TestSourceConnection             func(childComplexity int, credentials model.SourceLoginInput) int
 		UpdateSettings                   func(childComplexity int, newSettings model.SettingsConfigInput) int
 		UpdateSourceObject               func(childComplexity int, ref model.SourceObjectRefInput, values []*model.RecordInput, updatedColumns []string) int
@@ -204,12 +207,23 @@ type ComplexityRoot struct {
 		TypeDefinitions    func(childComplexity int) int
 	}
 
+	OpsControlPlaneStatus struct {
+		Authenticated    func(childComplexity int) int
+		Endpoint         func(childComplexity int) int
+		EnvironmentCount func(childComplexity int) int
+		ProfileCount     func(childComplexity int) int
+		Role             func(childComplexity int) int
+		SyncedAt         func(childComplexity int) int
+		Username         func(childComplexity int) int
+	}
+
 	Query struct {
 		AIModel                      func(childComplexity int, providerID *string, modelType string, token *string) int
 		AIProviders                  func(childComplexity int) int
 		AnalyzeMockDataDependencies  func(childComplexity int, ref model.SourceObjectRefInput, rowCount int, fkDensityRatio *int) int
 		Health                       func(childComplexity int) int
 		MockDataMaxRowCount          func(childComplexity int) int
+		OpsControlPlaneStatus        func(childComplexity int) int
 		RunSourceQuery               func(childComplexity int, query string) int
 		SSLStatus                    func(childComplexity int) int
 		SettingsConfig               func(childComplexity int) int
@@ -483,6 +497,9 @@ type ComplexityRoot struct {
 // region    ************************** generated!.gotpl **************************
 
 type MutationResolver interface {
+	LoginOpsControlPlane(ctx context.Context, input model.OpsControlPlaneLoginInput) (*model.OpsControlPlaneStatus, error)
+	SyncOpsControlPlaneProfiles(ctx context.Context) (*model.OpsControlPlaneStatus, error)
+	LogoutOpsControlPlane(ctx context.Context) (*model.StatusResponse, error)
 	LoginSource(ctx context.Context, credentials model.SourceLoginInput) (*model.StatusResponse, error)
 	LoginWithSourceProfile(ctx context.Context, profile model.SourceProfileLoginInput) (*model.StatusResponse, error)
 	Logout(ctx context.Context) (*model.StatusResponse, error)
@@ -505,6 +522,7 @@ type QueryResolver interface {
 	Version(ctx context.Context) (string, error)
 	UpdateInfo(ctx context.Context) (*model.UpdateInfo, error)
 	Health(ctx context.Context) (*model.HealthStatus, error)
+	OpsControlPlaneStatus(ctx context.Context) (*model.OpsControlPlaneStatus, error)
 	SourceProfiles(ctx context.Context) ([]*model.SourceProfile, error)
 	SourceTypes(ctx context.Context) ([]*model.SourceType, error)
 	SourceFieldOptions(ctx context.Context, sourceType string, fieldKey string, values []*model.RecordInput) ([]string, error)
@@ -1178,6 +1196,17 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.Mutation.ImportSourceObjectFile(childComplexity, args["input"].(model.ImportFileInput)), true
+	case "Mutation.LoginOpsControlPlane":
+		if e.ComplexityRoot.Mutation.LoginOpsControlPlane == nil {
+			break
+		}
+
+		args, err := ec.field_Mutation_LoginOpsControlPlane_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.ComplexityRoot.Mutation.LoginOpsControlPlane(childComplexity, args["input"].(model.OpsControlPlaneLoginInput)), true
 	case "Mutation.LoginSource":
 		if e.ComplexityRoot.Mutation.LoginSource == nil {
 			break
@@ -1206,6 +1235,18 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.Mutation.Logout(childComplexity), true
+	case "Mutation.LogoutOpsControlPlane":
+		if e.ComplexityRoot.Mutation.LogoutOpsControlPlane == nil {
+			break
+		}
+
+		return e.ComplexityRoot.Mutation.LogoutOpsControlPlane(childComplexity), true
+	case "Mutation.SyncOpsControlPlaneProfiles":
+		if e.ComplexityRoot.Mutation.SyncOpsControlPlaneProfiles == nil {
+			break
+		}
+
+		return e.ComplexityRoot.Mutation.SyncOpsControlPlaneProfiles(childComplexity), true
 	case "Mutation.TestSourceConnection":
 		if e.ComplexityRoot.Mutation.TestSourceConnection == nil {
 			break
@@ -1289,6 +1330,49 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 
 		return e.ComplexityRoot.ObjectCreationMetadata.TypeDefinitions(childComplexity), true
 
+	case "OpsControlPlaneStatus.Authenticated":
+		if e.ComplexityRoot.OpsControlPlaneStatus.Authenticated == nil {
+			break
+		}
+
+		return e.ComplexityRoot.OpsControlPlaneStatus.Authenticated(childComplexity), true
+	case "OpsControlPlaneStatus.Endpoint":
+		if e.ComplexityRoot.OpsControlPlaneStatus.Endpoint == nil {
+			break
+		}
+
+		return e.ComplexityRoot.OpsControlPlaneStatus.Endpoint(childComplexity), true
+	case "OpsControlPlaneStatus.EnvironmentCount":
+		if e.ComplexityRoot.OpsControlPlaneStatus.EnvironmentCount == nil {
+			break
+		}
+
+		return e.ComplexityRoot.OpsControlPlaneStatus.EnvironmentCount(childComplexity), true
+	case "OpsControlPlaneStatus.ProfileCount":
+		if e.ComplexityRoot.OpsControlPlaneStatus.ProfileCount == nil {
+			break
+		}
+
+		return e.ComplexityRoot.OpsControlPlaneStatus.ProfileCount(childComplexity), true
+	case "OpsControlPlaneStatus.Role":
+		if e.ComplexityRoot.OpsControlPlaneStatus.Role == nil {
+			break
+		}
+
+		return e.ComplexityRoot.OpsControlPlaneStatus.Role(childComplexity), true
+	case "OpsControlPlaneStatus.SyncedAt":
+		if e.ComplexityRoot.OpsControlPlaneStatus.SyncedAt == nil {
+			break
+		}
+
+		return e.ComplexityRoot.OpsControlPlaneStatus.SyncedAt(childComplexity), true
+	case "OpsControlPlaneStatus.Username":
+		if e.ComplexityRoot.OpsControlPlaneStatus.Username == nil {
+			break
+		}
+
+		return e.ComplexityRoot.OpsControlPlaneStatus.Username(childComplexity), true
+
 	case "Query.AIModel":
 		if e.ComplexityRoot.Query.AIModel == nil {
 			break
@@ -1330,6 +1414,12 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.Query.MockDataMaxRowCount(childComplexity), true
+	case "Query.OpsControlPlaneStatus":
+		if e.ComplexityRoot.Query.OpsControlPlaneStatus == nil {
+			break
+		}
+
+		return e.ComplexityRoot.Query.OpsControlPlaneStatus(childComplexity), true
 	case "Query.RunSourceQuery":
 		if e.ComplexityRoot.Query.RunSourceQuery == nil {
 			break
@@ -2457,6 +2547,7 @@ func (e *executableSchema) Exec(ctx context.Context) graphql.ResponseHandler {
 			graphql.NewInputUnmarshaler("ImportSQLInput", ec.unmarshalInputImportSQLInput),
 			graphql.NewInputUnmarshaler("MockDataGenerationInput", ec.unmarshalInputMockDataGenerationInput),
 			graphql.NewInputUnmarshaler("OperationWhereCondition", ec.unmarshalInputOperationWhereCondition),
+			graphql.NewInputUnmarshaler("OpsControlPlaneLoginInput", ec.unmarshalInputOpsControlPlaneLoginInput),
 			graphql.NewInputUnmarshaler("RecordInput", ec.unmarshalInputRecordInput),
 			graphql.NewInputUnmarshaler("SettingsConfigInput", ec.unmarshalInputSettingsConfigInput),
 			graphql.NewInputUnmarshaler("SortCondition", ec.unmarshalInputSortCondition),
@@ -2852,6 +2943,26 @@ func (ec *executionContext) childFields_ObjectCreationMetadata(ctx context.Conte
 		return ec.fieldContext_ObjectCreationMetadata_TableOptions(ctx, field)
 	}
 	return nil, fmt.Errorf("no field named %q was found under type ObjectCreationMetadata", field.Name)
+}
+
+func (ec *executionContext) childFields_OpsControlPlaneStatus(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+	switch field.Name {
+	case "Authenticated":
+		return ec.fieldContext_OpsControlPlaneStatus_Authenticated(ctx, field)
+	case "Username":
+		return ec.fieldContext_OpsControlPlaneStatus_Username(ctx, field)
+	case "Role":
+		return ec.fieldContext_OpsControlPlaneStatus_Role(ctx, field)
+	case "Endpoint":
+		return ec.fieldContext_OpsControlPlaneStatus_Endpoint(ctx, field)
+	case "EnvironmentCount":
+		return ec.fieldContext_OpsControlPlaneStatus_EnvironmentCount(ctx, field)
+	case "ProfileCount":
+		return ec.fieldContext_OpsControlPlaneStatus_ProfileCount(ctx, field)
+	case "SyncedAt":
+		return ec.fieldContext_OpsControlPlaneStatus_SyncedAt(ctx, field)
+	}
+	return nil, fmt.Errorf("no field named %q was found under type OpsControlPlaneStatus", field.Name)
 }
 
 func (ec *executionContext) childFields_Record(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
@@ -3676,6 +3787,20 @@ func (ec *executionContext) field_Mutation_ImportSourceObjectFile_args(ctx conte
 	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "input",
 		func(ctx context.Context, v any) (model.ImportFileInput, error) {
 			return ec.unmarshalNImportFileInput2githubᚗcomᚋclideyᚋwhodbᚋcoreᚋgraphᚋmodelᚐImportFileInput(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["input"] = arg0
+	return args, nil
+}
+
+func (ec *executionContext) field_Mutation_LoginOpsControlPlane_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "input",
+		func(ctx context.Context, v any) (model.OpsControlPlaneLoginInput, error) {
+			return ec.unmarshalNOpsControlPlaneLoginInput2githubᚗcomᚋclideyᚋwhodbᚋcoreᚋgraphᚋmodelᚐOpsControlPlaneLoginInput(ctx, v)
 		})
 	if err != nil {
 		return nil, err
@@ -6068,6 +6193,114 @@ func (ec *executionContext) fieldContext_MockDataTableInfo_UsesExistingData(_ co
 	return graphql.NewScalarFieldContext("MockDataTableInfo", field, false, false, "Boolean")
 }
 
+func (ec *executionContext) _Mutation_LoginOpsControlPlane(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Mutation_LoginOpsControlPlane(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.Resolvers.Mutation().LoginOpsControlPlane(ctx, fc.Args["input"].(model.OpsControlPlaneLoginInput))
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *model.OpsControlPlaneStatus) graphql.Marshaler {
+			return ec.marshalNOpsControlPlaneStatus2ᚖgithubᚗcomᚋclideyᚋwhodbᚋcoreᚋgraphᚋmodelᚐOpsControlPlaneStatus(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Mutation_LoginOpsControlPlane(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Mutation",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_OpsControlPlaneStatus(ctx, field)
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Mutation_LoginOpsControlPlane_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Mutation_SyncOpsControlPlaneProfiles(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Mutation_SyncOpsControlPlaneProfiles(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return ec.Resolvers.Mutation().SyncOpsControlPlaneProfiles(ctx)
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *model.OpsControlPlaneStatus) graphql.Marshaler {
+			return ec.marshalNOpsControlPlaneStatus2ᚖgithubᚗcomᚋclideyᚋwhodbᚋcoreᚋgraphᚋmodelᚐOpsControlPlaneStatus(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Mutation_SyncOpsControlPlaneProfiles(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Mutation",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_OpsControlPlaneStatus(ctx, field)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Mutation_LogoutOpsControlPlane(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Mutation_LogoutOpsControlPlane(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return ec.Resolvers.Mutation().LogoutOpsControlPlane(ctx)
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *model.StatusResponse) graphql.Marshaler {
+			return ec.marshalNStatusResponse2ᚖgithubᚗcomᚋclideyᚋwhodbᚋcoreᚋgraphᚋmodelᚐStatusResponse(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Mutation_LogoutOpsControlPlane(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Mutation",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_StatusResponse(ctx, field)
+		},
+	}
+	return fc, nil
+}
+
 func (ec *executionContext) _Mutation_LoginSource(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -7033,6 +7266,167 @@ func (ec *executionContext) fieldContext_ObjectCreationMetadata_TableOptions(_ c
 	return fc, nil
 }
 
+func (ec *executionContext) _OpsControlPlaneStatus_Authenticated(ctx context.Context, field graphql.CollectedField, obj *model.OpsControlPlaneStatus) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_OpsControlPlaneStatus_Authenticated(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Authenticated, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v bool) graphql.Marshaler {
+			return ec.marshalNBoolean2bool(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_OpsControlPlaneStatus_Authenticated(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("OpsControlPlaneStatus", field, false, false, "Boolean")
+}
+
+func (ec *executionContext) _OpsControlPlaneStatus_Username(ctx context.Context, field graphql.CollectedField, obj *model.OpsControlPlaneStatus) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_OpsControlPlaneStatus_Username(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Username, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *string) graphql.Marshaler {
+			return ec.marshalOString2ᚖstring(ctx, selections, v)
+		},
+		true,
+		false,
+	)
+}
+func (ec *executionContext) fieldContext_OpsControlPlaneStatus_Username(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("OpsControlPlaneStatus", field, false, false, "String")
+}
+
+func (ec *executionContext) _OpsControlPlaneStatus_Role(ctx context.Context, field graphql.CollectedField, obj *model.OpsControlPlaneStatus) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_OpsControlPlaneStatus_Role(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Role, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *string) graphql.Marshaler {
+			return ec.marshalOString2ᚖstring(ctx, selections, v)
+		},
+		true,
+		false,
+	)
+}
+func (ec *executionContext) fieldContext_OpsControlPlaneStatus_Role(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("OpsControlPlaneStatus", field, false, false, "String")
+}
+
+func (ec *executionContext) _OpsControlPlaneStatus_Endpoint(ctx context.Context, field graphql.CollectedField, obj *model.OpsControlPlaneStatus) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_OpsControlPlaneStatus_Endpoint(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Endpoint, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_OpsControlPlaneStatus_Endpoint(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("OpsControlPlaneStatus", field, false, false, "String")
+}
+
+func (ec *executionContext) _OpsControlPlaneStatus_EnvironmentCount(ctx context.Context, field graphql.CollectedField, obj *model.OpsControlPlaneStatus) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_OpsControlPlaneStatus_EnvironmentCount(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.EnvironmentCount, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v int) graphql.Marshaler {
+			return ec.marshalNInt2int(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_OpsControlPlaneStatus_EnvironmentCount(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("OpsControlPlaneStatus", field, false, false, "Int")
+}
+
+func (ec *executionContext) _OpsControlPlaneStatus_ProfileCount(ctx context.Context, field graphql.CollectedField, obj *model.OpsControlPlaneStatus) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_OpsControlPlaneStatus_ProfileCount(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.ProfileCount, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v int) graphql.Marshaler {
+			return ec.marshalNInt2int(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_OpsControlPlaneStatus_ProfileCount(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("OpsControlPlaneStatus", field, false, false, "Int")
+}
+
+func (ec *executionContext) _OpsControlPlaneStatus_SyncedAt(ctx context.Context, field graphql.CollectedField, obj *model.OpsControlPlaneStatus) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_OpsControlPlaneStatus_SyncedAt(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.SyncedAt, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *string) graphql.Marshaler {
+			return ec.marshalOString2ᚖstring(ctx, selections, v)
+		},
+		true,
+		false,
+	)
+}
+func (ec *executionContext) fieldContext_OpsControlPlaneStatus_SyncedAt(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("OpsControlPlaneStatus", field, false, false, "String")
+}
+
 func (ec *executionContext) _Query_Version(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -7115,6 +7509,38 @@ func (ec *executionContext) fieldContext_Query_Health(_ context.Context, field g
 		IsResolver: true,
 		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
 			return ec.childFields_HealthStatus(ctx, field)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Query_OpsControlPlaneStatus(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Query_OpsControlPlaneStatus(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return ec.Resolvers.Query().OpsControlPlaneStatus(ctx)
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *model.OpsControlPlaneStatus) graphql.Marshaler {
+			return ec.marshalNOpsControlPlaneStatus2ᚖgithubᚗcomᚋclideyᚋwhodbᚋcoreᚋgraphᚋmodelᚐOpsControlPlaneStatus(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Query_OpsControlPlaneStatus(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Query",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_OpsControlPlaneStatus(ctx, field)
 		},
 	}
 	return fc, nil
@@ -13480,6 +13906,62 @@ func UnmarshalOperationWhereCondition(ctx context.Context, raw any) (model.Opera
 	return out, err
 }
 
+func (ec *executionContext) unmarshalInputOpsControlPlaneLoginInput(ctx context.Context, obj any) (model.OpsControlPlaneLoginInput, error) {
+	var it model.OpsControlPlaneLoginInput
+	if obj == nil {
+		return it, nil
+	}
+
+	asMap := map[string]any{}
+	for k, v := range obj.(map[string]any) {
+		asMap[k] = v
+	}
+
+	fieldsInOrder := [...]string{"Endpoint", "Username", "Password"}
+	for _, k := range fieldsInOrder {
+		v, ok := asMap[k]
+		if !ok {
+			continue
+		}
+		switch k {
+		case "Endpoint":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("Endpoint"))
+			data, err := ec.unmarshalOString2ᚖstring(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.Endpoint = data
+		case "Username":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("Username"))
+			data, err := ec.unmarshalNString2string(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.Username = data
+		case "Password":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("Password"))
+			data, err := ec.unmarshalNString2string(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.Password = data
+		}
+	}
+	return it, nil
+}
+
+// UnmarshalOpsControlPlaneLoginInput unmarshals raw into the OpsControlPlaneLoginInput input type, using the
+// unmarshaler bound to ctx's request. Call it from a resolver to decode an input
+// object that was not passed as a field argument.
+//
+// ctx must come from a gqlgen request; outside one there is no unmarshaler to use
+// and the returned error says so.
+func UnmarshalOpsControlPlaneLoginInput(ctx context.Context, raw any) (model.OpsControlPlaneLoginInput, error) {
+	var out model.OpsControlPlaneLoginInput
+	err := graphql.UnmarshalNamedInputFromContext(ctx, "OpsControlPlaneLoginInput", raw, &out)
+	return out, err
+}
+
 func (ec *executionContext) unmarshalInputRecordInput(ctx context.Context, obj any) (model.RecordInput, error) {
 	var it model.RecordInput
 	if obj == nil {
@@ -14855,6 +15337,27 @@ func (ec *executionContext) _Mutation(ctx context.Context, sel ast.SelectionSet)
 		switch field.Name {
 		case "__typename":
 			out.Values[i] = graphql.MarshalString("Mutation")
+		case "LoginOpsControlPlane":
+			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
+				return ec._Mutation_LoginOpsControlPlane(ctx, field)
+			})
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "SyncOpsControlPlaneProfiles":
+			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
+				return ec._Mutation_SyncOpsControlPlaneProfiles(ctx, field)
+			})
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "LogoutOpsControlPlane":
+			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
+				return ec._Mutation_LogoutOpsControlPlane(ctx, field)
+			})
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
 		case "LoginSource":
 			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
 				return ec._Mutation_LoginSource(ctx, field)
@@ -15059,6 +15562,69 @@ func (ec *executionContext) _ObjectCreationMetadata(ctx context.Context, sel ast
 	return out
 }
 
+var opsControlPlaneStatusImplementors = []string{"OpsControlPlaneStatus"}
+
+func (ec *executionContext) _OpsControlPlaneStatus(ctx context.Context, sel ast.SelectionSet, obj *model.OpsControlPlaneStatus) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, opsControlPlaneStatusImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferred := graphql.NewDeferredGroup(ctx)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("OpsControlPlaneStatus")
+		case "Authenticated":
+			out.Values[i] = ec._OpsControlPlaneStatus_Authenticated(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "Username":
+			out.Values[i] = ec._OpsControlPlaneStatus_Username(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
+		case "Role":
+			out.Values[i] = ec._OpsControlPlaneStatus_Role(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
+		case "Endpoint":
+			out.Values[i] = ec._OpsControlPlaneStatus_Endpoint(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "EnvironmentCount":
+			out.Values[i] = ec._OpsControlPlaneStatus_EnvironmentCount(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "ProfileCount":
+			out.Values[i] = ec._OpsControlPlaneStatus_ProfileCount(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "SyncedAt":
+			out.Values[i] = ec._OpsControlPlaneStatus_SyncedAt(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	if n := len(deferred.Defers); n > 0 {
+		atomic.AddInt32(&ec.Deferred, int32(min(n, math.MaxInt32)))
+		ec.ProcessDeferredGroup(deferred)
+	}
+
+	return out
+}
+
 var queryImplementors = []string{"Query"}
 
 func (ec *executionContext) _Query(ctx context.Context, sel ast.SelectionSet) graphql.Marshaler {
@@ -15095,6 +15661,12 @@ func (ec *executionContext) _Query(ctx context.Context, sel ast.SelectionSet) gr
 				true, true,
 				func(ctx context.Context) graphql.Marshaler {
 					return ec._Query_Health(ctx, field)
+				})
+		case "OpsControlPlaneStatus":
+			out.ResolveRootConcurrently(innerCtx, ec.OperationContext, i,
+				true, true,
+				func(ctx context.Context) graphql.Marshaler {
+					return ec._Query_OpsControlPlaneStatus(ctx, field)
 				})
 		case "SourceProfiles":
 			out.ResolveRootConcurrently(innerCtx, ec.OperationContext, i,
@@ -17636,6 +18208,19 @@ func (ec *executionContext) marshalNObjectCreationMetadata2ᚖgithubᚗcomᚋcli
 		return graphql.Null
 	}
 	return ec._ObjectCreationMetadata(ctx, sel, v)
+}
+
+func (ec *executionContext) unmarshalNOpsControlPlaneLoginInput2githubᚗcomᚋclideyᚋwhodbᚋcoreᚋgraphᚋmodelᚐOpsControlPlaneLoginInput(ctx context.Context, v any) (model.OpsControlPlaneLoginInput, error) {
+	res, err := ec.unmarshalInputOpsControlPlaneLoginInput(ctx, v)
+	return res, graphql.ErrorOnPath(ctx, err)
+}
+
+func (ec *executionContext) marshalNOpsControlPlaneStatus2ᚖgithubᚗcomᚋclideyᚋwhodbᚋcoreᚋgraphᚋmodelᚐOpsControlPlaneStatus(ctx context.Context, sel ast.SelectionSet, v *model.OpsControlPlaneStatus) graphql.Marshaler {
+	if v == nil {
+		graphql.AddInvalidNullError(ctx, "OpsControlPlaneStatus!")
+		return graphql.Null
+	}
+	return ec._OpsControlPlaneStatus(ctx, sel, v)
 }
 
 func (ec *executionContext) marshalNRecord2ᚕᚖgithubᚗcomᚋclideyᚋwhodbᚋcoreᚋgraphᚋmodelᚐRecordᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.Record) graphql.Marshaler {

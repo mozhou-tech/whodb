@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import {type SupportedLanguage, DEFAULT_LANGUAGE} from '@/utils/languages';
+import {type SupportedLanguage, FALLBACK_LANGUAGE} from '@/utils/languages';
 import {defaultLanguagePack, languagePackLoaders, type LanguagePack} from 'virtual:whodb-locales';
 
 type TranslationMap = Record<string, string>;
@@ -23,10 +23,10 @@ type TranslationCache = Record<string, TranslationMap>;
 const translationCache: TranslationCache = {};
 
 // Translations are split into one pack per language at build time (see
-// plugins/vite-plugin-locale-packs.mjs). The default language is bundled because it is the
-// fallback for files without a translation; every other language is loaded on demand.
+// plugins/vite-plugin-locale-packs.mjs). The fallback language is bundled because missing
+// keys use it; every other language, including the UI default, is loaded on demand.
 const languagePacks: Partial<Record<SupportedLanguage, LanguagePack>> = {
-    [DEFAULT_LANGUAGE]: defaultLanguagePack,
+    [FALLBACK_LANGUAGE]: defaultLanguagePack,
 };
 const pendingLanguageLoads = new Map<SupportedLanguage, Promise<void>>();
 const languagePackListeners = new Set<() => void>();
@@ -40,7 +40,7 @@ export const loadLanguage = (language: SupportedLanguage): Promise<void> => {
     if (languagePacks[language]) return Promise.resolve();
     const loader = languagePackLoaders[language];
     if (!loader) {
-        // No file has this language yet; every lookup falls back to the default language.
+        // No file has this language yet; every lookup falls back to the bundled language.
         languagePacks[language] = {};
         return Promise.resolve();
     }

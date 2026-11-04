@@ -4,7 +4,7 @@ This document defines the localization requirements for the WhoDB frontend.
 
 ## Overview
 
-WhoDB uses a YAML-based localization system with the `useTranslation` hook. All user-facing strings MUST be localized. At build time `frontend/plugins/vite-plugin-locale-packs.mjs` splits the YAML files into one pack per language: `en_US` is bundled with the app (it is the fallback), and every other language is downloaded on demand.
+WhoDB uses a YAML-based localization system with the `useTranslation` hook. All user-facing strings MUST be localized. The UI language starts at `zh_CN` (`DEFAULT_LANGUAGE` in `frontend/src/utils/languages.ts`) until the user chooses another. At build time `frontend/plugins/vite-plugin-locale-packs.mjs` splits the YAML files into one pack per language: `en_US` is bundled with the app (it is the fallback for a missing key), and every other language, including `zh_CN`, is downloaded on demand.
 
 ## How It Works
 

@@ -170,6 +170,26 @@ export const authSlice = createSlice({
     },
     setEmbedded: (state, action: PayloadAction<boolean>) => {
       state.isEmbedded = action.payload;
+    },
+    syncSourceProfiles: (state, action: PayloadAction<Array<SourceLoginPayload | LocalLoginProfile>>) => {
+      for (const item of action.payload) {
+        const profile = normalizeProfile(item);
+        const existingIdx = state.profiles.findIndex(p => p.Id === profile.Id);
+        if (existingIdx >= 0) {
+          state.profiles[existingIdx] = profile;
+        } else {
+          state.profiles.push(profile);
+        }
+      }
+    },
+    clearEnvironmentProfiles: (state) => {
+      state.profiles = state.profiles.filter(p => p.Source !== "environment");
+      if (state.current?.Source === "environment") {
+        state.current = state.profiles[0];
+        if (!state.current) {
+          state.status = "unauthorized";
+        }
+      }
     }
   },
 });
