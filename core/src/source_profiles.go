@@ -48,6 +48,8 @@ func GetSourceProfiles() []source.Profile {
 		profiles = append(profiles, source.Profile{
 			ID:                   id,
 			DisplayName:          displayName,
+			ProjectID:            profile.ProjectID,
+			ProjectName:          profile.ProjectName,
 			SourceType:           profile.Type,
 			Values:               displayValuesForProfile(profile),
 			IsEnvironmentDefined: profile.Source == "environment",
@@ -79,6 +81,8 @@ func FindSourceProfile(id string) (*source.Profile, *source.Credentials, bool) {
 		sourceProfile := &source.Profile{
 			ID:                   profileID,
 			DisplayName:          displayName,
+			ProjectID:            profile.ProjectID,
+			ProjectName:          profile.ProjectName,
 			SourceType:           profile.Type,
 			Values:               displayValuesForProfile(profile),
 			IsEnvironmentDefined: profile.Source == "environment",

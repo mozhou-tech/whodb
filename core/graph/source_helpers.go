@@ -569,6 +569,8 @@ func sourceProfilesToModel(profiles []source.Profile) []*model.SourceProfile {
 		mapped = append(mapped, &model.SourceProfile{
 			ID:                   profile.ID,
 			DisplayName:          profile.DisplayName,
+			ProjectID:            stringPtr(profile.ProjectID),
+			ProjectName:          stringPtr(profile.ProjectName),
 			SourceType:           profile.SourceType,
 			Values:               recordsToModel(profile.Values),
 			IsEnvironmentDefined: profile.IsEnvironmentDefined,

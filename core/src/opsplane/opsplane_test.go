@@ -17,10 +17,49 @@
 package opsplane
 
 import (
+	"context"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"strings"
 	"testing"
 )
+
+func TestAuthenticateViaHTTPEnvelope(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v1/auth/login" || r.Method != http.MethodPost {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{
+			"code": 0,
+			"message": "",
+			"data": {
+				"token": "eyJhbGciOiJIUzI1NiJ9.test",
+				"expire_at": "2026-11-05T12:00:00Z",
+				"user": {
+					"id": 2,
+					"username": "admin@mozyun.cn",
+					"role": "admin",
+					"is_active": true,
+					"environment_permissions": ["*"],
+					"roles": [{"id": 1, "code": "system_admin", "name": "系统管理员", "scope_type": "global", "environment_slugs": []}]
+				}
+			}
+		}`))
+	}))
+	defer srv.Close()
+
+	status, err := authenticateViaHTTP(context.Background(), srv.URL, "admin@mozyun.cn", "secret")
+	if err != nil {
+		t.Fatalf("expected HTTP login with code:0 envelope to succeed, got error: %v", err)
+	}
+	if !status.Authenticated || status.Username != "admin@mozyun.cn" || !status.AllowAllEnvs || status.Token == "" {
+		t.Fatalf("unexpected AuthStatus: %+v", status)
+	}
+}
 
 func TestBuildEnvironmentProfilesAndProxyRouting(t *testing.T) {
 	env := environmentRow{
@@ -32,24 +71,30 @@ func TestBuildEnvironmentProfilesAndProxyRouting(t *testing.T) {
 		MySQL:     []byte(`{"enabled":true,"host":"10.22.184.109","port":3306,"username":"root","password":"pw","database":""}`),
 	}
 	envVars := map[string]string{
-		"PG_DB_PASSWORD":          "pgpass",
-		"REDIS_HOST":              "100.64.0.24",
-		"REDIS_PORT":              "6380",
-		"REDIS_PASSWORD":          "redispass",
-		"TDENGINE_URL":            "jdbc:TAOS-WS://100.64.0.24:6041/thingsboard",
-		"TDENGINE_USERNAME":       "root",
-		"TDENGINE_PASSWORD":       "taospass",
-		"CLICKHOUSE_JDBC_URL":     "jdbc:clickhouse://100.64.0.24:30123/default",
-		"CLICKHOUSE_USER":         "mozy",
-		"CLICKHOUSE_PASSWORD":     "chpass",
-		"ELASTICSEARCH_HTTP_URL":  "http://100.64.0.24:31768",
-		"ELASTICSEARCH_PASSWORD":  "espass",
+		"PG_DB_PASSWORD":         "pgpass",
+		"REDIS_HOST":             "100.64.0.24",
+		"REDIS_PORT":             "6380",
+		"REDIS_PASSWORD":         "redispass",
+		"TDENGINE_URL":           "jdbc:TAOS-WS://100.64.0.24:6041/thingsboard",
+		"TDENGINE_USERNAME":      "root",
+		"TDENGINE_PASSWORD":      "taospass",
+		"CLICKHOUSE_JDBC_URL":    "jdbc:clickhouse://100.64.0.24:30123/default",
+		"CLICKHOUSE_USER":        "mozy",
+		"CLICKHOUSE_PASSWORD":    "chpass",
+		"ELASTICSEARCH_HTTP_URL": "http://100.64.0.24:31768",
+		"ELASTICSEARCH_PASSWORD": "espass",
 	}
 	proxy := parseProxyConfig(env.ProxyRaw)
 	profiles := buildEnvironmentProfiles(env, proxy, envVars, nil)
 
 	if len(profiles) != 6 {
 		t.Fatalf("expected 6 profiles (Postgres, MySQL, Redis, TDengine, ClickHouse, ElasticSearch), got %d", len(profiles))
+	}
+
+	for _, profile := range profiles {
+		if profile.ProjectID != env.Slug || profile.ProjectName != env.Name {
+			t.Fatalf("expected project metadata on %s, got id=%q name=%q", profile.Type, profile.ProjectID, profile.ProjectName)
+		}
 	}
 
 	// 100.64.0.0/24 must bypass proxy; 10.22.184.109 must use the environment SOCKS5 proxy.

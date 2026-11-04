@@ -35,10 +35,12 @@ type DatabaseCredentials struct {
 	Advanced map[string]string `json:"advanced"`
 	Extra    map[string]any
 
-	IsProfile bool
-	Type      string
-	CustomId  string
-	Source    string
+	IsProfile   bool
+	Type        string
+	CustomId    string
+	Source      string
+	ProjectID   string `json:"projectId,omitempty"`
+	ProjectName string `json:"projectName,omitempty"`
 }
 
 // UnmarshalJSON supports both "advanced" and the legacy "config" JSON key.

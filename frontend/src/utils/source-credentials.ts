@@ -106,6 +106,8 @@ export function createProfilePayloadFromSourceProfile(
         Values: values,
         Saved: true,
         DisplayName: profile.Alias,
+        ProjectId: profile.ProjectId ?? undefined,
+        ProjectName: profile.ProjectName ?? undefined,
         IsEnvironmentDefined: profile.IsEnvironmentDefined,
         SSLConfigured: profile.SSLConfigured,
         Source: profile.Source,

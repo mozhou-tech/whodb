@@ -45,11 +45,13 @@ func TestQueryProfilesMapsAliasCustomIDAndSSL(t *testing.T) {
 	})
 
 	src.MainEngine.AddLoginProfile(types.DatabaseCredentials{
-		Type:     "Postgres",
-		Alias:    "Reporting",
-		Hostname: "db.internal",
-		Database: "analytics",
-		Source:   "environment",
+		Type:        "Postgres",
+		Alias:       "Reporting",
+		ProjectID:   "reporting-project",
+		ProjectName: "Reporting project",
+		Hostname:    "db.internal",
+		Database:    "analytics",
+		Source:      "environment",
 		Advanced: map[string]string{
 			ssl.KeySSLMode: string(ssl.SSLModeRequired),
 			"API Key":      "synthetic-private-api-key",
@@ -82,6 +84,10 @@ func TestQueryProfilesMapsAliasCustomIDAndSSL(t *testing.T) {
 	if reportingProfile == nil {
 		t.Fatalf("expected reporting profile to be present, got %#v", profiles)
 	}
+	if reportingProfile.ProjectID == nil || *reportingProfile.ProjectID != "reporting-project" ||
+		reportingProfile.ProjectName == nil || *reportingProfile.ProjectName != "Reporting project" {
+		t.Fatal("expected project metadata to reach the public source profile")
+	}
 	if !reportingProfile.SSLConfigured {
 		t.Fatal("expected SSLConfigured to be true when SSL mode is enabled")
 	}
@@ -92,6 +98,9 @@ func TestQueryProfilesMapsAliasCustomIDAndSSL(t *testing.T) {
 	}
 	if mysqlProfile == nil {
 		t.Fatalf("expected custom ID profile to be present, got %#v", profiles)
+	}
+	if mysqlProfile.ProjectID != nil || mysqlProfile.ProjectName != nil {
+		t.Fatal("expected ungrouped profiles to have null project metadata")
 	}
 }
 

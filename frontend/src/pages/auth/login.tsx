@@ -203,7 +203,7 @@ export const LoginForm: FC<LoginFormProps> = ({
     const [logoutOpsControlPlane, { loading: opsLogoutLoading }] = useMutation(LogoutOpsControlPlaneDocument);
     const [getDatabases, { loading: databasesLoading, data: foundDatabases }] = useLazyQuery(SourceFieldOptionsDocument);
     const { loading: profilesLoading, data: profiles, error: profilesError, refetch: refetchProfiles } = useQuery(SourceProfilesDocument);
-    const { data: opsStatusData, refetch: refetchOpsStatus } = useQuery(OpsControlPlaneStatusDocument);
+    const { loading: opsStatusLoading, data: opsStatusData, refetch: refetchOpsStatus } = useQuery(OpsControlPlaneStatusDocument);
     const opsStatus = opsStatusData?.OpsControlPlaneStatus;
     const { data: settingsData } = useQuery(SettingsConfigDocument);
     const disableCredentialForm = settingsData?.SettingsConfig?.DisableCredentialForm ?? false;
@@ -1063,7 +1063,7 @@ export const LoginForm: FC<LoginFormProps> = ({
         return buildSourceAdvancedSectionState(databaseType, advancedForm, promotedConnectionFieldKeys);
     }, [advancedForm, databaseType, promotedConnectionFieldKeys]);
 
-    if (!databaseTypesLoaded || profilesLoading)  {
+    if (!databaseTypesLoaded || profilesLoading || opsStatusLoading)  {
         return (
             <div className={classNames("flex flex-col justify-center items-center gap-lg w-full", className)}>
                 <div>
@@ -1072,6 +1072,96 @@ export const LoginForm: FC<LoginFormProps> = ({
                 <h1 className="text-xl">
                     {t('loggingIn')}
                 </h1>
+            </div>
+        );
+    }
+
+    if (!opsStatus?.Authenticated) {
+        return (
+            <div
+                className={classNames(
+                    "flex flex-col items-center justify-center min-h-screen w-full p-6",
+                    className,
+                )}
+                data-testid="ops-control-plane-gate"
+            >
+                <div className="fixed top-4 right-4 z-20" data-testid="mode-toggle-login">
+                    <ModeToggle />
+                </div>
+                <Card className="flex flex-col gap-6 p-8 w-full max-w-md shadow-xl" data-testid="ops-plane-login-card">
+                    <div className="flex flex-col gap-2">
+                        <div className="flex items-center gap-2">
+                            {extensions.Logo ?? <img src={logoImage} alt="WhoDB" className="w-auto h-8" />}
+                            <span className="text-lg font-semibold text-primary" data-testid="app-name">
+                                {appName}
+                            </span>
+                        </div>
+                        <h1 className="text-2xl font-bold tracking-tight mt-2">
+                            {t('opsPlane.title')}
+                        </h1>
+                        <p className="text-sm text-muted-foreground">
+                            {t('opsPlane.description')}
+                        </p>
+                    </div>
+                    <div className="flex flex-col gap-4">
+                        <div className="flex flex-col gap-xs">
+                            <Label htmlFor="ops-plane-endpoint">{t('opsPlane.endpoint')}</Label>
+                            <Input
+                                id="ops-plane-endpoint"
+                                value={opsEndpoint}
+                                onChange={(e) => { setOpsEndpoint(e.target.value); }}
+                                placeholder={t('opsPlane.enterEndpoint')}
+                                data-testid="ops-plane-endpoint-input"
+                                onKeyDown={(e) => {
+                                    if (e.key === 'Enter') {
+                                        handleOpsPlaneLogin();
+                                    }
+                                }}
+                            />
+                        </div>
+                        <div className="flex flex-col gap-xs">
+                            <Label htmlFor="ops-plane-username">{t('opsPlane.username')}</Label>
+                            <Input
+                                id="ops-plane-username"
+                                value={opsUsername}
+                                onChange={(e) => { setOpsUsername(e.target.value); }}
+                                placeholder={t('opsPlane.enterUsername')}
+                                data-testid="ops-plane-username-input"
+                                onKeyDown={(e) => {
+                                    if (e.key === 'Enter') {
+                                        handleOpsPlaneLogin();
+                                    }
+                                }}
+                            />
+                        </div>
+                        <div className="flex flex-col gap-xs">
+                            <Label htmlFor="ops-plane-password">{t('opsPlane.password')}</Label>
+                            <Input
+                                id="ops-plane-password"
+                                type="password"
+                                value={opsPassword}
+                                onChange={(e) => { setOpsPassword(e.target.value); }}
+                                placeholder={t('opsPlane.enterPassword')}
+                                data-testid="ops-plane-password-input"
+                                onKeyDown={(e) => {
+                                    if (e.key === 'Enter') {
+                                        handleOpsPlaneLogin();
+                                    }
+                                }}
+                            />
+                        </div>
+                    </div>
+                    <Button
+                        size="lg"
+                        className="w-full"
+                        onClick={handleOpsPlaneLogin}
+                        disabled={opsLoginLoading || !opsUsername.trim() || !opsPassword}
+                        data-testid="ops-plane-login-button"
+                    >
+                        {opsLoginLoading ? <Spinner className="size-4" aria-hidden="true" /> : <CheckCircleIcon className="w-4 h-4" />}
+                        {opsLoginLoading ? t('opsPlane.loggingIn') : t('opsPlane.loginAndSync')}
+                    </Button>
+                </Card>
             </div>
         );
     }
@@ -1277,113 +1367,43 @@ export const LoginForm: FC<LoginFormProps> = ({
                 )}
                 {!disableCredentialForm && <Separator className="my-6" />}
                 <div className="flex flex-col gap-lg" data-testid="ops-control-plane-section">
-                    <div className="flex items-center justify-between gap-sm">
-                        <Label className="text-base font-semibold">{t('opsPlane.title')}</Label>
-                        {opsStatus?.Authenticated && (
-                            <Badge variant="secondary" data-testid="ops-plane-user-badge">
-                                {t('opsPlane.loggedInAs', {
-                                    username: opsStatus.Username ?? '',
-                                    role: opsStatus.Role ?? '',
+                    <Alert data-testid="ops-plane-synced-alert">
+                        <CheckCircleIcon className="h-4 w-4" aria-hidden="true" />
+                        <AlertTitle>
+                            {t('opsPlane.loggedInAs', {
+                                username: opsStatus.Username ?? '',
+                                role: opsStatus.Role ?? '',
+                            })}
+                        </AlertTitle>
+                        <AlertDescription className="flex flex-wrap items-center justify-between gap-sm mt-1">
+                            <span>
+                                {t('opsPlane.syncSummary', {
+                                    envCount: opsStatus.EnvironmentCount,
+                                    profileCount: opsStatus.ProfileCount,
                                 })}
-                            </Badge>
-                        )}
-                    </div>
-                    {!opsStatus?.Authenticated ? (
-                        <Card className="flex flex-col gap-md p-4" data-testid="ops-plane-login-card">
-                            <p className="text-xs text-muted-foreground">
-                                {t('opsPlane.description')}
-                            </p>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-sm">
-                                <div className="flex flex-col gap-xs">
-                                    <Label htmlFor="ops-plane-username">{t('opsPlane.username')}</Label>
-                                    <Input
-                                        id="ops-plane-username"
-                                        value={opsUsername}
-                                        onChange={(e) => { setOpsUsername(e.target.value); }}
-                                        placeholder={t('opsPlane.enterUsername')}
-                                        data-testid="ops-plane-username-input"
-                                        onKeyDown={(e) => {
-                                            if (e.key === 'Enter') {
-                                                handleOpsPlaneLogin();
-                                            }
-                                        }}
-                                    />
-                                </div>
-                                <div className="flex flex-col gap-xs">
-                                    <Label htmlFor="ops-plane-password">{t('opsPlane.password')}</Label>
-                                    <Input
-                                        id="ops-plane-password"
-                                        type="password"
-                                        value={opsPassword}
-                                        onChange={(e) => { setOpsPassword(e.target.value); }}
-                                        placeholder={t('opsPlane.enterPassword')}
-                                        data-testid="ops-plane-password-input"
-                                        onKeyDown={(e) => {
-                                            if (e.key === 'Enter') {
-                                                handleOpsPlaneLogin();
-                                            }
-                                        }}
-                                    />
-                                </div>
-                            </div>
-                            <div className="flex flex-col gap-xs">
-                                <Label htmlFor="ops-plane-endpoint">{t('opsPlane.endpoint')}</Label>
-                                <Input
-                                    id="ops-plane-endpoint"
-                                    value={opsEndpoint}
-                                    onChange={(e) => { setOpsEndpoint(e.target.value); }}
-                                    placeholder={t('opsPlane.enterEndpoint')}
-                                    data-testid="ops-plane-endpoint-input"
-                                />
-                            </div>
-                            <Button
-                                onClick={handleOpsPlaneLogin}
-                                disabled={opsLoginLoading || !opsUsername.trim() || !opsPassword}
-                                data-testid="ops-plane-login-button"
-                            >
-                                {opsLoginLoading ? <Spinner className="size-4" aria-hidden="true" /> : <CheckCircleIcon className="w-4 h-4" />}
-                                {opsLoginLoading ? t('opsPlane.loggingIn') : t('opsPlane.loginAndSync')}
-                            </Button>
-                        </Card>
-                    ) : (
-                        <Alert data-testid="ops-plane-synced-alert">
-                            <CheckCircleIcon className="h-4 w-4" aria-hidden="true" />
-                            <AlertTitle>
-                                {t('opsPlane.loggedInAs', {
-                                    username: opsStatus.Username ?? '',
-                                    role: opsStatus.Role ?? '',
-                                })}
-                            </AlertTitle>
-                            <AlertDescription className="flex flex-wrap items-center justify-between gap-sm mt-1">
-                                <span>
-                                    {t('opsPlane.syncSummary', {
-                                        envCount: opsStatus.EnvironmentCount,
-                                        profileCount: opsStatus.ProfileCount,
-                                    })}
-                                </span>
-                                <span className="flex items-center gap-xs">
-                                    <Button
-                                        size="sm"
-                                        variant="secondary"
-                                        onClick={handleOpsPlaneSync}
-                                        disabled={opsSyncLoading}
-                                        data-testid="ops-plane-sync-button"
-                                    >
-                                        {opsSyncLoading ? t('opsPlane.syncing') : t('opsPlane.resync')}
-                                    </Button>
-                                    <Button
-                                        size="sm"
-                                        variant="outline"
-                                        onClick={handleOpsPlaneLogout}
-                                        disabled={opsLogoutLoading}
-                                        data-testid="ops-plane-logout-button"
-                                    >
-                                        {t('opsPlane.logout')}
-                                    </Button>
-                                </span>
-                            </AlertDescription>
-                        </Alert>
-                    )}
+                            </span>
+                            <span className="flex items-center gap-xs">
+                                <Button
+                                    size="sm"
+                                    variant="secondary"
+                                    onClick={handleOpsPlaneSync}
+                                    disabled={opsSyncLoading}
+                                    data-testid="ops-plane-sync-button"
+                                >
+                                    {opsSyncLoading ? t('opsPlane.syncing') : t('opsPlane.resync')}
+                                </Button>
+                                <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={handleOpsPlaneLogout}
+                                    disabled={opsLogoutLoading}
+                                    data-testid="ops-plane-logout-button"
+                                >
+                                    {t('opsPlane.logout')}
+                                </Button>
+                            </span>
+                        </AlertDescription>
+                    </Alert>
                     {
                         availableProfiles.length > 0 &&
                         <div className="flex flex-col gap-lg">

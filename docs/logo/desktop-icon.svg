@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <title>WhoDB desktop icon</title>
+  <defs>
+    <linearGradient id="tile" x1="512" y1="100" x2="512" y2="924" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#1D3B64"/>
+      <stop offset="1" stop-color="#0E2240"/>
+    </linearGradient>
+    <linearGradient id="feathers" x1="512" y1="240" x2="512" y2="790" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#A4CDFF"/>
+      <stop offset="1" stop-color="#6BA5EF"/>
+    </linearGradient>
+    <clipPath id="body">
+      <path d="M220 228 Q285 273 340 282 Q512 226 684 282 Q739 273 804 228 L780 348 Q816 390 816 448 V692 Q816 792 716 792 H308 Q208 792 208 692 V448 Q208 390 244 348 Z"/>
+    </clipPath>
+  </defs>
+  <rect x="100" y="108" width="824" height="824" rx="185" fill="#09172C" fill-opacity=".18"/>
+  <rect x="100" y="100" width="824" height="824" rx="185" fill="url(#tile)"/>
+  <g clip-path="url(#body)">
+    <path d="M208 220 H816 V792 H208Z" fill="url(#feathers)"/>
+    <path d="M208 538 C350 542 387 671 260 792 H208Z M816 538 C674 542 637 671 764 792 H816Z" fill="#3475BB"/>
+    <path d="M350 688 L410 786 L512 636 L614 786 L674 688" fill="none" stroke="#3475BB" stroke-width="33" stroke-linejoin="round"/>
+  </g>
+  <circle cx="382" cy="449" r="119" fill="#FFC953"/>
+  <circle cx="642" cy="449" r="119" fill="#FFC953"/>
+  <circle cx="390" cy="451" r="50" fill="#0E2240"/>
+  <circle cx="634" cy="451" r="50" fill="#0E2240"/>
+  <path d="M479 548 L512 597 L545 548 Q512 560 479 548Z" fill="#0E2240"/>
+</svg>

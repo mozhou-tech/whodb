@@ -61,16 +61,20 @@ func TestLiveOpsControlPlanePluginConnectivity(t *testing.T) {
 	}
 
 	sourcedial.SetDialer(opsplane.DialContext)
-	opsplane.SetSessionForTesting(&opsplane.AuthStatus{
-		Authenticated: true,
-		Username:      "admin",
-		Role:          "系统管理员",
-		AllowAllEnvs:  true,
-	})
 	t.Cleanup(func() {
 		opsplane.SetSessionForTesting(nil)
 		sourcedial.SetDialer(nil)
 	})
+	if st := opsplane.GetAuthStatus(); !st.Authenticated {
+		opsplane.SetSessionForTesting(&opsplane.AuthStatus{
+			Authenticated: true,
+			Username:      "admin",
+			Role:          "系统管理员",
+			AllowAllEnvs:  true,
+		})
+	} else {
+		t.Logf("Using saved session: user=%s endpoint=%s hasToken=%v", st.Username, st.Endpoint, st.Token != "")
+	}
 
 	profiles, err := opsplane.RetrieveProfiles()
 	if err != nil {

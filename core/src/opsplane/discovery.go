@@ -63,14 +63,14 @@ type dbMiddlewareJSON struct {
 }
 
 type environmentRow struct {
-	Slug       string
-	Name       string
-	GroupName  string
-	ProxyRaw   []byte
-	Postgres   []byte
-	MySQL      []byte
-	Redis      []byte
-	TDengine   []byte
+	Slug      string
+	Name      string
+	GroupName string
+	ProxyRaw  []byte
+	Postgres  []byte
+	MySQL     []byte
+	Redis     []byte
+	TDengine  []byte
 }
 
 // RetrieveProfiles discovers all environments and database credentials managed by ops-control-plane
@@ -600,17 +600,19 @@ func buildEnvironmentProfiles(
 		}
 		displayName := fmt.Sprintf("[%s] %s (%s)", envLabel, dbType, endpoint)
 		profiles = append(profiles, types.DatabaseCredentials{
-			Alias:     displayName,
-			CustomId:  displayName,
-			Type:      dbType,
-			Hostname:  host,
-			Port:      port,
-			Username:  strings.TrimSpace(user),
-			Password:  pass,
-			Database:  strings.TrimSpace(database),
-			Advanced:  config,
-			Source:    "environment",
-			IsProfile: true,
+			ProjectID:   env.Slug,
+			ProjectName: envLabel,
+			Alias:       displayName,
+			CustomId:    displayName,
+			Type:        dbType,
+			Hostname:    host,
+			Port:        port,
+			Username:    strings.TrimSpace(user),
+			Password:    pass,
+			Database:    strings.TrimSpace(database),
+			Advanced:    config,
+			Source:      "environment",
+			IsProfile:   true,
 		})
 	}
 

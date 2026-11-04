@@ -33,6 +33,8 @@ export interface SourceLoginPayload {
   IsEnvironmentDefined?: boolean;
   SSLConfigured?: boolean;
   DisplayName?: string;
+  ProjectId?: string;
+  ProjectName?: string;
   Source?: string;
 }
 

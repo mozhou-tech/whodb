@@ -441,6 +441,10 @@ type SourcePresentationTraits struct {
 }
 
 type SourceProfile struct {
+	// Stable identifier of the project owning this connection, when project-scoped.
+	ProjectID *string `json:"ProjectId,omitempty"`
+	// Display name of the project owning this connection.
+	ProjectName          *string   `json:"ProjectName,omitempty"`
 	ID                   string    `json:"Id"`
 	DisplayName          string    `json:"DisplayName"`
 	SourceType           string    `json:"SourceType"`

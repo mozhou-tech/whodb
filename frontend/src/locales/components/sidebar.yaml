@@ -7,6 +7,15 @@ en_US:
   collapseNavigation: Collapse navigation
   mainNavigation: Main navigation
   profile: Profile
+  project: Project
+  selectProject: Select Project
+  searchProject: Search Projects...
+  localConnections: Local connections
+  databaseInstance: Database Instance
+  selectInstance: Select Instance
+  searchInstance: Search Instances...
+  instanceCount: "{count} instances"
+  instanceCount_one: "{count} instance"
   searchProfile: Search Profile...
   addAnotherProfile: Add Another Profile
   searchDatabase: Search Database...

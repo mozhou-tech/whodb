@@ -98,6 +98,10 @@ import {useProfileSwitch} from "@/hooks/use-profile-switch";
 import {buildSourceSchemaQuery} from "@/utils/source-refs";
 
 function getProfileLabel(profile: LocalLoginProfile, item: SourceTypeItem | undefined) {
+    if (profile.ProjectId) {
+        const port = profile.Values.find(value => value.Key === "Port")?.Value;
+        return `${profile.Type} · ${profile.Hostname}${port ? `:${port}` : ""}`;
+    }
     if (profile.Saved) return profile.Id;
     if (item?.traits?.presentation.profileLabelStrategy === SourceProfileLabelStrategy.Hostname && profile.Hostname) {
         return profile.Hostname;
@@ -204,6 +208,7 @@ export type EESidebarNavProps = {
     dropdowns: ReactNode;
 };
 
+/** Renders navigation and project, connection, and database selection. */
 export const Sidebar: FC = () => {
     const { t } = useTranslation('components/sidebar');
     const schema = useAppSelector(state => state.database.schema);
@@ -280,12 +285,40 @@ export const Sidebar: FC = () => {
     // The mobile sheet always shows the expanded layout, whatever the persisted desktop collapse state is.
     const open = isMobile || desktopOpen;
     const isInitialMount = useRef(true);
-    const { switchProfile } = useProfileSwitch({
+    const { switchProfile, loading: switchingProfile } = useProfileSwitch({
         errorMessage: t('errorSigningIn'),
     });
     const { items: sourceTypeItems } = useSourceTypeItems();
 
-    const profileOptions = useMemo(() => profiles.map(profile => ({
+    const hasProjects = profiles.some(profile => profile.ProjectId);
+    const currentProjectId = current?.ProjectId ?? "__local__";
+    const projectOptions = useMemo(() => {
+        const projects = new Map<string, { value: string; label: string; icon: ReactElement }>();
+        for (const profile of profiles) {
+            const id = profile.ProjectId ?? "__local__";
+            if (!projects.has(id)) {
+                projects.set(id, {
+                    value: id,
+                    label: profile.ProjectName ?? t('localConnections'),
+                    icon: <RectangleGroupIcon className="size-4" />,
+                });
+            }
+        }
+        return [...projects.values()];
+    }, [profiles, t]);
+    const projectProfiles = useMemo(() => hasProjects
+        ? profiles.filter(profile => (profile.ProjectId ?? "__local__") === currentProjectId)
+        : profiles, [currentProjectId, hasProjects, profiles]);
+    const currentProjectOption = projectOptions.find(option => option.value === currentProjectId);
+
+    const handleProjectChange = useCallback(async (value: string) => {
+        if (value === currentProjectId) return;
+        const instances = profiles.filter(profile => (profile.ProjectId ?? "__local__") === value);
+        const instance = instances.find(profile => profile.Type === current?.Type) ?? instances[0];
+        if (instance) await switchProfile(instance);
+    }, [current?.Type, currentProjectId, profiles, switchProfile]);
+
+    const profileOptions = useMemo(() => projectProfiles.map(profile => ({
             value: profile.Id,
             label: getProfileLabel(profile, findSourceTypeItem(sourceTypeItems, profile.Type)),
             icon: (
@@ -298,7 +331,7 @@ export const Sidebar: FC = () => {
                 />
             ),
             profile,
-        })), [profiles, current?.Id, sslStatus, sourceTypeItems]);
+        })), [projectProfiles, current?.Id, sslStatus, sourceTypeItems]);
 
     const currentProfileOption = useMemo(() => {
         if (!current) return undefined;
@@ -334,7 +367,8 @@ export const Sidebar: FC = () => {
     }, [current, handleProfileChange, navigate, pathname]);
 
     useEffect(() => {
-        if (!supportsDatabaseSwitching || current == null || current.Database || databaseOptions.length === 0) {
+        if (current == null) return;
+        if (!supportsDatabaseSwitching || current.Database || databaseOptions.length === 0) {
             return;
         }
         const defaultDatabase = databaseOptions[0]?.value;
@@ -572,6 +606,74 @@ export const Sidebar: FC = () => {
         };
     }, [open, toggleSidebar]);
 
+    const profileLabel = hasProjects ? t('databaseInstance') : t('profile');
+    const connectionSelectors = (
+        <>
+            {hasProjects && (
+                <div className="flex flex-col gap-sm w-full ce-sidebar-profile-wrap">
+                    {newUIEnabled && <h2 className={cn("text-sm", { hidden: !open })}>{t('project')}</h2>}
+                    {!newUIEnabled && open && (
+                        <div className="ce-sidebar-profile-display" aria-hidden="true">
+                            <span className="ce-sidebar-profile-icon"><RectangleGroupIcon className="size-4" /></span>
+                            <span className="ce-sidebar-profile-copy">
+                                <strong>{currentProjectOption?.label}</strong>
+                                <small>{t('instanceCount', { count: projectProfiles.length })}</small>
+                            </span>
+                            <span className="ce-sidebar-profile-chevron"><WhoDBChatIcon name="chevron-up" /><WhoDBChatIcon name="chevron-down" /></span>
+                        </div>
+                    )}
+                    <SearchSelect
+                        label={t('project')}
+                        options={projectOptions}
+                        value={currentProjectId}
+                        onChange={value => { void handleProjectChange(value); }}
+                        disabled={switchingProfile}
+                        placeholder={t('selectProject')}
+                        searchPlaceholder={t('searchProject')}
+                        onlyIcon={!open}
+                        side={open ? "bottom" : "right"} align="start"
+                        buttonClassName={cn(ph.mask, !newUIEnabled && open && 'ce-sidebar-profile-button')}
+                        buttonProps={{ "data-testid": "sidebar-project", "aria-label": t('project'), "data-collapsed": !open }}
+                    />
+                </div>
+            )}
+            <div className={cn("flex flex-col gap-sm w-full", !hasProjects && 'ce-sidebar-profile-wrap')}>
+                {(!newUIEnabled || hasProjects) && <h2 className={cn("text-sm", { hidden: !open })}>{profileLabel}</h2>}
+                {!hasProjects && !newUIEnabled && open && current && (
+                    <div className="ce-sidebar-profile-display" aria-hidden="true">
+                        <span className="ce-sidebar-profile-icon"><WhoDBChatIcon name="source" /></span>
+                        <span className="ce-sidebar-profile-copy">
+                            <strong>{current.Database === 'whodb-sample' ? t('sampleSQLiteName') : (current.DisplayName ?? getProfileLabel(current, findSourceTypeItem(sourceTypeItems, current.Type)))}</strong>
+                            <small>{current.Database === 'whodb-sample' ? t('sampleSQLiteFilename') : (current.Database ? current.Database : current.Hostname)}</small>
+                        </span>
+                        <span className="ce-sidebar-profile-chevron"><WhoDBChatIcon name="chevron-up" /><WhoDBChatIcon name="chevron-down" /></span>
+                    </div>
+                )}
+                <SearchSelect
+                    label={profileLabel}
+                    options={profileOptions}
+                    value={currentProfileOption?.value}
+                    onChange={value => { void handleProfileChange(value); }}
+                    disabled={switchingProfile}
+                    placeholder={hasProjects ? t('selectInstance') : t('selectProfile')}
+                    searchPlaceholder={hasProjects ? t('searchInstance') : t('searchProfile')}
+                    onlyIcon={!open}
+                    extraOptions={!isEmbedded ? (
+                        <CommandItem key="__add__" value="__add__" onSelect={handleAddProfile}>
+                            <span className="flex items-center gap-sm text-green-500">
+                                <PlusCircleIcon className="w-4 h-4 stroke-green-500" />
+                                {t('addAnotherProfile')}
+                            </span>
+                        </CommandItem>
+                    ) : undefined}
+                    side={open ? "bottom" : "right"} align="start"
+                    buttonClassName={cn(ph.mask, !hasProjects && !newUIEnabled && open && 'ce-sidebar-profile-button')}
+                    buttonProps={{ "data-testid": "sidebar-profile", "data-collapsed": !open, "aria-label": profileLabel }}
+                />
+            </div>
+        </>
+    );
+
     return (
         <nav aria-label={t('mainNavigation')}>
             <SidebarComponent
@@ -603,26 +705,7 @@ export const Sidebar: FC = () => {
                                 <Suspense fallback={null}>
                                     <EESidebarNav open={open} pathname={pathname} dropdowns={
                                         <>
-                                            <SearchSelect
-                                                label={t('profile')}
-                                                options={profileOptions}
-                                                value={currentProfileOption?.value}
-                                                onChange={(v) => { void handleProfileChange(v); }}
-                                                placeholder={t('selectProfile')}
-                                                searchPlaceholder={t('searchProfile')}
-                                                onlyIcon={false}
-                                                extraOptions={!isEmbedded ? (
-                                                    <CommandItem key="__add__" value="__add__" onSelect={handleAddProfile}>
-                                                        <span className="flex items-center gap-sm text-green-500">
-                                                            <PlusCircleIcon className="w-4 h-4 stroke-green-500" />
-                                                            {t('addAnotherProfile')}
-                                                        </span>
-                                                    </CommandItem>
-                                                ) : undefined}
-                                                side="left" align="start"
-                                                buttonClassName={ph.mask}
-                                                buttonProps={{ "data-testid": "sidebar-profile", "data-collapsed": !open }}
-                                            />
+                                            {connectionSelectors}
                                             {supportsDatabaseSwitching && (
                                                 <SearchSelect
                                                     label={databaseDropdownLabel}
@@ -658,26 +741,7 @@ export const Sidebar: FC = () => {
                                 <>
                                     {open && (
                                         <div className="flex flex-col gap-sm mb-4">
-                                            <SearchSelect
-                                                label={t('profile')}
-                                                options={profileOptions}
-                                                value={currentProfileOption?.value}
-                                                onChange={(v) => { void handleProfileChange(v); }}
-                                                placeholder={t('selectProfile')}
-                                                searchPlaceholder={t('searchProfile')}
-                                                onlyIcon={!open}
-                                                extraOptions={!isEmbedded ? (
-                                                    <CommandItem key="__add__" value="__add__" onSelect={handleAddProfile}>
-                                                        <span className="flex items-center gap-sm text-green-500">
-                                                            <PlusCircleIcon className="w-4 h-4 stroke-green-500" />
-                                                            {t('addAnotherProfile')}
-                                                        </span>
-                                                    </CommandItem>
-                                                ) : undefined}
-                                                side="left" align="start"
-                                                buttonClassName={ph.mask}
-                                                buttonProps={{ "data-testid": "sidebar-profile", "data-collapsed": !open }}
-                                            />
+                                            {connectionSelectors}
                                             {supportsDatabaseSwitching && (
                                                 <SearchSelect
                                                     label={databaseDropdownLabel}
@@ -773,50 +837,7 @@ export const Sidebar: FC = () => {
                     ) : (
                         <SidebarGroup className="grow">
                             <div className="flex flex-col gap-lg">
-                                <div className="flex flex-col gap-sm w-full ce-sidebar-profile-wrap">
-                                    <h2 className={cn("text-sm", { "hidden": !open })}>{t('profile')}</h2>
-                                    {open && current && (
-                                        <div className="ce-sidebar-profile-display" aria-hidden="true">
-                                            <span className="ce-sidebar-profile-icon"><WhoDBChatIcon name="source" /></span>
-                                            <span className="ce-sidebar-profile-copy">
-                                                <strong>{current.Database === 'whodb-sample' ? t('sampleSQLiteName') : (current.DisplayName ?? getProfileLabel(current, findSourceTypeItem(sourceTypeItems, current.Type)))}</strong>
-                                                <small>{current.Database === 'whodb-sample' ? t('sampleSQLiteFilename') : (current.Database ? current.Database : current.Hostname)}</small>
-                                            </span>
-                                            <span className="ce-sidebar-profile-chevron">
-                                                <WhoDBChatIcon name="chevron-up" />
-                                                <WhoDBChatIcon name="chevron-down" />
-                                            </span>
-                                        </div>
-                                    )}
-                                    <SearchSelect
-                                        label={t('profile')}
-                                        options={profileOptions}
-                                        value={currentProfileOption?.value}
-                                        onChange={(v) => { void handleProfileChange(v); }}
-                                        placeholder={t('selectProfile')}
-                                        searchPlaceholder={t('searchProfile')}
-                                        onlyIcon={!open}
-                                        extraOptions={!isEmbedded ? (
-                                            <CommandItem
-                                                key="__add__"
-                                                value="__add__"
-                                                onSelect={handleAddProfile}
-                                            >
-                                                <span className="flex items-center gap-sm text-green-500">
-                                                    <PlusCircleIcon className="w-4 h-4 stroke-green-500" />
-                                                    {t('addAnotherProfile')}
-                                                </span>
-                                            </CommandItem>
-                                        ) : undefined}
-                                        side={open ? "bottom" : "right"} align="start"
-                                        buttonClassName={cn(ph.mask, 'ce-sidebar-profile-button')}
-                                        buttonProps={{
-                                            "data-testid": "sidebar-profile",
-                                            "data-collapsed": !open,
-                                            "aria-label": t('profile'),
-                                        }}
-                                    />
-                                </div>
+                                {connectionSelectors}
                                 {supportsDatabaseSwitching && (
                                     <div className={cn("flex flex-col gap-sm w-full", {
                                         "opacity-0 pointer-events-none": !open,

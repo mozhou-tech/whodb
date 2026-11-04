@@ -394,6 +394,8 @@ type ComplexityRoot struct {
 		DisplayName          func(childComplexity int) int
 		ID                   func(childComplexity int) int
 		IsEnvironmentDefined func(childComplexity int) int
+		ProjectID            func(childComplexity int) int
+		ProjectName          func(childComplexity int) int
 		SSLConfigured        func(childComplexity int) int
 		Source               func(childComplexity int) int
 		SourceType           func(childComplexity int) int
@@ -2160,6 +2162,18 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.SourceProfile.IsEnvironmentDefined(childComplexity), true
+	case "SourceProfile.ProjectId":
+		if e.ComplexityRoot.SourceProfile.ProjectID == nil {
+			break
+		}
+
+		return e.ComplexityRoot.SourceProfile.ProjectID(childComplexity), true
+	case "SourceProfile.ProjectName":
+		if e.ComplexityRoot.SourceProfile.ProjectName == nil {
+			break
+		}
+
+		return e.ComplexityRoot.SourceProfile.ProjectName(childComplexity), true
 	case "SourceProfile.SSLConfigured":
 		if e.ComplexityRoot.SourceProfile.SSLConfigured == nil {
 			break
@@ -3255,6 +3269,10 @@ func (ec *executionContext) childFields_SourcePresentationTraits(ctx context.Con
 
 func (ec *executionContext) childFields_SourceProfile(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
 	switch field.Name {
+	case "ProjectId":
+		return ec.fieldContext_SourceProfile_ProjectId(ctx, field)
+	case "ProjectName":
+		return ec.fieldContext_SourceProfile_ProjectName(ctx, field)
 	case "Id":
 		return ec.fieldContext_SourceProfile_Id(ctx, field)
 	case "DisplayName":
@@ -10567,6 +10585,52 @@ func (ec *executionContext) fieldContext_SourcePresentationTraits_SchemaFidelity
 	return graphql.NewScalarFieldContext("SourcePresentationTraits", field, false, false, "SourceSchemaFidelity")
 }
 
+func (ec *executionContext) _SourceProfile_ProjectId(ctx context.Context, field graphql.CollectedField, obj *model.SourceProfile) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_SourceProfile_ProjectId(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.ProjectID, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *string) graphql.Marshaler {
+			return ec.marshalOString2ᚖstring(ctx, selections, v)
+		},
+		true,
+		false,
+	)
+}
+func (ec *executionContext) fieldContext_SourceProfile_ProjectId(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("SourceProfile", field, false, false, "String")
+}
+
+func (ec *executionContext) _SourceProfile_ProjectName(ctx context.Context, field graphql.CollectedField, obj *model.SourceProfile) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_SourceProfile_ProjectName(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.ProjectName, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *string) graphql.Marshaler {
+			return ec.marshalOString2ᚖstring(ctx, selections, v)
+		},
+		true,
+		false,
+	)
+}
+func (ec *executionContext) fieldContext_SourceProfile_ProjectName(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("SourceProfile", field, false, false, "String")
+}
+
 func (ec *executionContext) _SourceProfile_Id(ctx context.Context, field graphql.CollectedField, obj *model.SourceProfile) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -16809,6 +16873,16 @@ func (ec *executionContext) _SourceProfile(ctx context.Context, sel ast.Selectio
 		switch field.Name {
 		case "__typename":
 			out.Values[i] = graphql.MarshalString("SourceProfile")
+		case "ProjectId":
+			out.Values[i] = ec._SourceProfile_ProjectId(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
+		case "ProjectName":
+			out.Values[i] = ec._SourceProfile_ProjectName(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
 		case "Id":
 			out.Values[i] = ec._SourceProfile_Id(ctx, field, obj)
 			if out.Values[i] == graphql.Null {

@@ -536,6 +536,8 @@ type SessionMetadata struct {
 
 // Profile describes a saved or environment-defined source profile.
 type Profile struct {
+	ProjectID            string
+	ProjectName          string
 	ID                   string
 	DisplayName          string
 	SourceType           string

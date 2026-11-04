@@ -330,6 +330,7 @@ func opsHTTPClient() *http.Client {
 	return &http.Client{
 		Timeout: 12 * time.Second,
 		Transport: &http.Transport{
+			Proxy: nil,
 			TLSClientConfig: &tls.Config{
 				InsecureSkipVerify: true, //nolint:gosec // ops.mozyun.cn uses an internal CA certificate
 			},
@@ -351,21 +352,23 @@ func authenticateUser(ctx context.Context, endpoint string, username string, pas
 	if httpErr == nil {
 		return status, nil
 	}
+
+	dbStatus, dbErr := authenticateViaDatabase(ctx, endpoint, username, password)
+	if dbErr == nil {
+		dbStatus.Endpoint = platformURL
+		return dbStatus, nil
+	}
+
 	var rejected *authRejectedError
 	if errors.As(httpErr, &rejected) {
 		return nil, rejected
 	}
-
-	dbStatus, dbErr := authenticateViaDatabase(ctx, endpoint, username, password)
-	if dbErr != nil {
-		return nil, dbErr
-	}
-	dbStatus.Endpoint = platformURL
-	return dbStatus, nil
+	return nil, dbErr
 }
 
 type httpLoginResponse struct {
-	Success bool   `json:"success"`
+	Code    int    `json:"code"`
+	Success *bool  `json:"success"`
 	Message string `json:"message"`
 	Error   string `json:"error"`
 	Data    struct {
@@ -416,7 +419,9 @@ func authenticateViaHTTP(ctx context.Context, baseURL string, username string, p
 	if err := json.NewDecoder(resp.Body).Decode(&parsed); err != nil {
 		return nil, err
 	}
-	if resp.StatusCode >= 400 || !parsed.Success {
+	explicitFailure := parsed.Code != 0 || (parsed.Success != nil && !*parsed.Success)
+	hasAuthPayload := parsed.Data.Token != "" || parsed.Data.User.Username != ""
+	if resp.StatusCode >= 400 || explicitFailure || !hasAuthPayload {
 		msg := firstNonEmpty(parsed.Message, parsed.Error, "用户名或密码错误")
 		return nil, &authRejectedError{msg: msg}
 	}

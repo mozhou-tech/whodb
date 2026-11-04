@@ -2,6 +2,8 @@ query SourceProfiles {
   SourceProfiles {
     Alias: DisplayName
     Id
+    ProjectId
+    ProjectName
     Type: SourceType
     Values {
       Key

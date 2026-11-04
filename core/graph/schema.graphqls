@@ -394,6 +394,10 @@ input SourceProfileLoginInput {
 }
 
 type SourceProfile {
+  """Stable identifier of the project owning this connection, when project-scoped."""
+  ProjectId: String
+  """Display name of the project owning this connection."""
+  ProjectName: String
   Id: String!
   DisplayName: String!
   SourceType: String!
