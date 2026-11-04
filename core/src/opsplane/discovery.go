@@ -43,10 +43,12 @@ import (
 const (
 	defaultOpsControlPlaneDir = "/Users/mozhou/WorkSpace/mozy/ops-control-plane"
 	defaultOpsEnvsDir         = "/Users/mozhou/WorkSpace/mozy/envs"
-	profileCacheTTL           = 15 * time.Second
+	profileCacheTTL           = 5 * time.Minute
+	staleCacheRetryTTL        = 30 * time.Second
 )
 
 var (
+	discoverMu     sync.Mutex
 	cacheMu        sync.Mutex
 	cachedProfiles []types.DatabaseCredentials
 	cachedEnvCount int
@@ -100,9 +102,32 @@ func getOrDiscoverProfilesForSession(session *AuthStatus) ([]types.DatabaseCrede
 	}
 	cacheMu.Unlock()
 
+	discoverMu.Lock()
+	defer discoverMu.Unlock()
+
+	cacheMu.Lock()
+	if time.Now().Before(cacheExpiresAt) && len(cachedProfiles) > 0 {
+		cloned := slices.Clone(cachedProfiles)
+		envCount := cachedEnvCount
+		cacheMu.Unlock()
+		return cloned, envCount, nil
+	}
+	staleProfiles := slices.Clone(cachedProfiles)
+	staleEnvCount := cachedEnvCount
+	cacheMu.Unlock()
+
 	profiles, envCount, err := discoverProfilesForSession(session)
-	if err != nil {
-		return nil, 0, err
+	if err != nil || len(profiles) == 0 {
+		if len(staleProfiles) > 0 {
+			cacheMu.Lock()
+			cacheExpiresAt = time.Now().Add(staleCacheRetryTTL)
+			cacheMu.Unlock()
+			return staleProfiles, staleEnvCount, nil
+		}
+		if err != nil {
+			return nil, 0, err
+		}
+		return nil, 0, nil
 	}
 
 	cacheMu.Lock()
@@ -497,18 +522,17 @@ func queryProjectEnvVars(ctx context.Context, db *sql.DB, keyring map[string][]b
 	const q = `
 		SELECT
 			f.env_slug,
-			f.file_id,
+			f.id,
 			v.revision,
 			v.key_id,
 			v.wrapped_key,
 			v.encrypted_content
 		FROM project_env_files f
 		JOIN project_env_versions v
-			ON v.env_slug = f.env_slug
-			AND v.file_id = f.file_id
-			AND v.revision = f.head_revision
-		WHERE f.is_deleted = false
-		ORDER BY f.env_slug ASC, f.filename ASC
+			ON v.file_id = f.id
+			AND v.revision = f.revision
+		WHERE f.deleted_at IS NULL
+		ORDER BY f.env_slug ASC, f.name ASC
 	`
 	rows, err := db.QueryContext(ctx, q)
 	if err != nil {

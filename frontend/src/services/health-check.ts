@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+import { CombinedGraphQLErrors } from '@apollo/client/errors';
 import { HealthActions } from '@/store/health';
 import { reduxStore } from '@/store';
 import { GetHealthDocument } from '@graphql';
@@ -66,8 +67,15 @@ class HealthCheckService {
                 errorPolicy: 'all', // Return partial data even if there are errors
             });
 
-            // Check for GraphQL errors
+            // Check for GraphQL errors: if the GraphQL server responded with a GraphQL error payload,
+            // the backend server itself is reachable even if the session/query failed.
             if (result.error) {
+                if (CombinedGraphQLErrors.is(result.error)) {
+                    return {
+                        server: 'healthy',
+                        database: 'unavailable',
+                    };
+                }
                 return null;
             }
 

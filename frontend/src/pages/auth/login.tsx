@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+import { CombinedGraphQLErrors } from "@apollo/client/errors";
 import { useLazyQuery, useMutation, useQuery } from "@apollo/client/react";
 import { Alert, AlertDescription, AlertTitle, Badge, Button, Card, cn, Input, Label, ModeToggle, Separator, toast, useTheme, IconSliders as AdjustmentsHorizontalIcon, IconChat as ChatBubbleLeftRightIcon, IconCheckCircle as CheckCircleIcon, IconChevronDown as ChevronDownIcon, IconCode as CodeBracketIcon, IconInfo as InformationCircleIcon, IconShare as ShareIcon, IconAi as SparklesIcon, IconTable as TableCellsIcon, SearchSelect } from '@clidey/ux';
 import {
@@ -325,12 +326,14 @@ export const LoginForm: FC<LoginFormProps> = ({
         const errorMessage = loginError instanceof Error ? loginError.message : String(loginError);
 
         const lowerCaseMessage = errorMessage.toLowerCase();
-        const isNetworkError = lowerCaseMessage.includes('network') ||
-            lowerCaseMessage.includes('fetch') ||
-            lowerCaseMessage.includes('econnrefused') ||
-            (loginError instanceof Error && 'statusCode' in loginError);
+        const isBackendUnreachable = !isDesktopApp() &&
+            !CombinedGraphQLErrors.is(loginError) &&
+            (lowerCaseMessage.includes('network') ||
+                lowerCaseMessage.includes('fetch') ||
+                lowerCaseMessage.includes('econnrefused') ||
+                (loginError instanceof Error && 'statusCode' in loginError));
 
-        if (isNetworkError) {
+        if (isBackendUnreachable) {
             dispatch(HealthActions.setHealthStatus({
                 server: 'error',
                 database: 'unavailable',

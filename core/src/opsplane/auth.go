@@ -326,16 +326,21 @@ func normalizePlatformURL(raw string) string {
 	return strings.TrimSuffix(u.String(), "/")
 }
 
-func opsHTTPClient() *http.Client {
-	return &http.Client{
-		Timeout: 12 * time.Second,
-		Transport: &http.Transport{
-			Proxy: nil,
-			TLSClientConfig: &tls.Config{
-				InsecureSkipVerify: true, //nolint:gosec // ops.mozyun.cn uses an internal CA certificate
-			},
+var sharedOpsHTTPClient = &http.Client{
+	Timeout: 12 * time.Second,
+	Transport: &http.Transport{
+		Proxy:                nil,
+		MaxIdleConns:        32,
+		MaxIdleConnsPerHost: 16,
+		IdleConnTimeout:     60 * time.Second,
+		TLSClientConfig: &tls.Config{
+			InsecureSkipVerify: true, //nolint:gosec // ops.mozyun.cn uses an internal CA certificate
 		},
-	}
+	},
+}
+
+func opsHTTPClient() *http.Client {
+	return sharedOpsHTTPClient
 }
 
 type authRejectedError struct {

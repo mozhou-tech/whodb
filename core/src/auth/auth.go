@@ -223,7 +223,7 @@ func AuthMiddleware(next http.Handler) http.Handler {
 					onceKeyring.Do(func() { log.Info("Auth: credentials resolved via OS keyring") })
 				} else {
 					// ID-only request but no stored credentials found
-					http.Error(w, "Unauthorized", http.StatusUnauthorized)
+					serveWithoutSourceCredentials(w, r, requestNext)
 					return
 				}
 			}
@@ -323,8 +323,11 @@ func RegisterAuthBypass(fn func(*http.Request) bool) {
 // MergeSourceProfileValues applies the database selection supported by a
 // stored profile while keeping every connection target and secret server-owned.
 func MergeSourceProfileValues(sourceType string, base map[string]string, overrides map[string]string) (map[string]string, error) {
-	for key := range overrides {
-		if key != "Database" || !sourceSupportsDatabaseSwitching(sourceType) {
+	for key, val := range overrides {
+		if key != "Database" {
+			return nil, errors.New("source profile connection fields cannot be overridden")
+		}
+		if !sourceSupportsDatabaseSwitching(sourceType) && (base["Database"] == "" || val != base["Database"]) {
 			return nil, errors.New("source profile connection fields cannot be overridden")
 		}
 	}
