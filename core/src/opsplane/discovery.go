@@ -21,7 +21,9 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net"
+	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -114,25 +116,43 @@ func getOrDiscoverProfilesForSession(session *AuthStatus) ([]types.DatabaseCrede
 
 func discoverProfilesForSession(session *AuthStatus) ([]types.DatabaseCredentials, int, error) {
 	opsDir := resolveOpsControlPlaneDir()
-	if opsDir == "" {
-		return nil, 0, nil
-	}
+	var opsDotEnv, secretEnv, baselineVars map[string]string
+	var keyring map[string][]byte
+	var envsDir string
+	if opsDir != "" {
+		opsDotEnv = readDotEnvFile(filepath.Join(opsDir, ".env"))
+		secretEnv = readDotEnvFile(filepath.Join(opsDir, ".runtime", "project-env.secret.env"))
+		keyring = ParseProjectEnvKeyring(secretEnv)
 
-	opsDotEnv := readDotEnvFile(filepath.Join(opsDir, ".env"))
-	secretEnv := readDotEnvFile(filepath.Join(opsDir, ".runtime", "project-env.secret.env"))
-	keyring := ParseProjectEnvKeyring(secretEnv)
-
-	envsDir := resolveEnvsDir(opsDir, opsDotEnv)
-	baselineEnvPath := strings.TrimSpace(opsDotEnv["MIDDLEWARE_ENV_FILE"])
-	if baselineEnvPath != "" && !filepath.IsAbs(baselineEnvPath) {
-		baselineEnvPath = filepath.Clean(filepath.Join(opsDir, baselineEnvPath))
+		envsDir = resolveEnvsDir(opsDir, opsDotEnv)
+		baselineEnvPath := strings.TrimSpace(opsDotEnv["MIDDLEWARE_ENV_FILE"])
+		if baselineEnvPath != "" && !filepath.IsAbs(baselineEnvPath) {
+			baselineEnvPath = filepath.Clean(filepath.Join(opsDir, baselineEnvPath))
+		}
+		if baselineEnvPath == "" && envsDir != "" {
+			baselineEnvPath = filepath.Join(envsDir, "100.env")
+		}
+		baselineVars = readDotEnvFile(baselineEnvPath)
 	}
-	if baselineEnvPath == "" && envsDir != "" {
-		baselineEnvPath = filepath.Join(envsDir, "100.env")
-	}
-	baselineVars := readDotEnvFile(baselineEnvPath)
 	localEnvsBySlug, localEnvsByIP := loadLocalEnvFiles(envsDir)
 
+	ctx, cancel := context.WithTimeout(context.Background(), 12*time.Second)
+	defer cancel()
+
+	var envs []environmentRow
+	projectEnvVars := make(map[string]map[string]string)
+
+	// 1. Try HTTP API discovery via the Ops Control Plane platform URL + token
+	if session != nil && session.Token != "" && session.Endpoint != "" {
+		if httpEnvs, err := queryCustomerEnvironmentsViaHTTP(ctx, session.Endpoint, session.Token); err == nil && len(httpEnvs) > 0 {
+			envs = httpEnvs
+			for slug, vars := range queryProjectEnvVarsViaHTTP(ctx, session.Endpoint, session.Token, httpEnvs) {
+				projectEnvVars[slug] = vars
+			}
+		}
+	}
+
+	// 2. Supplement or fallback with control-plane DB discovery when available
 	customEndpoint := ""
 	if session != nil {
 		customEndpoint = session.Endpoint
@@ -141,25 +161,30 @@ func discoverProfilesForSession(session *AuthStatus) ([]types.DatabaseCredential
 	if dsn == "" {
 		dsn = resolveOpsDatabaseDSN(opsDotEnv, baselineVars)
 	}
-	if dsn == "" {
+	if dsn != "" {
+		if db, err := sql.Open("pgx", dsn); err == nil {
+			defer func() { _ = db.Close() }()
+			if len(envs) == 0 {
+				if dbEnvs, err := queryCustomerEnvironments(ctx, db); err == nil {
+					envs = dbEnvs
+				}
+			}
+			for slug, vars := range queryProjectEnvVars(ctx, db, keyring) {
+				if projectEnvVars[slug] == nil {
+					projectEnvVars[slug] = make(map[string]string)
+				}
+				for k, v := range vars {
+					if _, exists := projectEnvVars[slug][k]; !exists {
+						projectEnvVars[slug][k] = v
+					}
+				}
+			}
+		}
+	}
+
+	if len(envs) == 0 {
 		return nil, 0, nil
 	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
-	defer cancel()
-
-	db, err := sql.Open("pgx", dsn)
-	if err != nil {
-		return nil, 0, err
-	}
-	defer func() { _ = db.Close() }()
-
-	envs, err := queryCustomerEnvironments(ctx, db)
-	if err != nil {
-		return nil, 0, err
-	}
-
-	projectEnvVars := queryProjectEnvVars(ctx, db, keyring)
 
 	profiles := make([]types.DatabaseCredentials, 0, len(envs)*4)
 	seenIDs := make(map[string]bool)
@@ -190,8 +215,8 @@ func discoverProfilesForSession(session *AuthStatus) ([]types.DatabaseCredential
 				}
 			}
 		}
-		if fromDB, ok := projectEnvVars[env.Slug]; ok {
-			for k, v := range fromDB {
+		if fromPlatform, ok := projectEnvVars[env.Slug]; ok {
+			for k, v := range fromPlatform {
 				mergedVars[k] = v
 			}
 		}
@@ -207,6 +232,149 @@ func discoverProfilesForSession(session *AuthStatus) ([]types.DatabaseCredential
 	}
 
 	return profiles, matchedEnvCount, nil
+}
+
+func queryCustomerEnvironmentsViaHTTP(ctx context.Context, baseURL string, token string) ([]environmentRow, error) {
+	endpoint := strings.TrimRight(baseURL, "/") + "/api/v1/environments"
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Accept-Language", "zh-CN,zh;q=0.9")
+
+	resp, err := opsHTTPClient().Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode >= 400 {
+		return nil, fmt.Errorf("HTTP %d from %s", resp.StatusCode, endpoint)
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	type apiEnvItem struct {
+		Slug       string          `json:"slug"`
+		Name       string          `json:"name"`
+		Proxy      json.RawMessage `json:"proxy"`
+		PostgreSQL json.RawMessage `json:"postgresql"`
+		PostgresDB json.RawMessage `json:"postgre_sql"`
+		MySQL      json.RawMessage `json:"mysql"`
+		MySQLDB    json.RawMessage `json:"my_sql"`
+		Redis      json.RawMessage `json:"redis"`
+		TDengine   json.RawMessage `json:"tdengine"`
+		TDengineDB json.RawMessage `json:"td_engine"`
+	}
+
+	var items []apiEnvItem
+	if err := json.Unmarshal(body, &items); err != nil {
+		var envelope struct {
+			Data []apiEnvItem `json:"data"`
+		}
+		if err2 := json.Unmarshal(body, &envelope); err2 != nil {
+			return nil, err
+		}
+		items = envelope.Data
+	}
+
+	out := make([]environmentRow, 0, len(items))
+	for _, item := range items {
+		if strings.TrimSpace(item.Slug) == "" {
+			continue
+		}
+		pgRaw := item.PostgreSQL
+		if len(pgRaw) == 0 || string(pgRaw) == "null" {
+			pgRaw = item.PostgresDB
+		}
+		myRaw := item.MySQL
+		if len(myRaw) == 0 || string(myRaw) == "null" {
+			myRaw = item.MySQLDB
+		}
+		tdRaw := item.TDengine
+		if len(tdRaw) == 0 || string(tdRaw) == "null" {
+			tdRaw = item.TDengineDB
+		}
+		out = append(out, environmentRow{
+			Slug:     item.Slug,
+			Name:     item.Name,
+			ProxyRaw: item.Proxy,
+			Postgres: pgRaw,
+			MySQL:    myRaw,
+			Redis:    item.Redis,
+			TDengine: tdRaw,
+		})
+	}
+	return out, nil
+}
+
+func queryProjectEnvVarsViaHTTP(ctx context.Context, baseURL string, token string, envs []environmentRow) map[string]map[string]string {
+	result := make(map[string]map[string]string)
+	client := opsHTTPClient()
+	trimmedBase := strings.TrimRight(baseURL, "/")
+
+	for _, env := range envs {
+		listURL := fmt.Sprintf("%s/api/v1/projects/%s/env-files", trimmedBase, url.PathEscape(env.Slug))
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, listURL, nil)
+		if err != nil {
+			continue
+		}
+		req.Header.Set("Authorization", "Bearer "+token)
+		resp, err := client.Do(req)
+		if err != nil {
+			continue
+		}
+		var listEnv struct {
+			Data struct {
+				Configured bool `json:"configured"`
+				Files      []struct {
+					ID       string `json:"id"`
+					Name     string `json:"name"`
+					Revision int    `json:"revision"`
+				} `json:"files"`
+			} `json:"data"`
+		}
+		_ = json.NewDecoder(resp.Body).Decode(&listEnv)
+		_ = resp.Body.Close()
+
+		for _, f := range listEnv.Data.Files {
+			if f.ID == "" || f.Revision <= 0 {
+				continue
+			}
+			dlURL := fmt.Sprintf(
+				"%s/api/v1/projects/%s/env-files/%s/download?revision=%d",
+				trimmedBase,
+				url.PathEscape(env.Slug),
+				url.PathEscape(f.ID),
+				f.Revision,
+			)
+			dlReq, err := http.NewRequestWithContext(ctx, http.MethodGet, dlURL, nil)
+			if err != nil {
+				continue
+			}
+			dlReq.Header.Set("Authorization", "Bearer "+token)
+			dlResp, err := client.Do(dlReq)
+			if err != nil {
+				continue
+			}
+			rawBytes, readErr := io.ReadAll(dlResp.Body)
+			_ = dlResp.Body.Close()
+			if readErr != nil || dlResp.StatusCode >= 400 {
+				continue
+			}
+			parsed := ParseDotEnvText(string(rawBytes))
+			if result[env.Slug] == nil {
+				result[env.Slug] = make(map[string]string)
+			}
+			for k, v := range parsed {
+				result[env.Slug][k] = v
+			}
+		}
+	}
+	return result
 }
 
 func resolveOpsControlPlaneDir() string {

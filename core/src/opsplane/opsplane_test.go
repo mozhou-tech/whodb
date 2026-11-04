@@ -67,11 +67,19 @@ func TestLiveOpsControlPlaneDiscovery(t *testing.T) {
 		t.Skip("ops-control-plane directory not present")
 	}
 
-	// 1. Before logging into ops-control-plane, RetrieveProfiles must return empty.
+	// 1. Before logging into ops-control-plane, RetrieveProfiles must return empty and Endpoint must be the platform URL.
 	SetSessionForTesting(nil)
 	t.Cleanup(func() {
 		SetSessionForTesting(nil)
 	})
+
+	initialStatus := GetAuthStatus()
+	if !strings.HasPrefix(initialStatus.Endpoint, "http://") && !strings.HasPrefix(initialStatus.Endpoint, "https://") {
+		t.Fatalf("expected platform HTTP(S) URL for Endpoint, got %q", initialStatus.Endpoint)
+	}
+	if strings.Contains(initialStatus.Endpoint, "ops_control_plane") {
+		t.Fatalf("expected Endpoint to be platform URL rather than database DSN, got %q", initialStatus.Endpoint)
+	}
 
 	unauthProfiles, err := RetrieveProfiles()
 	if err != nil {

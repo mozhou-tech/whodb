@@ -19,11 +19,11 @@ package opsplane
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -38,12 +38,15 @@ import (
 	"github.com/clidey/whodb/core/src/log"
 )
 
+const defaultOpsPlatformURL = "https://ops.mozyun.cn"
+
 // AuthStatus represents the current authentication and profile sync state with ops-control-plane.
 type AuthStatus struct {
 	Authenticated    bool     `json:"authenticated"`
 	Username         string   `json:"username"`
 	Role             string   `json:"role"`
 	Endpoint         string   `json:"endpoint"`
+	Token            string   `json:"token,omitempty"`
 	AllowAllEnvs     bool     `json:"allowAllEnvs"`
 	AllowedEnvSlugs  []string `json:"allowedEnvSlugs"`
 	EnvironmentCount int      `json:"environmentCount"`
@@ -212,6 +215,7 @@ func loadOrGetSession() *AuthStatus {
 			if data, err := os.ReadFile(path); err == nil {
 				var s AuthStatus
 				if err := json.Unmarshal(data, &s); err == nil && s.Authenticated && s.Username != "" {
+					s.Endpoint = normalizePlatformEndpoint(s.Endpoint)
 					activeSession = &s
 				}
 			}
@@ -258,41 +262,116 @@ func sessionFilePath() string {
 }
 
 func defaultDisplayEndpoint() string {
-	opsDir := resolveOpsControlPlaneDir()
-	var opsDotEnv, baselineVars map[string]string
-	if opsDir != "" {
-		opsDotEnv = readDotEnvFile(filepath.Join(opsDir, ".env"))
-		envsDir := resolveEnvsDir(opsDir, opsDotEnv)
-		baselineEnvPath := strings.TrimSpace(opsDotEnv["MIDDLEWARE_ENV_FILE"])
-		if baselineEnvPath != "" && !filepath.IsAbs(baselineEnvPath) {
-			baselineEnvPath = filepath.Clean(filepath.Join(opsDir, baselineEnvPath))
+	for _, key := range []string{"WHODB_OPS_PLATFORM_URL", "OPS_CONTROL_PLANE_URL"} {
+		if val := strings.TrimSpace(os.Getenv(key)); val != "" {
+			if normalized := normalizePlatformURL(val); normalized != "" {
+				return normalized
+			}
 		}
-		if baselineEnvPath == "" && envsDir != "" {
-			baselineEnvPath = filepath.Join(envsDir, "100.env")
+	}
+
+	if configDir, err := os.UserConfigDir(); err == nil && configDir != "" {
+		opsBrowserDir := filepath.Join(configDir, "cn.mozyun.ops-browser")
+		for _, file := range []string{"login-profile.json", "session.json"} {
+			if data, err := os.ReadFile(filepath.Join(opsBrowserDir, file)); err == nil {
+				var parsed struct {
+					APIBase string `json:"api_base"`
+				}
+				if json.Unmarshal(data, &parsed) == nil {
+					if normalized := normalizePlatformURL(parsed.APIBase); normalized != "" {
+						return normalized
+					}
+				}
+			}
 		}
-		baselineVars = readDotEnvFile(baselineEnvPath)
 	}
-	dsn := resolveOpsDatabaseDSN(opsDotEnv, baselineVars)
-	if u, err := url.Parse(dsn); err == nil && u.Host != "" {
-		return fmt.Sprintf("%s%s", u.Host, u.Path)
+
+	return defaultOpsPlatformURL
+}
+
+func normalizePlatformEndpoint(raw string) string {
+	if normalized := normalizePlatformURL(raw); normalized != "" {
+		return normalized
 	}
-	return "100.64.0.1:5433/ops_control_plane"
+	return defaultDisplayEndpoint()
+}
+
+func normalizePlatformURL(raw string) string {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" ||
+		strings.HasPrefix(trimmed, "postgres://") ||
+		strings.HasPrefix(trimmed, "postgresql://") ||
+		strings.HasSuffix(trimmed, "/ops_control_plane") {
+		return ""
+	}
+	if !strings.Contains(trimmed, "://") {
+		lower := strings.ToLower(trimmed)
+		if strings.HasPrefix(lower, "127.0.0.1") ||
+			strings.HasPrefix(lower, "localhost") ||
+			strings.HasPrefix(lower, "10.") ||
+			strings.HasPrefix(lower, "192.168.") ||
+			strings.HasPrefix(lower, "100.64.") {
+			trimmed = "http://" + trimmed
+		} else {
+			trimmed = "https://" + trimmed
+		}
+	}
+	u, err := url.Parse(trimmed)
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+		return ""
+	}
+	u.RawQuery = ""
+	u.Fragment = ""
+	u.Path = strings.TrimSuffix(strings.TrimSuffix(u.Path, "/"), "/api/v1")
+	return strings.TrimSuffix(u.String(), "/")
+}
+
+func opsHTTPClient() *http.Client {
+	return &http.Client{
+		Timeout: 12 * time.Second,
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{
+				InsecureSkipVerify: true, //nolint:gosec // ops.mozyun.cn uses an internal CA certificate
+			},
+		},
+	}
+}
+
+type authRejectedError struct {
+	msg string
+}
+
+func (e *authRejectedError) Error() string {
+	return e.msg
 }
 
 func authenticateUser(ctx context.Context, endpoint string, username string, password string) (*AuthStatus, error) {
-	if strings.HasPrefix(endpoint, "http://") || strings.HasPrefix(endpoint, "https://") {
-		if status, err := authenticateViaHTTP(ctx, endpoint, username, password); err == nil {
-			return status, nil
-		}
+	platformURL := normalizePlatformEndpoint(endpoint)
+	status, httpErr := authenticateViaHTTP(ctx, platformURL, username, password)
+	if httpErr == nil {
+		return status, nil
 	}
-	return authenticateViaDatabase(ctx, endpoint, username, password)
+	var rejected *authRejectedError
+	if errors.As(httpErr, &rejected) {
+		return nil, rejected
+	}
+
+	dbStatus, dbErr := authenticateViaDatabase(ctx, endpoint, username, password)
+	if dbErr != nil {
+		return nil, dbErr
+	}
+	dbStatus.Endpoint = platformURL
+	return dbStatus, nil
 }
 
 type httpLoginResponse struct {
 	Success bool   `json:"success"`
 	Message string `json:"message"`
+	Error   string `json:"error"`
 	Data    struct {
-		User struct {
+		Token    string `json:"token"`
+		ExpireAt string `json:"expire_at"`
+		User     struct {
 			Username               string   `json:"username"`
 			Role                   string   `json:"role"`
 			IsActive               bool     `json:"is_active"`
@@ -317,7 +396,7 @@ func authenticateViaHTTP(ctx context.Context, baseURL string, username string, p
 		return nil, err
 	}
 
-	reqCtx, cancel := context.WithTimeout(ctx, 6*time.Second)
+	reqCtx, cancel := context.WithTimeout(ctx, 8*time.Second)
 	defer cancel()
 
 	req, err := http.NewRequestWithContext(reqCtx, http.MethodPost, loginURL, bytes.NewReader(bodyBytes))
@@ -325,8 +404,9 @@ func authenticateViaHTTP(ctx context.Context, baseURL string, username string, p
 		return nil, err
 	}
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept-Language", "zh-CN,zh;q=0.9")
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := opsHTTPClient().Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -337,29 +417,44 @@ func authenticateViaHTTP(ctx context.Context, baseURL string, username string, p
 		return nil, err
 	}
 	if resp.StatusCode >= 400 || !parsed.Success {
-		if parsed.Message != "" {
-			return nil, errors.New(parsed.Message)
-		}
-		return nil, errors.New("用户名或密码错误")
+		msg := firstNonEmpty(parsed.Message, parsed.Error, "用户名或密码错误")
+		return nil, &authRejectedError{msg: msg}
 	}
 
-	allowAll := parsed.Data.User.Role == "admin" || slices.Contains(parsed.Data.User.EnvironmentPermissions, "*")
+	allowAll := strings.EqualFold(parsed.Data.User.Role, "admin") || slices.Contains(parsed.Data.User.EnvironmentPermissions, "*")
 	allowed := make([]string, 0)
 	for _, slug := range parsed.Data.User.EnvironmentPermissions {
 		if slug != "" && slug != "*" && !slices.Contains(allowed, slug) {
 			allowed = append(allowed, slug)
 		}
 	}
+	var roleNames []string
+	for _, r := range parsed.Data.User.Roles {
+		if r.Name != "" && !slices.Contains(roleNames, r.Name) {
+			roleNames = append(roleNames, r.Name)
+		}
+		if strings.EqualFold(r.ScopeType, "global") || strings.EqualFold(r.Code, "super_admin") {
+			allowAll = true
+		}
+		for _, slug := range r.EnvironmentSlugs {
+			if slug == "*" {
+				allowAll = true
+			} else if slug != "" && !slices.Contains(allowed, slug) {
+				allowed = append(allowed, slug)
+			}
+		}
+	}
 	roleLabel := parsed.Data.User.Role
-	if len(parsed.Data.User.Roles) > 0 && parsed.Data.User.Roles[0].Name != "" {
-		roleLabel = parsed.Data.User.Roles[0].Name
+	if len(roleNames) > 0 {
+		roleLabel = strings.Join(roleNames, ", ")
 	}
 
 	return &AuthStatus{
 		Authenticated:   true,
-		Username:        parsed.Data.User.Username,
-		Role:            roleLabel,
+		Username:        firstNonEmpty(parsed.Data.User.Username, username),
+		Role:            firstNonEmpty(roleLabel, "user"),
 		Endpoint:        baseURL,
+		Token:           parsed.Data.Token,
 		AllowAllEnvs:    allowAll,
 		AllowedEnvSlugs: allowed,
 	}, nil
@@ -599,6 +694,7 @@ func parseStringArrayColumn(raw string) []string {
 }
 
 func resolveAuthDSN(customEndpoint string) (dsn string, displayEndpoint string) {
+	displayEndpoint = normalizePlatformEndpoint(customEndpoint)
 	opsDir := resolveOpsControlPlaneDir()
 	var opsDotEnv, baselineVars map[string]string
 	if opsDir != "" {
@@ -617,30 +713,8 @@ func resolveAuthDSN(customEndpoint string) (dsn string, displayEndpoint string) 
 	baseDSN := resolveOpsDatabaseDSN(opsDotEnv, baselineVars)
 	trimmedCustom := strings.TrimSpace(customEndpoint)
 	if strings.HasPrefix(trimmedCustom, "postgres://") || strings.HasPrefix(trimmedCustom, "postgresql://") {
-		if u, err := url.Parse(trimmedCustom); err == nil {
-			return trimmedCustom, fmt.Sprintf("%s%s", u.Host, u.Path)
-		}
-		return trimmedCustom, trimmedCustom
+		return trimmedCustom, displayEndpoint
 	}
 
-	if baseDSN != "" {
-		if u, err := url.Parse(baseDSN); err == nil {
-			if trimmedCustom != "" && !strings.HasPrefix(trimmedCustom, "http://") && !strings.HasPrefix(trimmedCustom, "https://") {
-				hostPort := trimmedCustom
-				dbPath := u.Path
-				if slashIdx := strings.IndexByte(trimmedCustom, '/'); slashIdx > 0 {
-					hostPort = trimmedCustom[:slashIdx]
-					dbPath = trimmedCustom[slashIdx:]
-				}
-				if _, _, splitErr := net.SplitHostPort(hostPort); splitErr == nil {
-					u.Host = hostPort
-					u.Path = dbPath
-					return u.String(), fmt.Sprintf("%s%s", u.Host, u.Path)
-				}
-			}
-			return baseDSN, fmt.Sprintf("%s%s", u.Host, u.Path)
-		}
-	}
-
-	return baseDSN, defaultDisplayEndpoint()
+	return baseDSN, displayEndpoint
 }
