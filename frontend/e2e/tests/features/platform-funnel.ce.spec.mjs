@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { pinE2ELanguage } from '../../support/helpers/e2e-language.mjs';
 import { buildImportConnection } from '../../../src/utils/platform-funnel';
 import { defaultFeatures } from '../../../src/config/feature-defaults';
 
@@ -39,6 +40,7 @@ test('explicit credential consent includes passwords and advanced secrets', () =
 });
 
 test('sidebar import defaults to no secrets and resets consent when reopened', async ({ page }) => {
+    await pinE2ELanguage(page);
     await page.addInitScript(() => localStorage.setItem('whodb.analytics.consent', 'denied'));
     await page.route('**/api/query', route => route.fulfill({ json: { data: {
         ExportSourceConnection: [{ Key: 'Database', Value: 'reports' }],
@@ -69,6 +71,7 @@ test('sidebar import defaults to no secrets and resets consent when reopened', a
 
 for (const includeSecrets of [false, true]) {
     test(`reloaded browser session exports connection details (secrets: ${includeSecrets})`, async ({ page }) => {
+        await pinE2ELanguage(page);
         await page.addInitScript(() => localStorage.setItem('whodb.analytics.consent', 'denied'));
         const values = [
             { Key: 'Hostname', Value: profile.Hostname },
@@ -113,6 +116,7 @@ for (const includeSecrets of [false, true]) {
 }
 
 test('Platform connectors use plain names and open the attributed source flow', async ({ page, context }) => {
+    await pinE2ELanguage(page);
     await page.addInitScript(() => localStorage.setItem('whodb.analytics.consent', 'denied'));
     await page.route('**/api/query', route => route.fulfill({ json: { data: {
         SourceTypes: [], SourceProfiles: [], SourceSession: null,

@@ -29,7 +29,11 @@ changed_in() {
 
 main_changes="$(changed_in "$repo")"
 ee_changes=""
-[[ -d "$repo/ee" ]] && ee_changes="$(changed_in "$repo/ee")"
+# An empty or uninitialized submodule still exists as a directory. git run
+# inside it walks up to this repo, so CE edits look like EE frontend changes.
+if [[ -e "$repo/ee/.git" ]]; then
+	ee_changes="$(changed_in "$repo/ee")"
+fi
 
 need_core_go=0 need_ce_ts=0 need_ee_go=0 need_ee_ts=0
 grep -qE '^core/.*\.go$'          <<<"$main_changes" && need_core_go=1

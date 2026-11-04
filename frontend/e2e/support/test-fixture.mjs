@@ -43,6 +43,7 @@ import {TIMEOUT} from "./helpers/test-utils.mjs";
 import {getConnectionAdvanced, getDatabaseId, getDatabasesByCategory, hasFeature,} from "./database-config.mjs";
 import {VALID_FEATURES} from "./helpers/fixture-validator.mjs";
 import {mockAIProviders} from "./helpers/mock-providers.mjs";
+import {pinE2ELanguage} from "./helpers/e2e-language.mjs";
 
 const BASE_URL = process.env.BASE_URL || "http://localhost:3000";
 // Optional Wails bindings stub to exercise desktop-only code paths in Playwright.
@@ -175,6 +176,7 @@ export const test = CDP_ENDPOINT
       },
 
       whodb: async ({ page }, use, testInfo) => {
+        await pinE2ELanguage(page);
         await page.addInitScript((enableDesktopStub) => {
           window.__E2E_DISABLE_AUTOCOMPLETE = true;
           if (enableDesktopStub) {
@@ -193,6 +195,7 @@ export const test = CDP_ENDPOINT
     })
   : base.extend({
       whodb: async ({ page }, use, testInfo) => {
+        await pinE2ELanguage(page);
         await page.addInitScript((enableDesktopStub) => {
           window.__E2E_DISABLE_AUTOCOMPLETE = true;
           if (enableDesktopStub) {

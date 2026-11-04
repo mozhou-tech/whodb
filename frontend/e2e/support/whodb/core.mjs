@@ -15,6 +15,7 @@
  */
 
 import {expect} from "@playwright/test";
+import {pinE2ELanguage} from "../helpers/e2e-language.mjs";
 import {TIMEOUT, fetchSourceSession} from "../helpers/test-utils.mjs";
 
 const BASE_URL = process.env.BASE_URL || "http://localhost:3000";
@@ -123,6 +124,7 @@ export const coreMethods = {
                 sessionStorage.clear();
             });
         }
+        await pinE2ELanguage(this.page);
         await this.page.goto(this.url("/login"));
 
         for (let attempt = 0; attempt < 5; attempt++) {
