@@ -24,10 +24,6 @@ import {
     DialogDescription,
     DialogHeader,
     DialogTitle,
-    DropdownMenu,
-    DropdownMenuContent,
-    DropdownMenuItem,
-    DropdownMenuTrigger,
     Sheet,
     SheetContent,
     SheetTitle,
@@ -40,18 +36,10 @@ import {
     SidebarMenuItem,
     SidebarSeparator,
     SidebarTrigger,
-    Tooltip,
-    TooltipContent,
-    TooltipProvider,
-    TooltipTrigger,
     useSidebar,
-    IconSignout as ArrowLeftStartOnRectangleIcon,
-    IconChevronDown as ChevronDownIcon,
     IconCloud as CloudIcon,
     IconSettings as CogIcon,
     IconTerminal as CommandLineIcon,
-    IconMail as EnvelopeIcon,
-    IconInfo as InformationCircleIcon,
     IconPlusCircle as PlusCircleIcon,
     IconApp as RectangleGroupIcon,
     IconTable as TableCellsIcon,
@@ -61,9 +49,9 @@ import {
 import {
     GetSchemaDocument,
     GetSslStatusDocument,
-    GetUpdateInfoDocument,
     SourceProfileLabelStrategy,
     SourceFieldOptionsDocument,
+    SourceProfilesDocument,
 } from '@graphql';
 import {useTranslation} from '@/hooks/use-translation';
 import {VisuallyHidden} from "@radix-ui/react-visually-hidden";
@@ -76,7 +64,6 @@ import {ANALYTICS_EVENTS} from "../../config/analytics-events";
 import {extensions, featureFlags, getAppName} from "../../config/features";
 import {countBucket, trackPlatformFunnel} from "../../config/frontend-analytics";
 import {InternalRoutes} from "../../config/routes";
-import {performLogout} from "../../config/logout-handler";
 import {LoginForm} from "../../pages/auth/login";
 import type { LocalLoginProfile} from "../../store/auth";
 import {AuthActions} from "../../store/auth";
@@ -96,11 +83,69 @@ import {DatabaseIconWithBadge} from "../database-icon-with-badge";
 import {WhoDBChatIcon} from "../whodb-chat-icon";
 import {useProfileSwitch} from "@/hooks/use-profile-switch";
 import {buildSourceSchemaQuery} from "@/utils/source-refs";
+import {createProfilePayloadFromSourceProfile} from "@/utils/source-credentials";
+
+const DB_TYPE_DISPLAY_NAMES: Record<string, string> = {
+    Redis: 'Redis',
+    MySQL: 'MySQL',
+    Postgres: 'PostgreSQL',
+    TDengine: 'TDengine',
+    ClickHouse: 'ClickHouse',
+    ElasticSearch: 'Elasticsearch',
+    MongoDB: 'MongoDB',
+    Sqlite3: 'SQLite',
+    DuckDB: 'DuckDB',
+    Memcached: 'Memcached',
+};
+
+const DB_TYPE_SORT_ORDER: Record<string, number> = {
+    Redis: 1,
+    MySQL: 2,
+    Postgres: 3,
+    TDengine: 4,
+    ClickHouse: 5,
+    ElasticSearch: 6,
+    MongoDB: 7,
+};
+
+function resolveProfileProject(profile?: LocalLoginProfile): { id: string; name?: string; hasProject: boolean } {
+    if (!profile) {
+        return { id: "__local__", hasProject: false };
+    }
+    if (profile.ProjectId) {
+        return {
+            id: profile.ProjectId,
+            name: profile.ProjectName ?? profile.ProjectId,
+            hasProject: true,
+        };
+    }
+    const raw = profile.DisplayName ?? profile.Id ?? "";
+    const match = raw.match(/^\[([^\]]+)\]/);
+    if (match?.[1]) {
+        const parsed = match[1].trim();
+        if (parsed) {
+            return {
+                id: parsed,
+                name: parsed,
+                hasProject: true,
+            };
+        }
+    }
+    return { id: "__local__", hasProject: false };
+}
+
+function getFriendlyDbTypeName(type: string): string {
+    return DB_TYPE_DISPLAY_NAMES[type] ?? type;
+}
 
 function getProfileLabel(profile: LocalLoginProfile, item: SourceTypeItem | undefined) {
-    if (profile.ProjectId) {
+    const project = resolveProfileProject(profile);
+    if (project.hasProject) {
         const port = profile.Values.find(value => value.Key === "Port")?.Value;
-        return `${profile.Type} · ${profile.Hostname}${port ? `:${port}` : ""}`;
+        const typeLabel = getFriendlyDbTypeName(profile.Type);
+        return profile.Hostname
+            ? `${typeLabel} (${profile.Hostname}${port ? `:${port}` : ""})`
+            : typeLabel;
     }
     if (profile.Saved) return profile.Id;
     if (item?.traits?.presentation.profileLabelStrategy === SourceProfileLabelStrategy.Hostname && profile.Hostname) {
@@ -118,7 +163,7 @@ function getProfileLabel(profile: LocalLoginProfile, item: SourceTypeItem | unde
     if (profile.Hostname) {
         return profile.Hostname;
     }
-    return profile.Type;
+    return getFriendlyDbTypeName(profile.Type);
 }
 
 function getProfileIcon(profile: LocalLoginProfile) {
@@ -154,7 +199,10 @@ export const NavItem: FC<{
     onClick?: () => void;
     "data-testid"?: string;
 }> = ({ icon, label, path, pathname, open, tooltip, disabled, onClick, "data-testid": dataTestId }) => {
-    const isActive = path != null && pathname === path;
+    const isActive = path != null && (
+        pathname === path ||
+        (path === InternalRoutes.Dashboard.ExploreStorageUnit.path && pathname === InternalRoutes.Dashboard.StorageUnit.path)
+    );
 
     if (disabled) {
         return (
@@ -268,7 +316,6 @@ export const Sidebar: FC = () => {
             : (profileDatabase ?? availableSchemaNames[0] ?? "");
         dispatch(DatabaseActions.setSchema(defaultSchema));
     }, [availableSchemaNames, current, dispatch, schema, supportsDatabaseSwitching]);
-    const { data: updateInfo } = useQuery(GetUpdateInfoDocument);
     const { data: sslStatusData, refetch: refetchSslStatus } = useQuery(GetSslStatusDocument, sslStatusQueryOptions);
     useEffect(() => {
         if (sslStatusData?.SSLStatus) {
@@ -289,31 +336,56 @@ export const Sidebar: FC = () => {
         errorMessage: t('errorSigningIn'),
     });
     const { items: sourceTypeItems } = useSourceTypeItems();
+    const { data: backendProfilesData } = useQuery(SourceProfilesDocument);
 
-    const hasProjects = profiles.some(profile => profile.ProjectId);
-    const currentProjectId = current?.ProjectId ?? "__local__";
+    useEffect(() => {
+        const sourceProfiles = backendProfilesData?.SourceProfiles;
+        if (!sourceProfiles || sourceProfiles.length === 0) return;
+        const payloads = sourceProfiles
+            .filter(p => p.Source !== "builtin")
+            .map(p => createProfilePayloadFromSourceProfile(p));
+        if (payloads.length > 0) {
+            dispatch(AuthActions.syncSourceProfiles(payloads));
+        }
+    }, [backendProfilesData?.SourceProfiles, dispatch]);
+
+    const hasProjects = useMemo(
+        () => profiles.some(profile => resolveProfileProject(profile).hasProject),
+        [profiles]
+    );
+    const currentProjectId = resolveProfileProject(current).id;
     const projectOptions = useMemo(() => {
         const projects = new Map<string, { value: string; label: string; icon: ReactElement }>();
         for (const profile of profiles) {
-            const id = profile.ProjectId ?? "__local__";
-            if (!projects.has(id)) {
-                projects.set(id, {
-                    value: id,
-                    label: profile.ProjectName ?? t('localConnections'),
+            const proj = resolveProfileProject(profile);
+            if (!projects.has(proj.id)) {
+                projects.set(proj.id, {
+                    value: proj.id,
+                    label: proj.name ?? t('localConnections'),
                     icon: <RectangleGroupIcon className="size-4" />,
                 });
             }
         }
         return [...projects.values()];
     }, [profiles, t]);
-    const projectProfiles = useMemo(() => hasProjects
-        ? profiles.filter(profile => (profile.ProjectId ?? "__local__") === currentProjectId)
-        : profiles, [currentProjectId, hasProjects, profiles]);
+    const projectProfiles = useMemo(() => {
+        const filtered = hasProjects
+            ? profiles.filter(profile => resolveProfileProject(profile).id === currentProjectId)
+            : profiles;
+        return [...filtered].sort((a, b) => {
+            const orderA = DB_TYPE_SORT_ORDER[a.Type] ?? 99;
+            const orderB = DB_TYPE_SORT_ORDER[b.Type] ?? 99;
+            if (orderA !== orderB) return orderA - orderB;
+            return a.Id.localeCompare(b.Id);
+        });
+    }, [currentProjectId, hasProjects, profiles]);
     const currentProjectOption = projectOptions.find(option => option.value === currentProjectId);
 
     const handleProjectChange = useCallback(async (value: string) => {
         if (value === currentProjectId) return;
-        const instances = profiles.filter(profile => (profile.ProjectId ?? "__local__") === value);
+        const instances = profiles
+            .filter(profile => resolveProfileProject(profile).id === value)
+            .sort((a, b) => (DB_TYPE_SORT_ORDER[a.Type] ?? 99) - (DB_TYPE_SORT_ORDER[b.Type] ?? 99));
         const instance = instances.find(profile => profile.Type === current?.Type) ?? instances[0];
         if (instance) await switchProfile(instance);
     }, [current?.Type, currentProjectId, profiles, switchProfile]);
@@ -346,36 +418,97 @@ export const Sidebar: FC = () => {
     }, [profiles, switchProfile]);
 
     // Database select logic
+    const [profileDatabases, setProfileDatabases] = useState<{ profileId: string; databases: string[] } | null>(() =>
+        current?.Id && availableDatabases?.SourceFieldOptions
+            ? { profileId: current.Id, databases: availableDatabases.SourceFieldOptions }
+            : null
+    );
+    const fetchingDatabasesForProfileRef = useRef<string | null>(null);
+    const autoSelectedDbProfileRef = useRef<string | null>(null);
+    const cachedDatabases = availableDatabases?.SourceFieldOptions ?? prevDatabases?.SourceFieldOptions;
+    const isCurrentProfileDatabases = Boolean(
+        current?.Id && (
+            profileDatabases?.profileId === current.Id ||
+            (fetchingDatabasesForProfileRef.current === null && cachedDatabases != null)
+        )
+    );
+
+    useEffect(() => {
+        if (
+            current?.Id &&
+            fetchingDatabasesForProfileRef.current === null &&
+            availableDatabases &&
+            !availableDatabasesLoading &&
+            profileDatabases?.profileId !== current.Id
+        ) {
+            setProfileDatabases({
+                profileId: current.Id,
+                databases: availableDatabases.SourceFieldOptions,
+            });
+        }
+    }, [availableDatabases, availableDatabasesLoading, current?.Id, profileDatabases?.profileId]);
+
     const databaseOptions = useMemo(() => {
-        const databases = (availableDatabases ?? prevDatabases)?.SourceFieldOptions;
+        const databases = profileDatabases?.profileId === current?.Id
+            ? profileDatabases?.databases
+            : (fetchingDatabasesForProfileRef.current === null ? cachedDatabases : undefined);
         if (!databases) return [];
         return databases.map(db => ({
             value: db,
             label: db,
         }));
-    }, [availableDatabases, prevDatabases]);
+    }, [cachedDatabases, current?.Id, profileDatabases]);
     
     const handleDatabaseChange = useCallback((value: string) => {
         if (value === "") {
             return;
         }
         if (!current?.Id) return;
-        if (pathname !== InternalRoutes.Graph.path && pathname !== InternalRoutes.Dashboard.StorageUnit.path) {
-            void navigate(InternalRoutes.Dashboard.StorageUnit.path);
+        if (
+            pathname !== InternalRoutes.Graph.path &&
+            pathname !== InternalRoutes.Dashboard.StorageUnit.path &&
+            pathname !== InternalRoutes.Dashboard.ExploreStorageUnit.path
+        ) {
+            void navigate(InternalRoutes.Dashboard.ExploreStorageUnit.path);
         }
         void handleProfileChange(current.Id, value);
     }, [current, handleProfileChange, navigate, pathname]);
 
     useEffect(() => {
         if (current == null) return;
-        if (!supportsDatabaseSwitching || current.Database || databaseOptions.length === 0) {
+        if (current.Database) {
+            autoSelectedDbProfileRef.current = null;
             return;
         }
-        const defaultDatabase = databaseOptions[0]?.value;
+        if (
+            !supportsDatabaseSwitching ||
+            !isCurrentProfileDatabases ||
+            availableDatabasesLoading ||
+            switchingProfile ||
+            databaseOptions.length === 0
+        ) {
+            return;
+        }
+        if (autoSelectedDbProfileRef.current === current.Id) {
+            return;
+        }
+        const systemDatabases = new Set(['information_schema', 'performance_schema', 'mysql', 'sys']);
+        const defaultDatabase = databaseOptions.find(
+            opt => !systemDatabases.has(opt.value.toLowerCase())
+        )?.value ?? databaseOptions[0]?.value;
         if (defaultDatabase) {
+            autoSelectedDbProfileRef.current = current.Id;
             handleDatabaseChange(defaultDatabase);
         }
-    }, [current, databaseOptions, handleDatabaseChange, supportsDatabaseSwitching]);
+    }, [
+        availableDatabasesLoading,
+        current,
+        databaseOptions,
+        handleDatabaseChange,
+        isCurrentProfileDatabases,
+        supportsDatabaseSwitching,
+        switchingProfile,
+    ]);
 
     // Schema select logic
     const schemaOptions = useMemo(() => {
@@ -392,13 +525,16 @@ export const Sidebar: FC = () => {
         if (value === "") {
             return;
         }
-        if (pathname === InternalRoutes.Dashboard.StorageUnit.path) {
-            void navigate(InternalRoutes.Dashboard.StorageUnit.path, {
+        if (
+            pathname === InternalRoutes.Dashboard.StorageUnit.path ||
+            pathname === InternalRoutes.Dashboard.ExploreStorageUnit.path
+        ) {
+            void navigate(InternalRoutes.Dashboard.ExploreStorageUnit.path, {
                 replace: true,
                 state: {},
             });
         } else if (pathname !== InternalRoutes.Graph.path) {
-            void navigate(InternalRoutes.Dashboard.StorageUnit.path);
+            void navigate(InternalRoutes.Dashboard.ExploreStorageUnit.path);
         }
         dispatch(DatabaseActions.setSchema(value));
     }, [dispatch, navigate, pathname]);
@@ -410,7 +546,7 @@ export const Sidebar: FC = () => {
             {
                 title: storageUnitLabel,
                 icon: newUIEnabled ? <TableCellsIcon className="w-4 h-4" /> : <WhoDBChatIcon name="table" className="size-4" />,
-                path: InternalRoutes.Dashboard.StorageUnit.path,
+                path: InternalRoutes.Dashboard.ExploreStorageUnit.path,
             },
         ];
         if (supportsChat) {
@@ -436,23 +572,6 @@ export const Sidebar: FC = () => {
         }
         return routes;
     }, [current, newUIEnabled, storageUnitLabel, supportsChat, supportsGraph, supportsScratchpad, t]);
-
-    // Logout single profile — show dialog first, remove after switch
-    const handleLogoutProfile = useCallback(() => {
-        if (!current) return;
-        const remainingProfiles = profiles.filter(p => p.Id !== current.Id);
-        if (remainingProfiles.length === 0) {
-            performLogout(navigate);
-            return;
-        }
-        setLogoutProfileId(current.Id);
-        setShowProfileSwitchDialog(true);
-    }, [current, profiles, navigate]);
-
-    // Logout all profiles
-    const handleLogoutAll = useCallback(() => {
-        performLogout(navigate);
-    }, [navigate]);
 
     // Profile switch dialog handlers
     const handleDialogProfileSwitch = useCallback(async (profile: LocalLoginProfile) => {
@@ -553,12 +672,6 @@ export const Sidebar: FC = () => {
         return t('database');
     }, [databaseSchemaTerminology, t, usesDatabaseInsteadOfSchema]);
 
-    useEffect(() => {
-        if (pathname.includes(InternalRoutes.Dashboard.ExploreStorageUnit.path) && open) {
-            toggleSidebar();
-        }
-    }, []);
-
     // Refetch databases, schemas, and SSL status when the connection context changes
     // (profile switch or database switch within the same profile)
     const currentId = current?.Id;
@@ -571,7 +684,24 @@ export const Sidebar: FC = () => {
         }
         if (!currentId) return;
         if (supportsDatabaseSwitching && currentType) {
-            void getDatabases({ sourceType: currentType });
+            const targetProfileId = currentId;
+            fetchingDatabasesForProfileRef.current = targetProfileId;
+            setProfileDatabases(prev => (prev?.profileId === targetProfileId ? prev : null));
+            void getDatabases({ sourceType: currentType }).then(({ data }) => {
+                if (fetchingDatabasesForProfileRef.current === targetProfileId) {
+                    fetchingDatabasesForProfileRef.current = null;
+                    if (data) {
+                        setProfileDatabases({
+                            profileId: targetProfileId,
+                            databases: data.SourceFieldOptions,
+                        });
+                    }
+                }
+            }).catch(() => {
+                if (fetchingDatabasesForProfileRef.current === targetProfileId) {
+                    fetchingDatabasesForProfileRef.current = null;
+                }
+            });
         }
         if (supportsSchema) {
             void getSchemas();
@@ -686,7 +816,6 @@ export const Sidebar: FC = () => {
                         <div className={cn("flex items-center gap-sm mt-2", { "hidden": !open })}>
                             {extensions.Logo ?? <img src={logoImage} alt="clidey logo" className={cn("w-auto", newUIEnabled ? "h-6" : "h-8")} />}
                             {open && <span className={cn("font-bold", newUIEnabled ? "text-lg" : "text-3xl")} data-testid="app-name">{getAppName()}</span>}
-                            {open && !newUIEnabled && <span className="ce-sidebar-edition">{t('communityEditionShort')}</span>}
                         </div>
                         {!newUIEnabled && open ? (
                             <button type="button" className="ce-sidebar-toggle" onClick={toggleSidebar} aria-label={t('collapseNavigation')}>
@@ -788,9 +917,6 @@ export const Sidebar: FC = () => {
 
                                     {backupNudge}
                                     {platformFooterItem}
-                                    {featureFlags.contactUsPage && InternalRoutes.ContactUs && (
-                                    <NavItem icon={<EnvelopeIcon className="w-4 h-4" />} label={t('contact')} path={InternalRoutes.ContactUs.path} pathname={pathname} open={open} tooltip={t('contact')} />
-                                    )}
                                     {featureFlags.settingsPage && InternalRoutes.Settings && (
                                         <NavItem icon={<CogIcon className="w-4 h-4" />} label={t('settings')} path={InternalRoutes.Settings.path} pathname={pathname} open={open} tooltip={t('settings')} />
                                     )}
@@ -798,36 +924,6 @@ export const Sidebar: FC = () => {
                             )}
 
                             {!EESidebarNav && <div className="grow" />}
-
-                            {!EESidebarNav && !isEmbedded && (
-                                <SidebarMenuItem className="flex justify-between items-center w-full">
-                                    <SidebarMenuButton asChild tooltip={newUIEnabled ? t('logOutProfile') : t('disconnect')}>
-                                        <div className="flex items-center gap-sm text-nowrap w-fit cursor-pointer" onClick={handleLogoutProfile}>
-                                            <ArrowLeftStartOnRectangleIcon className="w-4 h-4" />
-                                            {open && <span>{newUIEnabled ? t('logOutProfile') : t('disconnect')}</span>}
-                                        </div>
-                                    </SidebarMenuButton>
-                                    <SidebarMenuButton asChild>
-                                        <DropdownMenu>
-                                            <DropdownMenuTrigger className={cn({ "hidden": !open })}>
-                                                <Button
-                                                    className="flex items-center justify-center p-1 rounded hover:bg-accent ml-2"
-                                                    aria-label={t('moreLogoutOptions')}
-                                                    variant="ghost"
-                                                >
-                                                    <ChevronDownIcon className="w-4 h-4" />
-                                                </Button>
-                                            </DropdownMenuTrigger>
-                                            <DropdownMenuContent side="right" align="start">
-                                                <DropdownMenuItem onClick={handleLogoutAll}>
-                                                    <ArrowLeftStartOnRectangleIcon className="w-4 h-4" />
-                                                    <span className="ml-2">{t('logoutAllProfiles')}</span>
-                                                </DropdownMenuItem>
-                                            </DropdownMenuContent>
-                                        </DropdownMenu>
-                                    </SidebarMenuButton>
-                                </SidebarMenuItem>
-                            )}
                         </SidebarMenu>
                     </SidebarGroup>
                     ) : loading ? (
@@ -884,23 +980,29 @@ export const Sidebar: FC = () => {
                             </div>
 
                             <SidebarMenu className="grow mt-8 gap-4">
-                                {sidebarRoutes.map((route) => (
+                                {sidebarRoutes.map((route) => {
+                                    const isRouteActive = pathname === route.path || (
+                                        route.path === InternalRoutes.Dashboard.ExploreStorageUnit.path &&
+                                        pathname === InternalRoutes.Dashboard.StorageUnit.path
+                                    );
+                                    return (
                                     <SidebarMenuItem key={route.title}>
-                                        <SidebarMenuButton asChild tooltip={open ? undefined : route.title} isActive={pathname === route.path || (pathname.includes(InternalRoutes.Dashboard.ExploreStorageUnit.path) && route.path === InternalRoutes.Dashboard.StorageUnit.path)}>
+                                        <SidebarMenuButton asChild tooltip={open ? undefined : route.title} isActive={isRouteActive}>
                                             <Link
                                                 to={route.path}
                                                 aria-label={open ? undefined : route.title}
                                                 className={cn("flex w-full items-center gap-2", {
-                                                    "font-bold": pathname === route.path,
+                                                    "font-bold": isRouteActive,
                                                 })}
-                                                aria-current={pathname === route.path || (pathname.includes(InternalRoutes.Dashboard.ExploreStorageUnit.path) && route.path === InternalRoutes.Dashboard.StorageUnit.path) ? 'page' : undefined}
+                                                aria-current={isRouteActive ? 'page' : undefined}
                                             >
                                                 {route.icon}
                                                 {open && <span>{route.title}</span>}
                                             </Link>
                                         </SidebarMenuButton>
                                     </SidebarMenuItem>
-                                ))}
+                                    );
+                                })}
 
                                 <SidebarMenuItem className="grow" aria-hidden="true" />
                                 <SidebarSeparator className={cn("my-2", {
@@ -921,22 +1023,6 @@ export const Sidebar: FC = () => {
                                         </SidebarMenuButton>
                                     </SidebarMenuItem>
                                 )}
-                                {featureFlags.contactUsPage && InternalRoutes.ContactUs && (
-                                    <SidebarMenuItem>
-                                        <SidebarMenuButton asChild tooltip={t('contact')}>
-                                            <Link
-                                                to={InternalRoutes.ContactUs.path}
-                                                aria-label={open ? undefined : t('contact')}
-                                                className={cn("flex items-center gap-2", {
-                                                    "font-bold": pathname === InternalRoutes.ContactUs.path,
-                                                })}
-                                            >
-                                                <WhoDBChatIcon name="mail" />
-                                                {open && <span>{t('contact')}</span>}
-                                            </Link>
-                                        </SidebarMenuButton>
-                                    </SidebarMenuItem>
-                                )}
                                 {featureFlags.settingsPage && InternalRoutes.Settings && (
                                     <SidebarMenuItem>
                                         <SidebarMenuButton asChild tooltip={t('settings')}>
@@ -951,71 +1037,6 @@ export const Sidebar: FC = () => {
                                                 {open && <span>{t('settings')}</span>}
                                             </Link>
                                         </SidebarMenuButton>
-                                    </SidebarMenuItem>
-                                )}
-                                {!isEmbedded && (
-                                    <SidebarMenuItem className="flex justify-between items-center w-full overflow-hidden">
-                                        <SidebarMenuButton asChild tooltip={t('disconnect')} className="flex-1 min-w-0">
-                                            <div
-                                                className="flex items-center gap-2 text-nowrap w-fit cursor-pointer"
-                                                role="button"
-                                                tabIndex={0}
-                                                aria-label={open ? undefined : t('disconnect')}
-                                                onClick={handleLogoutProfile}
-                                                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleLogoutProfile(); } }}
-                                            >
-                                                <WhoDBChatIcon name="signout" />
-                                                {open && <span>{t('disconnect')}</span>}
-                                            </div>
-                                        </SidebarMenuButton>
-                                        {open && <div className={cn("flex items-center gap-1 shrink-0", pathname === InternalRoutes.Dashboard.StorageUnit.path && "ce-sidebar-logout-extras")}>
-                                            <SidebarMenuButton asChild className="w-auto">
-                                                <DropdownMenu>
-                                                    <DropdownMenuTrigger>
-                                                        <Button
-                                                            className="flex items-center justify-center p-1 rounded hover:bg-accent"
-                                                            aria-label={t('moreLogoutOptions')}
-                                                            variant="ghost"
-                                                        >
-                                                            <ChevronDownIcon className="w-4 h-4" />
-                                                        </Button>
-                                                    </DropdownMenuTrigger>
-                                                    <DropdownMenuContent side="right" align="start">
-                                                        <DropdownMenuItem onClick={handleLogoutAll}>
-                                                            <ArrowLeftStartOnRectangleIcon className="w-4 h-4" />
-                                                            <span className="ml-2">{t('logoutAllProfiles')}</span>
-                                                        </DropdownMenuItem>
-                                                    </DropdownMenuContent>
-                                                </DropdownMenu>
-                                            </SidebarMenuButton>
-                                            {open && (
-                                                <TooltipProvider delayDuration={200}>
-                                                    <Tooltip>
-                                                        <TooltipTrigger>
-                                                            <span
-                                                                className="rounded-full p-1 text-muted-foreground/60 hover:text-muted-foreground transition-colors cursor-pointer"
-                                                                data-testid="sidebar-version-info"
-                                                            >
-                                                                <InformationCircleIcon className="w-4 h-4" />
-                                                            </span>
-                                                        </TooltipTrigger>
-                                                        <TooltipContent side="top" align="end">
-                                                            <p className="text-xs">{t('version')} {__APP_VERSION__}</p>
-                                                            {updateInfo?.UpdateInfo?.updateAvailable && (
-                                                                <a
-                                                                    href={updateInfo.UpdateInfo.releaseURL}
-                                                                    target="_blank"
-                                                                    rel="noopener noreferrer"
-                                                                    className="mt-1 block text-xs text-primary hover:text-primary/80 transition-colors"
-                                                                >
-                                                                    {t('updateAvailable', { version: updateInfo.UpdateInfo.latestVersion })}
-                                                                </a>
-                                                            )}
-                                                        </TooltipContent>
-                                                    </Tooltip>
-                                                </TooltipProvider>
-                                            )}
-                                        </div>}
                                     </SidebarMenuItem>
                                 )}
                             </SidebarMenu>

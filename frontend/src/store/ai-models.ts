@@ -25,6 +25,7 @@ export type IAIModelType = {
   modelType: string;
   name?: string;
   token?: string;
+  endpoint?: string;
   isEnvironmentDefined?: boolean;
   isGeneric?: boolean;
   isPlatformProvider?: boolean;

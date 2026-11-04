@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import {useLazyQuery, useQuery} from "@apollo/client/react";
+import {skipToken, useLazyQuery, useQuery} from "@apollo/client/react";
 import {
     Badge,
     Button,
@@ -31,13 +31,11 @@ import {
     TableHeadRow,
     TableRow,
     IconRefresh as ArrowPathRoundedSquareIcon,
-    IconMenu as Bars3Icon,
     IconSource as CircleStackIcon,
     IconTerminal as CommandLineIcon,
     IconInfo as InformationCircleIcon,
     IconSearch as MagnifyingGlassIcon,
     IconPlusCircle as PlusCircleIcon,
-    IconGrid as Squares2X2Icon,
     IconTable as TableCellsIcon,
     IconClose as XMarkIcon,
 } from '@clidey/ux';
@@ -54,7 +52,7 @@ import {
 } from '@graphql';
 import type {FC} from "react";
 import { useCallback, useEffect, useMemo, useRef, useState} from "react";
-import {useLocation, useNavigate, useSearchParams} from "react-router-dom";
+import {Navigate, useLocation, useNavigate, useSearchParams} from "react-router-dom";
 import {Handle, Position} from "reactflow";
 import {Card, ExpandableCard} from "../../components/card";
 import type {IGraphCardProps} from "../../components/graph/graph";
@@ -63,10 +61,8 @@ import {InternalPage} from "../../components/page";
 import {InternalRoutes} from "../../config/routes";
 import {useSourceContract} from "../../hooks/useSourceContract";
 import {trackFrontendEvent} from "../../config/posthog";
-import {trackOptionChanged} from "../../config/frontend-analytics";
-import {useAppDispatch, useAppSelector} from "../../store/hooks";
+import {useAppSelector} from "../../store/hooks";
 import {Tip} from '../../components/tip';
-import {SettingsActions} from '../../store/settings';
 import {useTranslation} from '../../hooks/use-translation';
 import {buildSourceParentObjectRef, buildSourceParentRef} from '../../utils/source-refs';
 import {formatAttributeValue} from '../../utils/functions';
@@ -323,13 +319,12 @@ export const StorageUnitPage: FC = () => {
         supportsScratchpad,
         usesDatabaseInsteadOfSchema,
     } = useSourceContract(currentType);
-    const view = useAppSelector(state => state.settings.storageUnitView);
+    const view = 'list' as 'list' | 'card';
     const [expandedUnit, setExpandedUnit] = useState<string | null>(null);
     const [expandedUnitColumns, setExpandedUnitColumns] = useState<{ name: string; columns: SourceColumn[] } | null>(null);
     const [expandedUnitColumnsLoading, setExpandedUnitColumnsLoading] = useState(false);
     const [fetchColumnsBatchForList] = useLazyQuery(GetColumnsBatchDocument);
     const [storageUnitColumnsByName, setStorageUnitColumnsByName] = useState<Record<string, SourceColumn[]>>({});
-    const dispatch = useAppDispatch();
     const { t } = useTranslation('pages/storage-unit');
     const { t: tCommon } = useTranslation('common');
     const locationState = location.state as StorageBrowserState | undefined;
@@ -359,11 +354,17 @@ export const StorageUnitPage: FC = () => {
     const parentRef = currentParent?.Ref ?? initialParentRef;
     const parentRefKey = parentRef ? sourceObjectRefKey(parentRef) : "";
 
-    const { loading, data, refetch } = useQuery(GetStorageUnitsDocument, {
-        variables: {
-            parent: parentRef,
-        },
-    });
+    const shouldSkipStorageUnitsQuery = (!create && currentParent == null) || (usesDatabaseInsteadOfSchema && !currentDatabase && !currentParent);
+    const { loading, data, refetch } = useQuery(
+        GetStorageUnitsDocument,
+        shouldSkipStorageUnitsQuery
+            ? skipToken
+            : {
+                variables: {
+                    parent: parentRef,
+                },
+            }
+    );
 
     const storageUnits = useMemo(() => {
         return (data?.StorageUnit ?? []) as SourceBrowserObject[];
@@ -527,14 +528,6 @@ export const StorageUnitPage: FC = () => {
         });
     }, [item, navigate, trail]);
 
-    const handleViewChange = useCallback((value: 'list' | 'card') => {
-        trackOptionChanged('storage_unit_view', value, {
-            view_mode: value,
-            database_type: currentType ?? 'unknown',
-        });
-        dispatch(SettingsActions.setStorageUnitView(value as 'list' | 'card'));
-    }, [currentType, dispatch]);
-
     const previousBrowserState = useMemo<StorageBrowserState | undefined>(() => {
         if (trail.length === 0) {
             return undefined;
@@ -564,13 +557,17 @@ export const StorageUnitPage: FC = () => {
         );
     }, [storageUnits]);
 
-    if (loading) {
+    if (loading && (create || currentParent != null)) {
         return <InternalPage routes={routes}>
             <div className="ce-tables-heading"><div><h1>{t('title')}</h1><p>{t('loadingTables')}</p></div></div>
             <div className="ce-table-grid" role="status" aria-label={t('loadingTables')} data-testid="storage-unit-skeletons">
                 {Array.from({ length: 5 }, (_, index) => <div className="ce-table-skeleton" key={index}><span/><span/><span/><span/></div>)}
             </div>
         </InternalPage>
+    }
+
+    if (!create && currentParent == null) {
+        return <Navigate to={InternalRoutes.Dashboard.ExploreStorageUnit.path + location.search} replace />;
     }
 
     return <InternalPage routes={routes}>
@@ -590,16 +587,6 @@ export const StorageUnitPage: FC = () => {
                 <SearchInput value={filterValue} onChange={(e) => { setFilterValue(e.target.value); }} placeholder={t('searchPlaceholder')} />
             </div>
             <div className="ce-tables-actions">
-                <div className="ce-tables-view-toggle" role="group" aria-label={t('viewMode')} data-testid="storage-unit-view-toggle">
-                    <Tip className="w-fit">
-                        <Button variant={view === 'card' ? 'secondary' : 'ghost'} size="icon" onClick={() => { handleViewChange('card'); }} data-testid="icon-button" aria-label={t('cardView')} aria-pressed={view === 'card'}><Squares2X2Icon className="w-4 h-4" /></Button>
-                        <p>{t('cardView')}</p>
-                    </Tip>
-                    <Tip className="w-fit">
-                        <Button variant={view === 'list' ? 'secondary' : 'ghost'} size="icon" onClick={() => { handleViewChange('list'); }} data-testid="icon-button" aria-label={t('listView')} aria-pressed={view === 'list'}><Bars3Icon className="w-4 h-4" /></Button>
-                        <p>{t('listView')}</p>
-                    </Tip>
-                </div>
                 {supportsScratchpad &&
                     <Button onClick={() => { void navigate(InternalRoutes.RawExecute.path); }} data-testid="scratchpad-button" variant="secondary">
                         <CommandLineIcon className="w-4 h-4" /> {t('scratchpad')}

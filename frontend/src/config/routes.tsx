@@ -27,6 +27,14 @@ import { getRegisteredUnscopedRoutes, getSurfaceFallbackPath, isUnscopedRouteEna
 import { useSourceContract } from "../hooks/useSourceContract";
 export { registerRoute } from "./route-registry";
 
+import { GraphPage } from "../pages/graph/graph";
+import { ExploreStorageUnit } from "../pages/storage-unit/explore-storage-unit";
+import { StorageUnitPage } from "../pages/storage-unit/storage-unit";
+import { RawExecutePage } from "../pages/raw-execute/raw-execute";
+import { ChatPage } from "../pages/chat/chat";
+import { SettingsPage as CESettingsPage } from "../pages/settings/settings";
+import { ContactUsPage } from "../pages/contact-us/contact-us";
+
 // Allow EE to override the login page via the component registry (e.g. for SSO).
 // Falls back to the CE database-credential login page when no override is registered.
 // Must be lazy — getComponent must run at render time (after EE register.ts populates the registry).
@@ -37,15 +45,7 @@ const LoginPage = () => {
     return <CELoginPage />;
 };
 
-const GraphPage = lazy(() => import("../pages/graph/graph").then(m => ({ default: m.GraphPage })));
-const ExploreStorageUnit = lazy(() => import("../pages/storage-unit/explore-storage-unit").then(m => ({ default: m.ExploreStorageUnit })));
-const StorageUnitPage = lazy(() => import("../pages/storage-unit/storage-unit").then(m => ({ default: m.StorageUnitPage })));
-const RawExecutePage = lazy(() => import("../pages/raw-execute/raw-execute").then(m => ({ default: m.RawExecutePage })));
-const ChatPage = lazy(() => import("../pages/chat/chat").then(m => ({ default: m.ChatPage })));
-const SettingsPage = __WHODB_EDITION__ === "ce"
-    ? lazy(() => import("../pages/settings/settings").then(m => ({ default: m.SettingsPage })))
-    : null;
-const ContactUsPage = lazy(() => import("../pages/contact-us/contact-us").then(m => ({ default: m.ContactUsPage })));
+const SettingsPage = __WHODB_EDITION__ === "ce" ? CESettingsPage : null;
 const ChatRouteComponent: FC = () => {
     const Agent = getComponent('sql-agent');
     if (Agent) {
@@ -66,9 +66,9 @@ const SourceSurfaceRoute: FC<{
     component: ReactNode;
 }> = ({ surface, component }) => {
     const currentType = useAppSelector(state => state.auth.current?.Type);
-    const { loading, supportsChat, supportsGraph, supportsScratchpad } = useSourceContract(currentType);
+    const { item, loading, supportsChat, supportsGraph, supportsScratchpad } = useSourceContract(currentType);
 
-    if (!currentType || loading) {
+    if (!currentType || (loading && !item)) {
         return <LoadingPage />;
     }
 
@@ -94,7 +94,7 @@ export type IInternalRoute = {
 
 export const PublicRoutes = {
     Login: {
-        name: "Login",
+        name: "登录",
         path: "/login",
         component: <Suspense fallback={<LoadingPage />}><LoginPage /></Suspense>,
     },
@@ -103,46 +103,46 @@ export const PublicRoutes = {
 export const InternalRoutes = {
     Dashboard: {
         StorageUnit: {
-            name: "Storage Unit", // should update on the page
+            name: "数据表", // should update on the page
             path: "/storage-unit",
             component: <LazyRoute component={StorageUnitPage} />,
         },
         ExploreStorageUnit: {
-            name: "Explore",
+            name: "数据浏览",
             path: "/storage-unit/explore",
             component: <LazyRoute component={ExploreStorageUnit} />,
         },
     },
     Graph: {
-        name: "Graph",
+        name: "关系图谱",
         path: "/graph",
         component: <SourceSurfaceRoute surface="graph" component={<LazyRoute component={GraphPage} />} />,
     },
     RawExecute: {
-        name: "Scratchpad",
+        name: "SQL 控制台",
         path: "/scratchpad",
         component: <SourceSurfaceRoute surface="scratchpad" component={<LazyRoute component={RawExecutePage} />} />,
     },
     Chat: {
-        name: "Chat",
+        name: "智能问答",
         path: "/chat",
         component: <ChatRouteComponent />,
     },
     Logout: {
-        name: "Logout",
+        name: "退出登录",
         path: "/logout",
         component: <LogoutPage />,
     },
     ...(featureFlags.settingsPage && SettingsPage ? {
         Settings: {
-            name: "Settings",
+            name: "系统设置",
             path: "/settings",
             component: <LazyRoute component={SettingsPage} />
         }
     } : {}),
     ...(featureFlags.contactUsPage ? {
         ContactUs: {
-            name: "Contact Us",
+            name: "联系支持",
             path: "/contact-us",
             component: <LazyRoute component={ContactUsPage} />
         }

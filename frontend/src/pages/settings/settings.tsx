@@ -42,17 +42,15 @@ import {ExternalLink} from "../../utils/external-links";
 import {usePageSize} from "../../hooks/use-page-size";
 import {getComponent} from "../../config/component-registry";
 import {trackOptionChanged} from "@/config/frontend-analytics";
-import {useNavigate, useSearchParams} from 'react-router-dom';
+import {useSearchParams} from 'react-router-dom';
 import {WhoDBChatIcon} from '../../components/whodb-chat-icon';
 
 export const SettingsPage: FC = () => {
     const {t} = useTranslation('pages/settings');
-    const navigate = useNavigate();
     const [searchParams, setSearchParams] = useSearchParams();
     const activeTab = searchParams.get('tab') ?? 'appearance';
     const dispatch = useAppDispatch();
     const metricsEnabled = useAppSelector(state => state.settings.metricsEnabled);
-    const storageUnitView = useAppSelector(state => state.settings.storageUnitView);
     const fontSize = useAppSelector(state => state.settings.fontSize);
     const borderRadius = useAppSelector(state => state.settings.borderRadius);
     const spacing = useAppSelector(state => state.settings.spacing);
@@ -95,13 +93,6 @@ export const SettingsPage: FC = () => {
             void optOutUser();
         }
         dispatch(SettingsActions.setMetricsEnabled(enabled));
-    }, [dispatch]);
-
-    const handleStorageUnitViewToggle = useCallback((view: 'list' | 'card') => {
-        trackOptionChanged('storage_unit_view', view, {
-            view_mode: view,
-        });
-        dispatch(SettingsActions.setStorageUnitView(view));
     }, [dispatch]);
 
     const handleFontSizeChange = useCallback((size: 'small' | 'medium' | 'large') => {
@@ -170,24 +161,11 @@ export const SettingsPage: FC = () => {
                             {hasIntegrations && <TabsTrigger value="integrations">{t('tabIntegrations')}</TabsTrigger>}
                             <TabsTrigger value="privacy"><WhoDBChatIcon name="secret" />{t('tabPrivacy')}</TabsTrigger>
                         </TabsList>
-                        <button type="button" onClick={() => void navigate(InternalRoutes.ContactUs?.path ?? '/contact-us')}><WhoDBChatIcon name="mail" />{t('contact')}</button>
                     </div>
 
                     <TabsContent value="appearance" className="ce-settings-panel">
                         <div className="ce-settings-panel-heading"><h2>{t('tabAppearance')}</h2><p>{t('appearanceDescription')}</p></div>
                         <p className="ce-settings-section-label">{t('appearanceSection')}</p>
-                        <div className="flex justify-between">
-                            <div className="ce-settings-row-copy"><Label htmlFor="storage-unit-view">{t('tableView')}</Label><p>{t('tableViewDescription')}</p></div>
-                            <Select value={storageUnitView} onValueChange={value => { handleStorageUnitViewToggle(value as typeof storageUnitView); }}>
-                                <SelectTrigger id="storage-unit-view" className="w-[165px]">
-                                    <SelectValue placeholder={t('selectView')} />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="list" data-value="list">{t('list')}</SelectItem>
-                                    <SelectItem value="card" data-value="card">{t('cards')}</SelectItem>
-                                </SelectContent>
-                            </Select>
-                        </div>
                         <div className="flex justify-between">
                             <div className="ce-settings-row-copy"><Label htmlFor="font-size">{t('textSize')}</Label><p>{t('textSizeDescription')}</p></div>
                             <Select value={fontSize} onValueChange={value => { handleFontSizeChange(value as typeof fontSize); }}>

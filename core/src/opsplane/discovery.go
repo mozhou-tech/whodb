@@ -17,9 +17,11 @@
 package opsplane
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -221,6 +223,7 @@ func discoverProfilesForSession(session *AuthStatus) ([]types.DatabaseCredential
 		}
 		matchedEnvCount++
 		proxy := parseProxyConfig(env.ProxyRaw)
+		RegisterEnvironmentProxy(env.Slug, proxy)
 
 		mergedVars := make(map[string]string)
 		if env.Slug == "test-direct" {
@@ -881,4 +884,250 @@ func nonDefaultPort(enabled bool, port string, defaultPort string) string {
 		return ""
 	}
 	return p
+}
+
+// SaveEnvironmentDatabase saves or updates a database connection for the given environment slug
+// directly in the ops-control-plane web service (falling back to the control-plane database when needed),
+// then invalidates and refreshes the discovered profile cache.
+func SaveEnvironmentDatabase(ctx context.Context, envSlug string, dbType string, values map[string]string) (*types.DatabaseCredentials, error) {
+	session := loadOrGetSession()
+	if session == nil || !session.Authenticated {
+		return nil, errors.New("请先登录 Ops Control Plane 平台")
+	}
+
+	envSlug = strings.TrimSpace(envSlug)
+	if envSlug == "" {
+		return nil, errors.New("请选择所属项目环境")
+	}
+	if !session.AllowAllEnvs && !slices.Contains(session.AllowedEnvSlugs, envSlug) {
+		return nil, fmt.Errorf("当前账号无权修改项目环境 %s 的数据库配置", envSlug)
+	}
+
+	fieldKey, defaultPort, defaultDB, ok := resolveOpsMiddlewareField(dbType)
+	if !ok {
+		return nil, fmt.Errorf("Ops Control Plane 环境登记暂不支持直接保存 %s 类型的连接", dbType)
+	}
+
+	host := strings.TrimSpace(values["Hostname"])
+	if host == "" {
+		return nil, errors.New("请输入数据库主机地址")
+	}
+	port := firstNonEmpty(values["Port"], defaultPort)
+	username := strings.TrimSpace(values["Username"])
+	password := values["Password"]
+	database := firstNonEmpty(values["Database"], defaultDB)
+
+	RegisterEnvironmentTargetProxy(envSlug, host, port)
+
+	middlewareCfg := map[string]any{
+		"enabled":  true,
+		"host":     host,
+		"port":     port,
+		"database": database,
+		"username": username,
+		"password": password,
+	}
+
+	var saveErr error
+	if session.Token != "" && session.Endpoint != "" {
+		saveErr = updateEnvironmentMiddlewareViaHTTP(ctx, session.Endpoint, session.Token, envSlug, fieldKey, middlewareCfg)
+	} else {
+		saveErr = updateEnvironmentMiddlewareInDB(ctx, session.Endpoint, envSlug, fieldKey, middlewareCfg)
+	}
+	if saveErr != nil {
+		return nil, saveErr
+	}
+
+	InvalidateProfileCache()
+	profiles, envCount, err := discoverProfilesForSession(session)
+	if err != nil {
+		return nil, err
+	}
+
+	authMu.Lock()
+	if activeSession != nil && activeSession.Authenticated {
+		activeSession.ProfileCount = len(profiles)
+		activeSession.EnvironmentCount = envCount
+		activeSession.SyncedAt = time.Now().Format(time.RFC3339)
+		cp := *activeSession
+		saveSessionToDisk(&cp)
+	}
+	authMu.Unlock()
+
+	cacheMu.Lock()
+	cachedProfiles = slices.Clone(profiles)
+	cachedEnvCount = envCount
+	cacheExpiresAt = time.Now().Add(profileCacheTTL)
+	cacheMu.Unlock()
+
+	for i := range profiles {
+		if profiles[i].ProjectID == envSlug && strings.EqualFold(profiles[i].Type, dbType) {
+			matched := profiles[i]
+			return &matched, nil
+		}
+	}
+	return nil, nil
+}
+
+func resolveOpsMiddlewareField(dbType string) (fieldKey string, defaultPort string, defaultDB string, ok bool) {
+	switch strings.ToLower(strings.TrimSpace(dbType)) {
+	case "postgres", "postgresql":
+		return "postgresql", "5432", "postgres", true
+	case "mysql", "mariadb":
+		return "mysql", "3306", "", true
+	case "tdengine":
+		return "tdengine", "6041", "", true
+	case "redis":
+		return "redis", "6379", "0", true
+	default:
+		return "", "", "", false
+	}
+}
+
+func updateEnvironmentMiddlewareViaHTTP(
+	ctx context.Context,
+	baseURL string,
+	token string,
+	envSlug string,
+	fieldKey string,
+	middlewareCfg map[string]any,
+) error {
+	client := opsHTTPClient()
+	envURL := fmt.Sprintf("%s/api/v1/environments/%s", strings.TrimRight(baseURL, "/"), url.PathEscape(envSlug))
+
+	getReq, err := http.NewRequestWithContext(ctx, http.MethodGet, envURL, nil)
+	if err != nil {
+		return err
+	}
+	getReq.Header.Set("Authorization", "Bearer "+token)
+	getReq.Header.Set("Accept-Language", "zh-CN,zh;q=0.9")
+
+	getResp, err := client.Do(getReq)
+	if err != nil {
+		return fmt.Errorf("请求 Ops Control Plane 环境信息失败: %w", err)
+	}
+	getBody, readErr := io.ReadAll(getResp.Body)
+	_ = getResp.Body.Close()
+	if readErr != nil {
+		return readErr
+	}
+	if getResp.StatusCode >= 400 {
+		return fmt.Errorf("获取项目环境 %s 失败: %s", envSlug, extractHTTPErrorMessage(getBody, getResp.StatusCode))
+	}
+
+	envObj, err := unwrapEnvironmentObject(getBody)
+	if err != nil {
+		return fmt.Errorf("解析项目环境 %s 响应失败: %w", envSlug, err)
+	}
+
+	envObj[fieldKey] = middlewareCfg
+	payloadBytes, err := json.Marshal(envObj)
+	if err != nil {
+		return err
+	}
+
+	putReq, err := http.NewRequestWithContext(ctx, http.MethodPut, envURL, bytes.NewReader(payloadBytes))
+	if err != nil {
+		return err
+	}
+	putReq.Header.Set("Authorization", "Bearer "+token)
+	putReq.Header.Set("Content-Type", "application/json")
+	putReq.Header.Set("Accept-Language", "zh-CN,zh;q=0.9")
+
+	putResp, err := client.Do(putReq)
+	if err != nil {
+		return fmt.Errorf("保存连接至 Ops Control Plane 失败: %w", err)
+	}
+	putBody, _ := io.ReadAll(putResp.Body)
+	_ = putResp.Body.Close()
+	if putResp.StatusCode >= 400 {
+		return fmt.Errorf("保存连接至 Ops Control Plane 失败: %s", extractHTTPErrorMessage(putBody, putResp.StatusCode))
+	}
+	return nil
+}
+
+func updateEnvironmentMiddlewareInDB(
+	ctx context.Context,
+	customEndpoint string,
+	envSlug string,
+	fieldKey string,
+	middlewareCfg map[string]any,
+) error {
+	dsn, _ := resolveAuthDSN(customEndpoint)
+	if dsn == "" {
+		opsDir := resolveOpsControlPlaneDir()
+		var opsDotEnv, baselineVars map[string]string
+		if opsDir != "" {
+			opsDotEnv = readDotEnvFile(filepath.Join(opsDir, ".env"))
+			envsDir := resolveEnvsDir(opsDir, opsDotEnv)
+			if envsDir != "" {
+				baselineVars = readDotEnvFile(filepath.Join(envsDir, "100.env"))
+			}
+		}
+		dsn = resolveOpsDatabaseDSN(opsDotEnv, baselineVars)
+	}
+	if dsn == "" {
+		return errors.New("无法定位 Ops Control Plane 服务地址")
+	}
+
+	rawJSON, err := json.Marshal(middlewareCfg)
+	if err != nil {
+		return err
+	}
+
+	db, err := sql.Open("pgx", dsn)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = db.Close() }()
+
+	var query string
+	switch fieldKey {
+	case "postgresql":
+		query = `UPDATE customer_environments SET postgre_sql = $1, updated_at = NOW() WHERE slug = $2`
+	case "mysql":
+		query = `UPDATE customer_environments SET my_sql = $1, updated_at = NOW() WHERE slug = $2`
+	case "tdengine":
+		query = `UPDATE customer_environments SET td_engine = $1, updated_at = NOW() WHERE slug = $2`
+	case "redis":
+		query = `UPDATE customer_environments SET redis = $1, updated_at = NOW() WHERE slug = $2`
+	default:
+		return fmt.Errorf("unsupported middleware field %s", fieldKey)
+	}
+
+	res, err := db.ExecContext(ctx, query, string(rawJSON), envSlug)
+	if err != nil {
+		return err
+	}
+	affected, _ := res.RowsAffected()
+	if affected == 0 {
+		return fmt.Errorf("项目环境 %s 不存在", envSlug)
+	}
+	return nil
+}
+
+func unwrapEnvironmentObject(body []byte) (map[string]any, error) {
+	var raw map[string]any
+	if err := json.Unmarshal(body, &raw); err != nil {
+		return nil, err
+	}
+	if _, hasSlug := raw["slug"]; !hasSlug {
+		if inner, ok := raw["data"].(map[string]any); ok {
+			return inner, nil
+		}
+	}
+	return raw, nil
+}
+
+func extractHTTPErrorMessage(body []byte, statusCode int) string {
+	var parsed struct {
+		Error   string `json:"error"`
+		Message string `json:"message"`
+	}
+	if json.Unmarshal(body, &parsed) == nil {
+		if msg := firstNonEmpty(parsed.Error, parsed.Message); msg != "" {
+			return msg
+		}
+	}
+	return fmt.Sprintf("HTTP %d", statusCode)
 }

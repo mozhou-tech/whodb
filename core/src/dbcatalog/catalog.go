@@ -61,6 +61,17 @@ type ConnectableDatabase struct {
 
 var catalog = []ConnectableDatabase{
 	{
+		ID:         engine.DatabaseType_OpenObserve,
+		Label:      "OpenObserve",
+		PluginType: engine.DatabaseType_OpenObserve,
+		Extra: map[string]source.ConnectionExtraField{
+			"Port":                 {DefaultValue: "5080"},
+			"Query Lookback Hours": {DefaultValue: "24"},
+		},
+		Fields:         FieldVisibility{Hostname: true, Username: true, Password: true, Database: true},
+		RequiredFields: FieldRequirements{Hostname: true, Username: true, Password: true, Database: true},
+	},
+	{
 		ID:         engine.DatabaseType_Postgres,
 		Label:      "Postgres",
 		PluginType: engine.DatabaseType_Postgres,

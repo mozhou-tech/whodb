@@ -19,7 +19,8 @@ import { Spinner } from '@/components/loading';
 import { healthCheckService } from '@/services/health-check';
 import { createPortal } from 'react-dom';
 import { useTranslation } from '@/hooks/use-translation';
-import { useAppSelector } from '@/store/hooks';
+import { useAppDispatch, useAppSelector } from '@/store/hooks';
+import { HealthActions } from '@/store/health';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { PublicRoutes } from '@/config/routes';
 import { performLogout } from '@/config/logout-handler';
@@ -57,8 +58,11 @@ function getProfileLabel(profile: LocalLoginProfile): string {
  */
 export const ServerDownOverlay = () => {
     const { t } = useTranslation('components/health-overlay');
+    const dispatch = useAppDispatch();
     const appName = getAppName();
     const serverStatus = useAppSelector(state => state.health.serverStatus);
+    const serverError = useAppSelector(state => state.health.serverError);
+    const currentProfile = useAppSelector(state => state.auth.current);
     const [secondsUntilRetry, setSecondsUntilRetry] = useState<number | null>(null);
     const [isRetrying, setIsRetrying] = useState(false);
 
@@ -90,9 +94,17 @@ export const ServerDownOverlay = () => {
         }
     };
 
+    const handleDismiss = () => {
+        dispatch(HealthActions.setServerStatus('healthy'));
+    };
+
     if (!shouldShow) {
         return null;
     }
+
+    const connectionTarget = currentProfile
+        ? [currentProfile.Type, currentProfile.Hostname || currentProfile.DisplayName, currentProfile.Database].filter(Boolean).join(' · ')
+        : null;
 
     return createPortal(
         <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-950/60 px-4 backdrop-blur-[3px]">
@@ -103,7 +115,7 @@ export const ServerDownOverlay = () => {
                 aria-labelledby="server-down-title"
                 aria-describedby="server-down-message"
                 className={cn(
-                    'w-full max-w-sm gap-0 overflow-hidden rounded-xl border-border bg-card py-0 shadow-2xl',
+                    'w-full max-w-md gap-0 overflow-hidden rounded-xl border-border bg-card py-0 shadow-2xl',
                     'animate-in fade-in zoom-in-95 duration-300'
                 )}
             >
@@ -117,6 +129,20 @@ export const ServerDownOverlay = () => {
                     <p id="server-down-message" className="mt-1 text-sm text-muted-foreground">
                         {t('serverDownMessage', { appName })}
                     </p>
+                    <div className="mt-3 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2.5 text-xs space-y-1.5">
+                        {connectionTarget && (
+                            <div className="flex items-start gap-2">
+                                <span className="shrink-0 font-medium text-muted-foreground">{t('targetConnectionLabel')}：</span>
+                                <span className="font-mono text-foreground break-all">{connectionTarget}</span>
+                            </div>
+                        )}
+                        <div className="flex items-start gap-2">
+                            <span className="shrink-0 font-medium text-muted-foreground">{t('errorReasonLabel')}：</span>
+                            <span className="font-mono text-destructive break-all">
+                                {serverError || t('defaultServerError')}
+                            </span>
+                        </div>
+                    </div>
                     <div className="mt-4 flex items-center gap-2 text-xs text-muted-foreground">
                         <Spinner className="size-5" aria-hidden="true" />
                         <span className="font-medium text-foreground">{t('reconnecting')}</span>
@@ -127,7 +153,10 @@ export const ServerDownOverlay = () => {
                         )}
                     </div>
                 </CardContent>
-                <CardFooter className="justify-end border-t border-border px-5 pb-3 !pt-3">
+                <CardFooter className="justify-end gap-2 border-t border-border px-5 pb-3 !pt-3">
+                    <Button size="sm" variant="ghost" onClick={handleDismiss}>
+                        {t('dismissOverlay')}
+                    </Button>
                     <Button size="sm" onClick={() => void handleRetry()} disabled={isRetrying}>
                         <ArrowPathIcon className="size-3.5" aria-hidden="true" />
                         {t('retryNow')}
@@ -146,17 +175,21 @@ export const ServerDownOverlay = () => {
  */
 export const DatabaseDownOverlay = () => {
     const { t } = useTranslation('components/health-overlay');
+    const dispatch = useAppDispatch();
     const navigate = useNavigate();
     const location = useLocation();
     const databaseStatus = useAppSelector(state => state.health.databaseStatus);
+    const databaseError = useAppSelector(state => state.health.databaseError);
     const serverStatus = useAppSelector(state => state.health.serverStatus);
     const authStatus = useAppSelector(state => state.auth.status);
-    const currentProfileId = useAppSelector(state => state.auth.current?.Id);
+    const currentProfile = useAppSelector(state => state.auth.current);
+    const currentProfileId = currentProfile?.Id;
     const allProfiles = useAppSelector(state => state.auth.profiles);
     const isEmbedded = useAppSelector(state => state.auth.isEmbedded);
 
     const [selectedProfileId, setSelectedProfileId] = useState<string>('');
     const [isSwitching, setIsSwitching] = useState(false);
+    const [isRetrying, setIsRetrying] = useState(false);
 
     const { switchProfile, loading } = useProfileSwitch({
         onSuccess: () => {
@@ -204,6 +237,23 @@ export const DatabaseDownOverlay = () => {
         performLogout(navigate);
     };
 
+    const handleRetryDatabase = async () => {
+        setIsRetrying(true);
+        try {
+            await healthCheckService.forceCheck();
+        } finally {
+            setIsRetrying(false);
+        }
+    };
+
+    const handleDismissDatabase = () => {
+        dispatch(HealthActions.setDatabaseStatus('healthy'));
+    };
+
+    const connectionTarget = currentProfile
+        ? [currentProfile.Type, currentProfile.Hostname || currentProfile.DisplayName, currentProfile.Database].filter(Boolean).join(' · ')
+        : null;
+
     return (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm">
             <div
@@ -216,18 +266,43 @@ export const DatabaseDownOverlay = () => {
                 <div className="flex flex-col gap-4">
                     <div className="flex items-start gap-3">
                         <XCircleIcon className="h-6 w-6 flex-shrink-0 text-destructive" />
-                        <div>
+                        <div className="min-w-0 flex-1">
                             <h2 className="text-lg font-semibold text-foreground">
                                 {t('databaseDownTitle')}
                             </h2>
                             <p className="mt-2 text-sm text-muted-foreground">
                                 {t('databaseDownMessage')}
                             </p>
+                            <div className="mt-3 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2.5 text-xs space-y-1.5">
+                                {connectionTarget && (
+                                    <div className="flex items-start gap-2">
+                                        <span className="shrink-0 font-medium text-muted-foreground">{t('targetConnectionLabel')}：</span>
+                                        <span className="font-mono text-foreground break-all">{connectionTarget}</span>
+                                    </div>
+                                )}
+                                <div className="flex items-start gap-2">
+                                    <span className="shrink-0 font-medium text-muted-foreground">{t('errorReasonLabel')}：</span>
+                                    <span className="font-mono text-destructive break-all">
+                                        {databaseError || t('defaultDatabaseError')}
+                                    </span>
+                                </div>
+                            </div>
                         </div>
                     </div>
-                    <div className="flex items-center gap-2 text-sm text-muted-foreground pl-9">
-                        <Spinner className="size-4" />
-                        <span>{t('reconnecting')}</span>
+                    <div className="flex items-center justify-between gap-2 text-sm text-muted-foreground pl-9">
+                        <div className="flex items-center gap-2">
+                            <Spinner className="size-4" />
+                            <span>{t('reconnecting')}</span>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                            <Button variant="ghost" size="sm" onClick={handleDismissDatabase}>
+                                {t('dismissOverlay')}
+                            </Button>
+                            <Button variant="outline" size="sm" onClick={() => void handleRetryDatabase()} disabled={isRetrying}>
+                                <ArrowPathIcon className="size-3.5" />
+                                {t('retryNow')}
+                            </Button>
+                        </div>
                     </div>
 
                     {hasOtherProfiles ? (

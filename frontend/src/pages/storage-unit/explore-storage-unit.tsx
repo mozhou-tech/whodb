@@ -61,6 +61,7 @@ import {
     DataShape,
     GetSourceContentDocument,
     GetStorageUnitRowsDocument,
+    GetStorageUnitsDocument,
     RawExecuteDocument,
     SortDirection,
     SourceAction,
@@ -70,7 +71,7 @@ import {
 } from '@graphql';
 import type {FC} from "react";
 import { useCallback, useEffect, useMemo, useRef, useState} from "react";
-import {Navigate, useLocation, useNavigate} from "react-router-dom";
+import {useLocation} from "react-router-dom";
 import {CodeEditor} from "../../components/editor";
 import {ErrorState} from "../../components/error-state";
 import {Loading, LoadingPage, Spinner} from "../../components/loading";
@@ -92,11 +93,14 @@ import {isDestructiveQuery} from "../../utils/query-utils";
 import {useContainerWidth} from "../../hooks/use-container-width";
 import {getComponent} from "../../config/component-registry";
 import { findSourceObjectType } from "../../config/source-types";
-import {buildSourceObjectRef, buildSourceParentObjectRef} from "../../utils/source-refs";
+import {buildSourceObjectRef, buildSourceParentRef} from "../../utils/source-refs";
 import {formatAttributeValue} from "../../utils/functions";
 import {ph} from "../../utils/privacy";
 
 type SourceBrowserObject = GetStorageUnitsQuery['StorageUnit'][number];
+
+const lastSelectedUnitByScope = new Map<string, SourceBrowserObject>();
+const lastRowsByConditionKey = new Map<string, RowsResult>();
 
 const ForeignKeyAddRowField: FC<{
     reference: SourceObjectRefInput;
@@ -190,20 +194,63 @@ export const ExploreStorageUnit: FC = () => {
         isNoSQL,
         storageUnitLabel,
         supportsScratchpad,
+        supportsSchema,
         usesDatabaseInsteadOfSchema,
     } = useSourceContract(currentType);
     const whereConditionMode = useAppSelector(state => state.settings.whereConditionMode);
     const formatDatesLocale = useAppSelector(state => state.settings.formatDatesLocale);
     const formatBooleansReadable = useAppSelector(state => state.settings.formatBooleansReadable);
     const locationState = location.state as ExploreSourceState | undefined;
-    const unit = locationState?.unit;
     const browserTrail = locationState?.trail ?? [];
-    const navigate = useNavigate();
 
     // TODO: ClickHouse/MongoDB use database name as schema parameter since they lack traditional schemas
     if (usesDatabaseInsteadOfSchema && current?.Database) {
         schema = current.Database;
     }
+
+    const currentParentRef = useMemo(() => {
+        if (browserTrail.length > 0 && locationState?.parentRef) {
+            return locationState.parentRef;
+        }
+        return buildSourceParentRef(item, current, schema);
+    }, [browserTrail.length, current, item, locationState?.parentRef, schema]);
+
+    const storageUnitsQueryOptions = current && (locationState?.parentRef != null || !supportsSchema || schema !== "")
+        ? {
+            variables: {
+                parent: currentParentRef,
+            },
+        }
+        : skipToken;
+    const { data: storageUnitsData } = useQuery(GetStorageUnitsDocument, storageUnitsQueryOptions);
+    const storageUnits = useMemo(
+        () => (storageUnitsData?.StorageUnit ?? []) as SourceBrowserObject[],
+        [storageUnitsData?.StorageUnit]
+    );
+
+    const scopeKey = `${current?.Id ?? ""}__${current?.Database ?? ""}__${schema ?? ""}`;
+    const unit = useMemo(() => {
+        if (locationState?.unit) {
+            const stateUnit = locationState.unit;
+            if (storageUnits.length === 0 || storageUnits.some(u => u.Name === stateUnit.Name)) {
+                return stateUnit;
+            }
+        }
+        const remembered = lastSelectedUnitByScope.get(scopeKey);
+        if (remembered && (storageUnits.length === 0 || storageUnits.some(u => u.Name === remembered.Name))) {
+            return storageUnits.find(u => u.Name === remembered.Name) ?? remembered;
+        }
+        return (
+            storageUnits.find(u => !(u.Actions.includes(SourceAction.Browse) && u.HasChildren)) ??
+            storageUnits[0]
+        );
+    }, [locationState?.unit, scopeKey, storageUnits]);
+
+    useEffect(() => {
+        if (unit && scopeKey) {
+            lastSelectedUnitByScope.set(scopeKey, unit);
+        }
+    }, [scopeKey, unit]);
 
     const currentObjectType = useMemo(() => findSourceObjectType(item, unit?.Kind), [item, unit?.Kind]);
     const currentObjectActions = unit?.Actions ?? currentObjectType?.Actions ?? [];
@@ -214,15 +261,6 @@ export const ExploreStorageUnit: FC = () => {
     const allowsInsertData = currentObjectActions.includes(SourceAction.InsertData);
     const allowsUpdateData = currentObjectActions.includes(SourceAction.UpdateData);
     const allowsDeleteData = currentObjectActions.includes(SourceAction.DeleteData);
-    const currentParentRef = useMemo(() => {
-        if (locationState?.parentRef) {
-            return locationState.parentRef;
-        }
-        if (!unit) {
-            return undefined;
-        }
-        return buildSourceParentObjectRef(item, unit.Ref);
-    }, [item, locationState?.parentRef, unit]);
 
     const dispatch = useAppDispatch();
     const conditionKey = useMemo(() => {
@@ -248,7 +286,9 @@ export const ExploreStorageUnit: FC = () => {
         return !upperType.includes("VIEW") && !upperType.includes("MATERIALIZED") && !upperType.includes("SYSTEM");
     }, [unit?.Attributes]);
 
-    const [rows, setRows] = useState<RowsResult>();
+    const [rows, setRows] = useState<RowsResult | undefined>(() =>
+        conditionKey ? lastRowsByConditionKey.get(conditionKey) : undefined
+    );
     const [showAdd, setShowAdd] = useState(false);
     const searchRef = useRef<(search: string) => void>(() => {});
     const [localSearch, setLocalSearch] = useState("");
@@ -448,9 +488,12 @@ export const ExploreStorageUnit: FC = () => {
             const isLatest = thisRequestId === latestRequestIdRef.current;
             if (isLatest && result.data) {
                 setRows(result.data.Row);
+                if (conditionKey) {
+                    lastRowsByConditionKey.set(conditionKey, result.data.Row);
+                }
             }
         });
-    }, [current, currentPage, currentTableName, currentUnitRef, getStorageUnitRows, isTabularObject, item, pageSize, schema, searchCondition, sortConditions, unitName]);
+    }, [conditionKey, current, currentPage, currentTableName, currentUnitRef, getStorageUnitRows, isTabularObject, item, pageSize, schema, searchCondition, sortConditions, unitName]);
 
     const handleQuery = useCallback(() => {
         setCurrentPage(1);
@@ -548,9 +591,9 @@ export const ExploreStorageUnit: FC = () => {
     }, [unit, rows?.TotalCount, rows?.Rows.length]);
 
     useEffect(() => {
-        // Reset non-condition state when switching to a new table to prevent cached data
+        // Reset non-condition state when switching to a new table; preserve cached rows if available
         setCurrentPage(1);
-        setRows(undefined);
+        setRows(conditionKey ? lastRowsByConditionKey.get(conditionKey) : undefined);
         setShowAdd(false);
         setAddRowData({});
         setAddRowError(null);
@@ -574,7 +617,7 @@ export const ExploreStorageUnit: FC = () => {
         }
         setCode(initialScratchpadQuery);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [isTabularObject, unit]);
+    }, [isTabularObject, unit?.Name, conditionKey]);
 
     useEffect(() => {
         if (isTabularObject && sortConditions.length > 0) {
@@ -631,12 +674,6 @@ export const ExploreStorageUnit: FC = () => {
             window.removeEventListener('table:sort-column', handleSortColumn as EventListener);
         };
     }, [handleColumnSort]);
-
-    useEffect(() => {
-        if (unit == null && !currentTableName) {
-            void navigate(InternalRoutes.Dashboard.StorageUnit.path);
-        }
-    }, [navigate, unit, currentTableName]);
 
     // Dynamically adjust table height based on available viewport space
     useEffect(() => {
@@ -920,14 +957,15 @@ export const ExploreStorageUnit: FC = () => {
     }, []);
 
     if (unit == null) {
-        return <Navigate to={InternalRoutes.Dashboard.StorageUnit.path} />
-    }
-
-    // Prevent rendering if unit is not available and we don't have a table name
-    if (!unit && !currentTableName) {
-        return <InternalPage routes={routes}>
-            <LoadingPage/>
-        </InternalPage>
+        return (
+            <InternalPage
+                routes={routes}
+                className="relative"
+                sidebar={<SchemaViewer parentRef={currentParentRef} selectedName={undefined} trail={browserTrail} />}
+            >
+                <LoadingPage />
+            </InternalPage>
+        );
     }
 
     if (isContentObject) {
@@ -1169,7 +1207,7 @@ export const ExploreStorageUnit: FC = () => {
 
             </div>
             <div className="grow" ref={tableContainerRef}>
-                {loading ? (
+                {loading && rows == null ? (
                     <div className="ce-explore-loading-grid" data-testid="explore-rows-loading">
                         <div className="ce-explore-loading-row ce-explore-loading-header">
                             <span className="ce-explore-loading-check" />

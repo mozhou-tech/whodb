@@ -708,6 +708,57 @@ input OpsControlPlaneLoginInput {
   Password: String!
 }
 
+enum CopyDataMode {
+  STRUCTURE_AND_DATA
+  STRUCTURE_ONLY
+}
+
+enum CopyExistingStrategy {
+  SKIP
+  OVERWRITE
+  APPEND
+}
+
+enum CopyTableStatus {
+  SUCCESS
+  SKIPPED
+  FAILED
+}
+
+input SourceTargetConnectionInput {
+  ProfileId: String
+  SourceType: String
+  Database: String
+  Values: [RecordInput!]
+  AccessToken: String
+}
+
+input CopySourceObjectsInput {
+  SourceParent: SourceObjectRefInput
+  Target: SourceTargetConnectionInput!
+  TargetSchema: String
+  ObjectNames: [String!]!
+  Mode: CopyDataMode!
+  ExistingStrategy: CopyExistingStrategy!
+}
+
+type CopyTableDetail {
+  Name: String!
+  Status: CopyTableStatus!
+  RowsCopied: Int!
+  Message: String
+}
+
+type CopySourceObjectsResult {
+  Status: Boolean!
+  TotalTables: Int!
+  SucceededCount: Int!
+  SkippedCount: Int!
+  FailedCount: Int!
+  TotalRowsCopied: Int!
+  Details: [CopyTableDetail!]!
+}
+
 type Query {
   Version: String!
   UpdateInfo: UpdateInfo!
@@ -729,12 +780,14 @@ type Query {
   RunSourceQuery(query: String!): RowsResult!
   SourceGraph(ref: SourceObjectRefInput): [GraphUnit!]!
   AIProviders: [AIProvider!]!
-  AIModel(providerId: String, modelType: String!, token: String): [String!]!
+  AIModel(providerId: String, modelType: String!, token: String, endpoint: String): [String!]!
   SettingsConfig: SettingsConfig!
   MockDataMaxRowCount: Int!
   AnalyzeMockDataDependencies(ref: SourceObjectRefInput!, rowCount: Int!, fkDensityRatio: Int): MockDataDependencyAnalysis!
   SSLStatus: SSLStatus
   SourceQuerySuggestions(ref: SourceObjectRefInput): [SourceQuerySuggestion!]!
+  SourceTargetDatabases(target: SourceTargetConnectionInput!): [String!]!
+  SourceTargetSchemas(target: SourceTargetConnectionInput!): [String!]!
 
 }
 
@@ -770,6 +823,7 @@ type Mutation {
   AddSourceRow(ref: SourceObjectRefInput!, values: [RecordInput!]!): StatusResponse!
   DeleteSourceRow(ref: SourceObjectRefInput!, values: [RecordInput!]!): StatusResponse!
   GenerateMockData(input: MockDataGenerationInput!): MockDataGenerationStatus!
+  CopySourceObjects(input: CopySourceObjectsInput!): CopySourceObjectsResult!
 
   ImportSQL(input: ImportSQLInput!): ImportResult!
   ImportPreview(

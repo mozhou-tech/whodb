@@ -41,7 +41,6 @@ import {
     SheetFooter,
     toast,
     IconRefresh as ArrowPathIcon,
-    IconExternal as ArrowTopRightOnSquareIcon,
     IconChevronDown as ChevronDownIcon,
     IconAlertCircle as ExclamationCircleIcon,
     IconLock as LockClosedIcon,
@@ -61,7 +60,6 @@ import { v4 as uuidv4 } from 'uuid';
 import { useTranslation } from "../hooks/use-translation";
 import { getAIProviderOverrides } from "../config/ai-provider-registry";
 import { persistAISelection } from "../config/ai-persistence";
-import { ExternalLink } from "../utils/external-links";
 import { Icons } from "./icons";
 
 export const externalModelTypes = availableExternalModelTypes.map((model) => ({
@@ -147,6 +145,7 @@ export const useAI = () => {
     }, []);
 
     const markProviderAvailable = useCallback((providerId: string) => {
+        setModelAvailable(true);
         setUnavailableProviders(prev => {
             if (!prev.has(providerId)) return prev;
             const next = new Set(prev);
@@ -165,6 +164,7 @@ export const useAI = () => {
         providerId?: string;
         modelType: string;
         token?: string;
+        endpoint?: string;
     }) => {
         const { data, error } = await getAIModels({ variables });
 
@@ -187,6 +187,7 @@ export const useAI = () => {
                 providerId: modelType.id,
                 modelType: modelType.modelType,
                 token: modelType.token,
+                endpoint: modelType.endpoint,
             })
             .then((aiModels) => {
                 dispatch(AIModelsActions.setModels(aiModels));
@@ -210,6 +211,7 @@ export const useAI = () => {
     }, [dispatch, fetchAIModels, handleAIModelsError, markProviderAvailable, markProviderUnavailable, modelTypes]);
 
     const handleAIModelChange = useCallback((item: string) => {
+        setModelAvailable(true);
         dispatch(AIModelsActions.setCurrentModel(item));
 
         if (modelType) {
@@ -327,8 +329,12 @@ export const useAI = () => {
                     providerId: firstProvider.id,
                     modelType: firstProvider.modelType ?? "",
                     token: firstProvider.token ?? "",
+                    endpoint: firstProvider.endpoint,
                 })
                 .then((aiModels) => {
+                    if (stateRef.current.modelType && stateRef.current.modelType.id !== firstProvider.id) {
+                        return;
+                    }
                     dispatch(AIModelsActions.setModels(aiModels));
                     if (aiModels.length > 0) {
                         const selectedModel = aiModels[0];
@@ -342,7 +348,9 @@ export const useAI = () => {
                 })
                 .catch(() => {
                     markProviderUnavailable(firstProvider.id);
-                    handleAIModelsError();
+                    if (!stateRef.current.modelType || stateRef.current.modelType.id === firstProvider.id) {
+                        handleAIModelsError();
+                    }
                 });
         } else if (selectedProvider) {
             dispatch(AIModelsActions.setCurrentModelType({ id: selectedProvider.id }));
@@ -350,8 +358,12 @@ export const useAI = () => {
                     providerId: selectedProvider.id,
                     modelType: selectedProvider.modelType ?? "",
                     token: selectedProvider.token ?? "",
+                    endpoint: selectedProvider.endpoint,
                 })
                 .then((aiModels) => {
+                    if (stateRef.current.modelType && stateRef.current.modelType.id !== selectedProvider.id) {
+                        return;
+                    }
                     dispatch(AIModelsActions.setModels(aiModels));
                     if (aiModels.length > 0) {
                         // Try to restore persisted model from platform store, fall back to saved model, then first model
@@ -363,12 +375,26 @@ export const useAI = () => {
                         dispatch(AIModelsActions.setCurrentModel(modelToSelect));
                         persistAISelection({ providerId: selectedProvider.id, model: modelToSelect });
                         markProviderAvailable(selectedProvider.id);
+                    } else if (savedModel) {
+                        dispatch(AIModelsActions.setModels([savedModel]));
+                        dispatch(AIModelsActions.setCurrentModel(savedModel));
+                        markProviderAvailable(selectedProvider.id);
                     } else {
                         markProviderUnavailable(selectedProvider.id);
                         persistAISelection({ providerId: selectedProvider.id, model: null });
                     }
                 })
                 .catch(() => {
+                    if (stateRef.current.modelType && stateRef.current.modelType.id !== selectedProvider.id) {
+                        markProviderUnavailable(selectedProvider.id);
+                        return;
+                    }
+                    if (savedModel) {
+                        dispatch(AIModelsActions.setModels([savedModel]));
+                        dispatch(AIModelsActions.setCurrentModel(savedModel));
+                        markProviderAvailable(selectedProvider.id);
+                        return;
+                    }
                     markProviderUnavailable(selectedProvider.id);
                     handleAIModelsError();
                 });
@@ -477,8 +503,20 @@ export const AIProvider: FC<ReturnType<typeof useAI> & {
     const [externalModelType, setExternalModel] = useState<string>(externalModelTypes[0].id);
     const [externalModelToken, setExternalModelToken] = useState<string>("");
     const [externalModelName, setExternalModelName] = useState<string>("");
+    const [externalModelEndpoint, setExternalModelEndpoint] = useState<string>("");
     const selectedProviderIdRef = useRef<string | undefined>(modelType?.id);
     selectedProviderIdRef.current = modelType?.id;
+
+    const defaultEndpointPlaceholder = useMemo(() => {
+        switch (externalModelType) {
+            case "Anthropic":
+                return "https://api.anthropic.com/v1";
+            case "Gemini":
+                return "https://generativelanguage.googleapis.com/v1beta/openai";
+            default:
+                return "https://api.openai.com/v1";
+        }
+    }, [externalModelType]);
 
     const handleAddExternalModel = useCallback(() => {
         const overrides = getAIProviderOverrides();
@@ -508,6 +546,7 @@ export const AIProvider: FC<ReturnType<typeof useAI> & {
         const selectedExternalModelType = externalModelType;
         const selectedExternalModelToken = externalModelToken;
         const selectedExternalModelName = externalModelName || externalModelType;
+        const selectedExternalModelEndpoint = externalModelEndpoint.trim() || undefined;
 
         dispatch(AIModelsActions.setCurrentModel(undefined));
         dispatch(AIModelsActions.setModels([]));
@@ -528,6 +567,7 @@ export const AIProvider: FC<ReturnType<typeof useAI> & {
                     id,
                     modelType: selectedExternalModelType,
                     name: selectedExternalModelName,
+                    endpoint: selectedExternalModelEndpoint,
                     isPlatformProvider: true,
                 }));
             } else {
@@ -537,6 +577,7 @@ export const AIProvider: FC<ReturnType<typeof useAI> & {
                     modelType: selectedExternalModelType,
                     name: selectedExternalModelName,
                     token: selectedExternalModelToken,
+                    endpoint: selectedExternalModelEndpoint,
                 }));
             }
 
@@ -545,12 +586,14 @@ export const AIProvider: FC<ReturnType<typeof useAI> & {
             setExternalModel(externalModelTypes[0].id);
             setExternalModelToken("");
             setExternalModelName("");
+            setExternalModelEndpoint("");
             setAddExternalModel(false);
 
             void getAIModels({
                 variables: {
                     modelType: selectedExternalModelType,
                     token: selectedExternalModelToken,
+                    endpoint: selectedExternalModelEndpoint,
                 }
             }).then(({ data, error }) => {
                 if (error) {
@@ -585,11 +628,7 @@ export const AIProvider: FC<ReturnType<typeof useAI> & {
             const errorMessage = getAIProviderErrorMessage(error, t);
             toast.error(`${t('unableToConnect')}: ${errorMessage}`);
         });
-    }, [dispatch, externalModelName, externalModelToken, externalModelType, getAIModels, handleAIModelsError, markProviderAvailable, markProviderUnavailable, t]);
-
-    const handleOpenDocs = useCallback(() => {
-        window.open("https://docs.whodb.com/ai/introduction", "_blank");
-    }, []);
+    }, [dispatch, externalModelEndpoint, externalModelName, externalModelToken, externalModelType, getAIModels, handleAIModelsError, markProviderAvailable, markProviderUnavailable, t]);
 
     const handleClear = useCallback(() => {
         onClear?.();
@@ -650,33 +689,22 @@ export const AIProvider: FC<ReturnType<typeof useAI> & {
                         <p className="ce-provider-hint">{t('providerNameHint')}</p>
                     </div>
                     <div className="flex flex-col gap-2">
+                        <Label>{t('baseUrl')}</Label>
+                        <Input
+                            value={externalModelEndpoint}
+                            onChange={e => { setExternalModelEndpoint(e.target.value); }}
+                            placeholder={defaultEndpointPlaceholder}
+                            data-testid="external-model-base-url"
+                        />
+                        <p className="ce-provider-hint">{t('baseUrlHint')}</p>
+                    </div>
+                    <div className="flex flex-col gap-2">
                         <Label>{t('apiKey')}</Label>
                         <Input
                             value={externalModelToken ?? ""}
                             onChange={e =>{  setExternalModelToken(e.target.value); }}
                             type="password"
                         />
-                        <p className="ce-provider-hint">{t('localProviderHint')}</p>
-                    </div>
-                    <div className="ce-provider-local-setup flex flex-col gap-2 text-xs text-muted-foreground" data-testid="ollama-setup-help">
-                        <div className="font-bold">{t('localSetup')}</div>
-                        <div>
-                            {t('ollamaSetupText').split('<0>')[0]}
-                            <ExternalLink href="https://ollama.com/" className="font-semibold underline text-primary hover:text-primary/80">Ollama</ExternalLink>
-                            {t('ollamaSetupText').split('</0>')[1]}
-                        </div>
-                        <div className="font-semibold">{t('downloadingModel')}</div>
-                        <div>
-                            {t('ollamaDownloadText').split('<0>')[0]}
-                            <ExternalLink href="https://ollama.com/library/llama3.1" className="font-semibold underline text-primary hover:text-primary/80">Llama3.1 8b</ExternalLink>
-                            {t('ollamaDownloadText').split('</0>')[1]}
-                        </div>
-                        <code className="font-mono bg-muted rounded px-2 py-1 w-fit">{t('ollamaRunCommand')}</code>
-                        <div>{t('ollamaDocsText')}</div>
-                        <Button variant="secondary" className="w-fit" onClick={handleOpenDocs}>
-                            {t('docs')}
-                            <ArrowTopRightOnSquareIcon className="w-4 h-4" />
-                        </Button>
                     </div>
                 </div>
             </SheetContent>

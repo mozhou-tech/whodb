@@ -32,6 +32,7 @@ import (
 	_ "github.com/clidey/whodb/core/src/plugins/memcached"
 	_ "github.com/clidey/whodb/core/src/plugins/mongodb"
 	_ "github.com/clidey/whodb/core/src/plugins/mysql"
+	_ "github.com/clidey/whodb/core/src/plugins/openobserve"
 	_ "github.com/clidey/whodb/core/src/plugins/postgres"
 	_ "github.com/clidey/whodb/core/src/plugins/redis"
 	_ "github.com/clidey/whodb/core/src/plugins/sqlite3"

@@ -3,6 +3,8 @@ en_US:
   providerLabel: Provider
   providerName: Name
   providerNameHint: Shown in the model picker.
+  baseUrl: Base URL (Optional)
+  baseUrlHint: Leave blank to use the default endpoint, or enter a custom proxy / OpenAI-compatible URL.
   apiKey: API key
   localProviderHint: Running locally? Pick Ollama or LM Studio and WhoDB finds the models on this machine.
   storedLocally: Stored in this browser only
@@ -681,20 +683,22 @@ zh_CN:
   newChat: "清除聊天"
   ollamaSetupText: "转到<0>Ollama</0>并按照安装说明进行操作。"
   ollamaDownloadText: "安装后，安装您想要使用的所需型号。 在本指南中，我们将使用<0>Llama3.1 8b</0>。 要安装此模型，请运行"
-  ollamaRunCommand: "llama 运行 llama3.1"
+  ollamaRunCommand: "ollama run llama3.1"
   ollamaDocsText: "请查看我们的文档，了解有关如何设置 Ollama 的更多信息。"
   unableToConnect: "无法连接到AI模型"
-  tokenRequired: "连接到提供商需要令牌"
+  tokenRequired: "连接到提供商需要 API 密钥"
   providerUnavailable: "不可用"
   environmentDefined: "通过环境配置"
-  invalidProviderToken: "API 密钥无效。 检查令牌并重试。"
+  invalidProviderToken: "API 密钥无效。请检查后重试。"
   modelDiscoveryFailed: "无法获取该提供商的模型。"
   platformManagedAiLink: "更喜欢零设置？ WhoDB 平台包括托管人工智能提供商。"
   providerEyebrow: "人工智能提供商"
-  providerLabel: "提供者"
-  providerName: "姓名"
+  providerLabel: "提供商"
+  providerName: "名称"
   providerNameHint: "显示在模型选择器中。"
-  apiKey: "API键"
+  baseUrl: "Base URL（可选）"
+  baseUrlHint: "留空则使用官方默认地址，支持填写自定义代理或兼容接口地址。"
+  apiKey: "API 密钥"
   localProviderHint: "本地运行？ 选择 Ollama 或 LM Studio，然后 WhoDB 查找本机上的型号。"
   storedLocally: "仅存储在此浏览器中"
 

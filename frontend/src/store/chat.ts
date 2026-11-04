@@ -20,11 +20,20 @@ import type { AiChatMessage } from '@graphql';
 import { v4 as uuidv4 } from 'uuid';
 
 
+/** Represents a single step in the AI chat thinking/execution trace. */
+export type IChatActivityStep = {
+    id: string;
+    step: string;
+    status: string;
+    detail?: string;
+};
+
 export type IChatMessage = AiChatMessage & {
     isUserInput?: boolean;
     isStreaming?: boolean;
     id?: number;
     activity?: string[];
+    activitySteps?: IChatActivityStep[];
 };
 
 export type ChatSession = {
@@ -105,11 +114,16 @@ export const houdiniSlice = createSlice({
             }
         }
     },
-    setChatActivity: (state, action: PayloadAction<{ id: number; activity: string[]; sessionId?: string }>) => {
+    setChatActivity: (state, action: PayloadAction<{ id: number; activity: string[]; activitySteps?: IChatActivityStep[]; sessionId?: string }>) => {
         const targetId = action.payload.sessionId ?? state.activeSessionId;
         const messages = targetId ? state.sessions.find(session => session.id === targetId)?.messages : state.chats;
         const message = messages?.find(chat => chat.id === action.payload.id);
-        if (message) message.activity = action.payload.activity;
+        if (message) {
+            message.activity = action.payload.activity;
+            if (action.payload.activitySteps) {
+                message.activitySteps = action.payload.activitySteps;
+            }
+        }
     },
     completeStreamingMessage: (state, action: PayloadAction<{ id: number; message: Partial<IChatMessage>; sessionId?: string }>) => {
         const targetId = action.payload.sessionId ?? state.activeSessionId;

@@ -19,7 +19,7 @@ import classNames from 'classnames';
 import type { Dispatch, FC, ReactNode, SetStateAction} from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Edge, Node, NodeProps, NodeTypes, OnInit, ReactFlowInstance, ReactFlowProps} from 'reactflow';
-import ReactFlow, { Background, Controls, PanOnScrollMode, useReactFlow } from 'reactflow';
+import ReactFlow, { Background, Controls, useReactFlow } from 'reactflow';
 import { Tip } from '../tip';
 import { useTranslation } from '@/hooks/use-translation';
 import { FloatingGraphEdge, GraphEdgeConnectionLine } from './edge';
@@ -179,12 +179,9 @@ export const Graph: FC<IGraphProps> = (props) => {
             });
     }, []);
 
-    // Check if Mac for proper modifier key
-    const isMac = typeof navigator !== 'undefined' && navigator.platform.toUpperCase().indexOf('MAC') >= 0;
-
     return <ReactFlow
         ref={reactFlowWrapper}
-        className={classNames("group rounded-lg transition-all", {
+        className={classNames("group rounded-lg transition-all cursor-grab active:cursor-grabbing", {
             "laying-out opacity-0": isLayingOut,
             "opacity-100": !isLayingOut,
             "!cursor-grab": isSpacePressed,
@@ -194,12 +191,11 @@ export const Graph: FC<IGraphProps> = (props) => {
         edgeTypes={edgeTypes}
         nodes={controlledNodes}
         edges={controlledEdges}
-        panOnScroll
-        panOnScrollMode={PanOnScrollMode.Free}
-        panOnDrag={isSpacePressed}
-        selectionOnDrag={!isSpacePressed}
+        panOnScroll={false}
+        panOnDrag={true}
+        selectionOnDrag={false}
         zoomOnScroll={true}
-        zoomActivationKeyCode={isMac ? "Meta" : "Control"}
+        zoomActivationKeyCode={null}
         zoomOnPinch={true}
         zoomOnDoubleClick={true}
         nodesConnectable={false}

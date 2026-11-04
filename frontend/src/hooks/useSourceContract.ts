@@ -81,6 +81,25 @@ export interface SourceContractState extends SourceContractFlags {
     singularStorageUnitLabel: string;
 }
 
+const ZH_STORAGE_UNIT_LABELS: Record<string, string> = {
+    Tables: '数据表',
+    Table: '数据表',
+    Collections: '集合',
+    Collection: '集合',
+    Keys: '键',
+    Key: '键',
+    Indices: '索引',
+    Index: '索引',
+    Items: '条目',
+    Item: '条目',
+    'Storage Units': '存储单元',
+    'Storage Unit': '存储单元',
+};
+
+function localizeStorageUnitLabel(label: string): string {
+    return ZH_STORAGE_UNIT_LABELS[label] ?? label;
+}
+
 /**
  * Resolves the catalog-backed UI traits for a source type.
  *
@@ -116,8 +135,8 @@ export function useSourceContract(sourceType: string | undefined): SourceContrac
             systemObjectFilteringFidelity: traits?.metadata.systemObjectFiltering ?? SourceMetadataFidelity.Unsupported,
             loading,
             isNoSQL: model != null && model !== SourceModel.Relational,
-            storageUnitLabel: item?.storageUnitLabel ?? defaultObjectType?.PluralLabel ?? "Storage Units",
-            singularStorageUnitLabel: item?.singularStorageUnitLabel ?? defaultObjectType?.SingularLabel ?? "Storage Unit",
+            storageUnitLabel: localizeStorageUnitLabel(item?.storageUnitLabel ?? defaultObjectType?.PluralLabel ?? "Storage Units"),
+            singularStorageUnitLabel: localizeStorageUnitLabel(item?.singularStorageUnitLabel ?? defaultObjectType?.SingularLabel ?? "Storage Unit"),
             ...featureFlags,
         };
     }, [sourceType, item, loading]);

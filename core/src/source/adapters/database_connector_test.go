@@ -19,10 +19,12 @@ package adapters
 import (
 	"context"
 	"errors"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/clidey/whodb/core/internal/testutil"
+	"github.com/clidey/whodb/core/src/common/metadatacache"
 	"github.com/clidey/whodb/core/src/engine"
 	"github.com/clidey/whodb/core/src/source"
 )
@@ -826,5 +828,97 @@ func TestDatabaseSessionProtectedExecution(t *testing.T) {
 	}
 	if calls != 2 {
 		t.Fatalf("unexpected dispatch count: %d", calls)
+	}
+}
+
+func TestDatabaseSessionSQLitePersistentMetadataCacheAcrossSessionsAndDDLInvalidation(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "metadata_cache.db")
+	store1, err := metadatacache.Open(dbPath)
+	if err != nil {
+		t.Fatalf("failed to open store1: %v", err)
+	}
+
+	mock := testutil.NewPluginMock(engine.DatabaseType("Postgres"))
+	listCalls := 0
+	validationCalls := 0
+	columnCalls := 0
+
+	mock.GetStorageUnitsFunc = func(*engine.PluginConfig, string) ([]engine.StorageUnit, error) {
+		listCalls++
+		return []engine.StorageUnit{
+			{Name: "users", Attributes: []engine.Record{{Key: "Type", Value: "TABLE"}}},
+		}, nil
+	}
+	mock.StorageUnitExistsFunc = func(*engine.PluginConfig, string, string) (bool, error) {
+		validationCalls++
+		return true, nil
+	}
+	mock.GetColumnsForTableFunc = func(*engine.PluginConfig, string, string) ([]engine.Column, error) {
+		columnCalls++
+		return []engine.Column{{Name: "id", Type: "INTEGER", IsPrimary: true}}, nil
+	}
+	mock.MarkGeneratedColumnsFunc = func(*engine.PluginConfig, string, string, []engine.Column) error {
+		return nil
+	}
+	mock.RawExecuteFunc = func(*engine.PluginConfig, string, ...any) (*engine.GetRowsResult, error) {
+		return &engine.GetRowsResult{}, nil
+	}
+
+	spec := testTypeWithObjectActions(
+		"Postgres",
+		[]source.Surface{source.SurfaceBrowser, source.SurfaceQuery},
+		[]source.Action{source.ActionBrowse, source.ActionExecute},
+		map[source.ObjectKind][]source.Action{
+			source.ObjectKindSchema: {source.ActionBrowse},
+			source.ObjectKindTable:  {source.ActionInspect, source.ActionViewRows},
+		},
+	)
+	spec.Traits.Metadata.Columns = source.MetadataFidelityExact
+
+	session1 := newTestDatabaseSession(spec, mock)
+	session1.store = store1
+
+	if _, err := session1.ListObjects(context.Background(), testSchemaRef(), []source.ObjectKind{source.ObjectKindTable}); err != nil {
+		t.Fatalf("session1 ListObjects failed: %v", err)
+	}
+	if _, err := session1.Columns(context.Background(), testTableRef()); err != nil {
+		t.Fatalf("session1 Columns failed: %v", err)
+	}
+	if listCalls != 1 || columnCalls != 1 || validationCalls != 0 {
+		t.Fatalf("unexpected initial calls: list=%d col=%d val=%d", listCalls, columnCalls, validationCalls)
+	}
+	_ = store1.Close()
+
+	// Simulate app restart with a fresh SQLite3 store and a brand new DatabaseSession
+	store2, err := metadatacache.Open(dbPath)
+	if err != nil {
+		t.Fatalf("failed to reopen store2: %v", err)
+	}
+	defer func() { _ = store2.Close() }()
+
+	session2 := newTestDatabaseSession(spec, mock)
+	session2.store = store2
+
+	objs, err := session2.ListObjects(context.Background(), testSchemaRef(), []source.ObjectKind{source.ObjectKindTable})
+	if err != nil || len(objs) != 1 || objs[0].Name != "users" {
+		t.Fatalf("session2 ListObjects from SQLite cache failed: %v %#v", err, objs)
+	}
+	cols, err := session2.Columns(context.Background(), testTableRef())
+	if err != nil || len(cols) != 1 || cols[0].Name != "id" {
+		t.Fatalf("session2 Columns from SQLite cache failed: %v %#v", err, cols)
+	}
+	if listCalls != 1 || columnCalls != 1 || validationCalls != 0 {
+		t.Fatalf("expected 0 new plugin calls on SQLite cache hit, got list=%d col=%d val=%d", listCalls, columnCalls, validationCalls)
+	}
+
+	// Running DDL invalidates the scope so the next Columns call hits the plugin again
+	if _, err := session2.RunQuery(context.Background(), "ALTER TABLE public.users ADD COLUMN email TEXT"); err != nil {
+		t.Fatalf("session2 DDL RunQuery failed: %v", err)
+	}
+	if _, err := session2.Columns(context.Background(), testTableRef()); err != nil {
+		t.Fatalf("session2 Columns after DDL failed: %v", err)
+	}
+	if columnCalls != 2 {
+		t.Fatalf("expected plugin GetColumnsForTable to be called after DDL invalidation, got %d", columnCalls)
 	}
 }

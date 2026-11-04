@@ -47,7 +47,7 @@ export const defaultFeatures: FeatureFlags = {
     aiChat: false,
     multiProfile: false,
     advancedDatabases: false,
-    contactUsPage: true, // Enabled in CE
+    contactUsPage: false,
     settingsPage: true, // Enabled in CE
     sampleDatabaseTour: true, // Enabled in CE
     autoStartTourOnLogin: true, // Enabled in CE

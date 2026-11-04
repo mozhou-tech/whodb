@@ -197,6 +197,91 @@ static void stopAccessingPath(const char *path) {
 	NSURL *url = [NSURL fileURLWithPath:[NSString stringWithUTF8String:path]];
 	[url stopAccessingSecurityScopedResource];
 }
+
+typedef struct {
+	int ok;
+	int x;
+	int y;
+	int width;
+	int height;
+	int maximized;
+} NativeWindowFrame;
+
+static NSWindow* findPrimaryAppWindow(void) {
+	NSWindow *win = [NSApp mainWindow];
+	if (win != nil) {
+		return win;
+	}
+	win = [NSApp keyWindow];
+	if (win != nil) {
+		return win;
+	}
+	for (NSWindow *candidate in [NSApp windows]) {
+		if ([candidate canBecomeKeyWindow] || [candidate isVisible]) {
+			return candidate;
+		}
+	}
+	return [[NSApp windows] firstObject];
+}
+
+static NativeWindowFrame getNativeWindowFrame(void) {
+	__block NativeWindowFrame out = {0, 0, 0, 0, 0, 0};
+	void (^block)(void) = ^{
+		NSWindow *win = findPrimaryAppWindow();
+		if (win == nil) {
+			return;
+		}
+		NSRect frame = [win frame];
+		if (frame.size.width <= 0 || frame.size.height <= 0) {
+			return;
+		}
+		out.ok = 1;
+		out.x = (int)frame.origin.x;
+		out.y = (int)frame.origin.y;
+		out.width = (int)frame.size.width;
+		out.height = (int)frame.size.height;
+		out.maximized = [win isZoomed] ? 1 : 0;
+	};
+	if ([NSThread isMainThread]) {
+		block();
+	} else {
+		dispatch_sync(dispatch_get_main_queue(), block);
+	}
+	return out;
+}
+
+static void applyNativeWindowFrameNow(int x, int y, int width, int height, int maximized) {
+	NSWindow *win = findPrimaryAppWindow();
+	if (win == nil || width <= 0 || height <= 0) {
+		return;
+	}
+	NSRect target = NSMakeRect((CGFloat)x, (CGFloat)y, (CGFloat)width, (CGFloat)height);
+	BOOL intersectsScreen = NO;
+	for (NSScreen *screen in [NSScreen screens]) {
+		if (NSIntersectsRect(target, [screen visibleFrame])) {
+			intersectsScreen = YES;
+			break;
+		}
+	}
+	if (!intersectsScreen) {
+		return;
+	}
+	[win setFrame:target display:YES animate:NO];
+	if (maximized && ![win isZoomed]) {
+		[win zoom:nil];
+	}
+}
+
+static void setNativeWindowFrame(int x, int y, int width, int height, int maximized) {
+	void (^block)(void) = ^{
+		applyNativeWindowFrameNow(x, y, width, height, maximized);
+	};
+	if ([NSThread isMainThread]) {
+		block();
+	} else {
+		dispatch_sync(dispatch_get_main_queue(), block);
+	}
+}
 */
 import "C"
 
@@ -276,6 +361,33 @@ func (a *App) StopAccessingDatabase(path string) {
 	cPath := C.CString(path)
 	defer C.free(unsafe.Pointer(cPath))
 	C.stopAccessingPath(cPath)
+}
+
+func getPlatformWindowSettings() (WindowSettings, bool) {
+	f := C.getNativeWindowFrame()
+	if f.ok == 0 {
+		return WindowSettings{}, false
+	}
+	return WindowSettings{
+		X:          int(f.x),
+		Y:          int(f.y),
+		Width:      int(f.width),
+		Height:     int(f.height),
+		Maximized:  f.maximized != 0,
+		CocoaFrame: true,
+	}, true
+}
+
+func setPlatformWindowSettings(s WindowSettings) bool {
+	if !s.CocoaFrame || s.Width <= 0 || s.Height <= 0 {
+		return false
+	}
+	maxInt := C.int(0)
+	if s.Maximized {
+		maxInt = 1
+	}
+	C.setNativeWindowFrame(C.int(s.X), C.int(s.Y), C.int(s.Width), C.int(s.Height), maxInt)
+	return true
 }
 
 func buildExtensionList(cfg databaseFileConfig) string {

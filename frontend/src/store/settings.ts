@@ -58,7 +58,7 @@ const getInitialState = (): ISettingsState => {
     return {
         metricsEnabled: getInitialMetricsEnabled(),
         newUIEnabled: settingsDefaults.newUIEnabled ?? false,
-        storageUnitView: 'card',
+        storageUnitView: 'list',
         fontSize: 'medium',
         borderRadius: 'medium',
         spacing: 'comfortable',
@@ -90,8 +90,8 @@ export const settingsSlice = createSlice({
         setNewUIEnabled: (state, action: PayloadAction<ISettingsState["newUIEnabled"]>) => {
             state.newUIEnabled = action.payload;
         },
-        setStorageUnitView: (state, action: PayloadAction<ISettingsState["storageUnitView"]>) => {
-            state.storageUnitView = action.payload;
+        setStorageUnitView: (state, _action: PayloadAction<ISettingsState["storageUnitView"]>) => {
+            state.storageUnitView = 'list';
         },
         // UI Customization actions
         setFontSize: (state, action: PayloadAction<ISettingsState["fontSize"]>) => {
@@ -112,8 +112,8 @@ export const settingsSlice = createSlice({
         setMaxPageSize: (state, action: PayloadAction<ISettingsState["maxPageSize"]>) => {
             state.maxPageSize = action.payload;
         },
-        setLanguage: (state, action: PayloadAction<ISettingsState["language"]>) => {
-            state.language = action.payload;
+        setLanguage: (state, _action: PayloadAction<ISettingsState["language"]>) => {
+            state.language = 'zh_CN';
         },
         setDatabaseSchemaTerminology: (state, action: PayloadAction<ISettingsState["databaseSchemaTerminology"]>) => {
             state.databaseSchemaTerminology = action.payload;

@@ -63,7 +63,6 @@ import {
 } from '@clidey/ux';
 import {GetColumnsBatchDocument, GetStorageUnitsDocument, type RowsResult} from '@graphql';
 import classNames from "classnames";
-import { AnimatePresence, motion } from "framer-motion";
 import type {
     ChangeEvent,
     FC,
@@ -993,7 +992,6 @@ export const RawExecutePage: FC = () => {
     const location = useLocation();
     const dispatch = useAppDispatch();
     const { pages = [], cells = {}, activePageId } = useAppSelector(state => state.scratchpad);
-    const disableAnimations = useAppSelector(state => state.settings.disableAnimations);
     const [confirmOpen, setConfirmOpen] = useState(false);
     const [pageToDelete, setPageToDelete] = useState<string | null>(null);
     const [toolbarTarget, setToolbarTarget] = useState<HTMLDivElement | null>(null);
@@ -1148,30 +1146,23 @@ export const RawExecutePage: FC = () => {
                                     <div ref={setToolbarTarget} data-testid="scratchpad-toolbar" />
                                 </div>
                                 <TabsContent value={activePageId ?? ""} className="h-full w-full mt-2">
-                                    <AnimatePresence mode="wait">
-                                        {pages.map((page) => (
-                                            <motion.div
-                                                key={page.id}
-                                                className={classNames({
-                                                    "hidden": page.id !== activePageId,
-                                                })}
-                                                {...(disableAnimations ? {} : {
-                                                    initial: { opacity: 0, y: 10 },
-                                                    animate: { opacity: 1, y: 0 },
-                                                    exit: { opacity: 0, y: -10 }
-                                                })}
-                                            >
-                                                <RawExecuteSubPage 
-                                                    key={page.id} 
-                                                    pageId={page.id}
-                                                    cellIds={page.cellIds ?? []}
-                                                    cells={cells}
-                                                    toolbarTarget={page.id === activePageId ? toolbarTarget : null}
-                                                    sqlSchema={sqlSchema}
-                                                />
-                                            </motion.div>
-                                        ))}
-                                    </AnimatePresence>
+                                    {pages.map((page) => (
+                                        <div
+                                            key={page.id}
+                                            className={classNames({
+                                                "hidden": page.id !== activePageId,
+                                            })}
+                                        >
+                                            <RawExecuteSubPage 
+                                                key={page.id} 
+                                                pageId={page.id}
+                                                cellIds={page.cellIds ?? []}
+                                                cells={cells}
+                                                toolbarTarget={page.id === activePageId ? toolbarTarget : null}
+                                                sqlSchema={sqlSchema}
+                                            />
+                                        </div>
+                                    ))}
                                 </TabsContent>
                             </Tabs>
                         </div>

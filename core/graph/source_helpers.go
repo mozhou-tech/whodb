@@ -627,6 +627,15 @@ func mergeCurrentSourceValues(current *source.Credentials, requested map[string]
 	return merged
 }
 
+func extractOpsProjectID(values map[string]string) string {
+	if len(values) == 0 {
+		return ""
+	}
+	projectID := values["ProjectId"]
+	delete(values, "ProjectId")
+	return projectID
+}
+
 func cloneStringRows(rows [][]string) [][]string {
 	cloned := make([][]string, 0, len(rows))
 	for _, row := range rows {

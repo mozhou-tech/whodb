@@ -69,7 +69,7 @@ import {copyToClipboard} from "../../services/clipboard";
 import {MessageCopyAction} from "../../components/message-copy-action";
 import {extensions, featureFlags} from "../../config/features";
 import {InternalRoutes} from "../../config/routes";
-import {HoudiniActions, type IChatMessage} from "../../store/chat";
+import {HoudiniActions, type IChatActivityStep, type IChatMessage} from "../../store/chat";
 import {useAppDispatch, useAppSelector} from "../../store/hooks";
 import {reduxStorePersistor} from "../../store";
 import {ScratchpadActions} from "../../store/scratchpad";
@@ -507,7 +507,7 @@ export const ChatPage: FC = () => {
     const chatExamples = useChatExamples();
 
     const [loading, setLoading] = useState(false);
-    const [progressSteps, setProgressSteps] = useState<Array<{id: string; step: string; status: string}>>([]);
+    const [progressSteps, setProgressSteps] = useState<IChatActivityStep[]>([]);
 
     // Database-specific suggestions
     const [getDatabaseSuggestions, { loading: suggestionsLoading }] = useLazyQuery(GetDatabaseQuerySuggestionsDocument, {
@@ -655,6 +655,7 @@ export const ChatPage: FC = () => {
                     modelType: modelType.modelType,
                     providerId: modelType.id ?? '',
                     token: modelType.token ?? '',
+                    endpoint: modelType.endpoint ?? '',
                     model: currentModel ?? '',
                     input: {
                         Query: sanitizedQuery,
@@ -696,7 +697,7 @@ export const ChatPage: FC = () => {
             let streamDone = false;
             let rejectedTool = false;
             let firstSqlMessageId: number | null = null;
-            let progressTrace: Array<{id: string; step: string; status: string}> = [];
+            let progressTrace: IChatActivityStep[] = [];
 
             while (true) {
                 const { done, value } = await reader.read();
@@ -722,10 +723,20 @@ export const ChatPage: FC = () => {
 
                             if (currentEventType === 'progress') {
                                 if (typeof parsed.step === 'string' && typeof parsed.status === 'string') {
+                                    const detail = typeof parsed.detail === 'string' && parsed.detail.trim() !== '' ? parsed.detail : undefined;
                                     const index = progressTrace.findIndex(item => item.step === parsed.step && item.status !== 'completed');
                                     progressTrace = index >= 0
-                                        ? progressTrace.map((item, position) => position === index ? {...item, status: parsed.status} : item)
-                                        : [...progressTrace, {id: `${parsed.step}:${progressTrace.length + 1}`, step: parsed.step, status: parsed.status}];
+                                        ? progressTrace.map((item, position) => position === index ? {
+                                            ...item,
+                                            status: parsed.status,
+                                            detail: detail ?? item.detail,
+                                        } : item)
+                                        : [...progressTrace, {
+                                            id: `${parsed.step}:${progressTrace.length + 1}`,
+                                            step: parsed.step,
+                                            status: parsed.status,
+                                            detail,
+                                        }];
                                     setProgressSteps(progressTrace);
                                 }
                             } else if (currentEventType === 'chunk') {
@@ -790,8 +801,16 @@ export const ChatPage: FC = () => {
                                     }
                                 }
                             } else if (currentEventType === 'done') {
-                                if (firstSqlMessageId != null) {
-                                    dispatch(HoudiniActions.setChatActivity({id: firstSqlMessageId, activity: progressTrace.filter(item => item.status === 'completed').map(item => item.id)}));
+                                const completedSteps = progressTrace.filter(item => item.status === 'completed');
+                                const targetActivityId = (streamingText.trim() !== '' || rejectedTool)
+                                    ? streamingMessageId
+                                    : firstSqlMessageId;
+                                if (targetActivityId != null && completedSteps.length > 0) {
+                                    dispatch(HoudiniActions.setChatActivity({
+                                        id: targetActivityId,
+                                        activity: completedSteps.map(item => item.id),
+                                        activitySteps: completedSteps,
+                                    }));
                                 }
                                 // Stream complete - finalize the streaming message
                                 if (rejectedTool) {
@@ -902,7 +921,7 @@ export const ChatPage: FC = () => {
                         ProviderId: modelType.id ?? undefined,
                         Token: modelType.token ?? undefined,
                         Model: currentModel,
-                        Endpoint: undefined,
+                        Endpoint: modelType.endpoint ?? undefined,
                     }
                 }
             });
@@ -920,9 +939,19 @@ export const ChatPage: FC = () => {
         }
     }, [modelType, currentModel, activeSessionId, dispatch, generateChatTitleMutation]);
 
+    const hasReadyModel = useMemo(() => {
+        if (modelType == null || currentModel == null || currentModel.trim() === '') {
+            return false;
+        }
+        if (aiState.unavailableProviders.has(modelType.id)) {
+            return false;
+        }
+        return modelAvailable || models.length > 0;
+    }, [aiState.unavailableProviders, currentModel, modelAvailable, modelType, models.length]);
+
     const disableChat = useMemo(() => {
-        return loading || modelType == null || currentModel == null || models.length === 0 || !modelAvailable || query.trim().length === 0;
-    }, [loading, modelType, modelAvailable, models.length, currentModel, query]);
+        return loading || !hasReadyModel || query.trim().length === 0;
+    }, [loading, hasReadyModel, query]);
 
     const handleKeyDown: KeyboardEventHandler<HTMLInputElement> = useCallback((e) => {
         if (matchesShortcut(e, SHORTCUTS.clearEditor)) {
@@ -1101,8 +1130,8 @@ export const ChatPage: FC = () => {
     }, [dispatch, t]);
 
     const disableAll = useMemo(() => {
-        return modelType == null || currentModel == null || models.length === 0 || !modelAvailable;
-    }, [modelType, modelAvailable, models.length, currentModel]);
+        return !hasReadyModel;
+    }, [hasReadyModel]);
 
     // Initialize chat sessions on mount
     const hasInitialized = useRef(false);
@@ -1218,9 +1247,37 @@ export const ChatPage: FC = () => {
                                             const firstReply = !chat.isUserInput && displayChats[i-1]?.isUserInput;
                                             const nextUser = firstReply ? displayChats.findIndex((message, index) => index > i && message.isUserInput) : -1;
                                             const turn = firstReply ? displayChats.slice(i, nextUser < 0 ? undefined : nextUser) : [];
-                                            const recordedSteps = turn.find(message => message.activity?.length)?.activity ?? [];
-                                            const activitySteps = recordedSteps.map(id => ({id, label: id.startsWith('schema:') ? t('readSchema') : id.startsWith('plan:') ? t('preparingQuery') : id.startsWith('query:') ? t('runQuery') : id.startsWith('draft:') ? t('draftChange') : t('retryingQuery')}));
-                                            const activity = activitySteps.length > 0 && <details className="ce-chat-activity"><summary><WhoDBChatIcon name="check-circle" /><strong>{t('activitySteps', {count: activitySteps.length})}</strong>{activitySteps.map(step => <span key={step.id}>{step.label}</span>)}<b>{t('activityDetails')}</b></summary><ol>{activitySteps.map(step => <li key={step.id}>{step.label}</li>)}</ol></details>;
+                                            const turnActivityMessage = turn.find(message => message.activitySteps?.length || message.activity?.length);
+                                            const recordedSteps = turnActivityMessage?.activity ?? [];
+                                            const recordedStepDetails = turnActivityMessage?.activitySteps ?? [];
+                                            const resolveStepLabel = (stepKey: string) => (
+                                                stepKey.startsWith('schema') ? t('readSchema')
+                                                : stepKey.startsWith('plan') ? t('preparingQuery')
+                                                : stepKey.startsWith('query') ? t('runQuery')
+                                                : stepKey.startsWith('draft') ? t('draftChange')
+                                                : t('retryingQuery')
+                                            );
+                                            const activitySteps = recordedStepDetails.length > 0
+                                                ? recordedStepDetails.map(item => ({id: item.id, label: resolveStepLabel(item.step), detail: item.detail}))
+                                                : recordedSteps.map(id => ({id, label: resolveStepLabel(id), detail: undefined}));
+                                            const activity = activitySteps.length > 0 && (
+                                                <details className="ce-chat-activity" open>
+                                                    <summary>
+                                                        <WhoDBChatIcon name="check-circle" />
+                                                        <strong>{t('activitySteps', {count: activitySteps.length})}</strong>
+                                                        {activitySteps.map(step => <span key={step.id}>{step.label}</span>)}
+                                                        <b>{t('activityDetails')}</b>
+                                                    </summary>
+                                                    <ol>
+                                                        {activitySteps.map(step => (
+                                                            <li key={step.id}>
+                                                                <div className="ce-chat-activity-step-title">{step.label}</div>
+                                                                {step.detail && <div className="ce-chat-activity-step-detail">{step.detail}</div>}
+                                                            </li>
+                                                        ))}
+                                                    </ol>
+                                                </details>
+                                            );
                                             if (chat.Type === 'activity') return null;
                                             const priorUserText = displayChats.slice(0, i).reverse().find(message => message.isUserInput)?.Text ?? '';
                                             const isOntologyQuestion = /ontolog/i.test(priorUserText);
@@ -1369,9 +1426,17 @@ export const ChatPage: FC = () => {
                     <div className="ce-chat-thinking" role="status">
                         <div className="ce-chat-thinking-heading"><div><img src={logoImage} alt="" className="ce-chat-working-avatar" /><strong>{t('workingOnIt')}</strong><span className="ce-chat-thinking-count">{progressSteps.filter(item => item.status === 'completed').length}/{progressSteps.length || 1}</span></div><span>{t('runOnSource', {source: authProfile?.Database === 'whodb-sample' ? t('sampleDatabase') : (authProfile?.Database ?? '')})}</span></div>
                         <div className="ce-chat-thinking-list">
-                            {(progressSteps.length ? progressSteps : [{id: 'thinking', step: 'thinking', status: 'started'}]).map(item => {
+                            {(progressSteps.length ? progressSteps : [{id: 'thinking', step: 'thinking', status: 'started', detail: undefined}]).map(item => {
                                 const label = item.step === 'schema' ? t('readingSchema') : item.step === 'plan' ? t('preparingQuery') : item.step === 'query' ? t('runQuery') : item.step === 'draft' ? t('draftChange') : item.step === 'retry' ? t('retryingQuery') : t('thinking');
-                                return <div key={item.id} className="ce-chat-thinking-step"><span className="ce-chat-step-icon">{item.status === 'completed' ? <WhoDBChatIcon name="check-circle" /> : <Spinner />}</span><span>{label}</span></div>;
+                                return (
+                                    <div key={item.id} className="ce-chat-thinking-step">
+                                        <div className="ce-chat-thinking-step-row">
+                                            <span className="ce-chat-step-icon">{item.status === 'completed' ? <WhoDBChatIcon name="check-circle" /> : <Spinner />}</span>
+                                            <span className="ce-chat-thinking-step-label">{label}</span>
+                                        </div>
+                                        {item.detail && <div className="ce-chat-thinking-detail">{item.detail}</div>}
+                                    </div>
+                                );
                             })}
                         </div>
                     </div>

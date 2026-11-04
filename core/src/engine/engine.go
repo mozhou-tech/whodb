@@ -34,6 +34,7 @@ const (
 	DatabaseType_MongoDB       = "MongoDB"
 	DatabaseType_Redis         = "Redis"
 	DatabaseType_ElasticSearch = "ElasticSearch"
+	DatabaseType_OpenObserve   = "OpenObserve"
 	DatabaseType_CockroachDB   = "CockroachDB"
 	DatabaseType_ClickHouse    = "ClickHouse"
 	DatabaseType_DuckDB        = "DuckDB"

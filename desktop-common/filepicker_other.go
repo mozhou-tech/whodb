@@ -19,3 +19,11 @@ func (a *App) ResolveDatabaseBookmark(path string) (string, error) {
 
 // StopAccessingDatabase is a no-op on non-darwin platforms.
 func (a *App) StopAccessingDatabase(path string) {}
+
+func getPlatformWindowSettings() (WindowSettings, bool) {
+	return WindowSettings{}, false
+}
+
+func setPlatformWindowSettings(_ WindowSettings) bool {
+	return false
+}

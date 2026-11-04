@@ -1,0 +1,24 @@
+query SourceTargetDatabases($target: SourceTargetConnectionInput!) {
+  SourceTargetDatabases(target: $target)
+}
+
+query SourceTargetSchemas($target: SourceTargetConnectionInput!) {
+  SourceTargetSchemas(target: $target)
+}
+
+mutation CopySourceObjects($input: CopySourceObjectsInput!) {
+  CopySourceObjects(input: $input) {
+    Status
+    TotalTables
+    SucceededCount
+    SkippedCount
+    FailedCount
+    TotalRowsCopied
+    Details {
+      Name
+      Status
+      RowsCopied
+      Message
+    }
+  }
+}

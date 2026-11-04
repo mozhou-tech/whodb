@@ -96,9 +96,22 @@ function buildValues(valuesMap: Record<string, string>, advanced: SourceCredenti
   return values.concat(advanced);
 }
 
+function inferProjectFromTitle(raw?: string): { projectId?: string; projectName?: string } {
+  if (!raw) return {};
+  const match = raw.match(/^\[([^\]]+)\]/);
+  if (!match?.[1]) return {};
+  const name = match[1].trim();
+  return name ? { projectId: name, projectName: name } : {};
+}
+
 function normalizeProfile(payload: SourceLoginPayload | LocalLoginProfile): LocalLoginProfile {
+  const inferred = inferProjectFromTitle(payload.DisplayName ?? payload.Id);
   if ("Type" in payload && "Advanced" in payload) {
-    return payload;
+    return {
+      ...payload,
+      ProjectId: payload.ProjectId ?? inferred.projectId,
+      ProjectName: payload.ProjectName ?? inferred.projectName,
+    };
   }
 
   const valuesMap = mapValues(payload.Values);
@@ -113,6 +126,8 @@ function normalizeProfile(payload: SourceLoginPayload | LocalLoginProfile): Loca
     Username: valuesMap.Username ?? "",
     Password: valuesMap.Password ?? "",
     Advanced: advanced,
+    ProjectId: payload.ProjectId ?? inferred.projectId,
+    ProjectName: payload.ProjectName ?? inferred.projectName,
   };
 }
 
@@ -178,9 +193,21 @@ export const authSlice = createSlice({
         const profile = normalizeProfile(item);
         const existingIdx = state.profiles.findIndex(p => p.Id === profile.Id);
         if (existingIdx >= 0) {
-          state.profiles[existingIdx] = profile;
+          const prev = state.profiles[existingIdx];
+          const mergedDatabase = prev.Database || profile.Database;
+          state.profiles[existingIdx] = {
+            ...profile,
+            Database: mergedDatabase,
+          };
         } else {
           state.profiles.push(profile);
+        }
+        if (state.current?.Id === profile.Id) {
+          state.current = {
+            ...profile,
+            Database: state.current.Database || profile.Database,
+            Values: state.current.Database ? state.current.Values : profile.Values,
+          };
         }
       }
     },

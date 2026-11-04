@@ -68,6 +68,7 @@ const (
 	connectorMemcached     = "Memcached"
 	connectorTDengine      = "TDengine"
 	connectorElasticSearch = "ElasticSearch"
+	connectorOpenObserve   = "OpenObserve"
 )
 
 var (
@@ -76,6 +77,22 @@ var (
 )
 
 var familySpecs = map[string]FamilySpec{
+	connectorOpenObserve: {
+		Category:      source.CategorySearch,
+		Traits:        openObserveTraits(),
+		Model:         source.ModelSearch,
+		Surfaces:      []source.Surface{source.SurfaceBrowser, source.SurfaceQuery},
+		RootActions:   []source.Action{source.ActionBrowse},
+		BrowsePath:    []source.ObjectKind{objectKindTable},
+		DefaultObject: objectKindTable,
+		ObjectTypes: []source.ObjectType{{
+			Kind:          objectKindTable,
+			DataShape:     source.DataShapeTabular,
+			Actions:       []source.Action{source.ActionInspect, source.ActionViewRows},
+			Views:         []source.View{source.ViewGrid, source.ViewMetadata},
+			SingularLabel: "Stream", PluralLabel: "Streams",
+		}},
+	},
 	connectorPostgres: {
 		Category:       source.CategoryDatabase,
 		Traits:         withExecutionTraits(postgresTraits(source.HostInputModeHostnameOrURL, source.HostInputURLParserPostgres), true, true),
@@ -1110,4 +1127,14 @@ func fileTraits(profileLabelStrategy source.ProfileLabelStrategy) source.TypeTra
 //go:fix inline
 func ptr(kind source.ObjectKind) *source.ObjectKind { //nolint:unused
 	return new(kind)
+}
+
+func openObserveTraits() source.TypeTraits {
+	traits := withNativeExecutionTraits(networkTraits(source.HostInputModeHostname, source.HostInputURLParserNone))
+	traits.Connection.SupportsCustomCAContent = false
+	traits.Query.SupportsReadOnlyExecution = true
+	traits.Metadata.Columns = source.MetadataFidelityExact
+	traits.Metadata.Constraints = source.MetadataFidelityUnsupported
+	traits.Metadata.Graph = source.MetadataFidelityUnsupported
+	return traits
 }

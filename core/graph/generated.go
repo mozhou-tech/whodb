@@ -91,6 +91,23 @@ type ComplexityRoot struct {
 		Unique       func(childComplexity int) int
 	}
 
+	CopySourceObjectsResult struct {
+		Details         func(childComplexity int) int
+		FailedCount     func(childComplexity int) int
+		SkippedCount    func(childComplexity int) int
+		Status          func(childComplexity int) int
+		SucceededCount  func(childComplexity int) int
+		TotalRowsCopied func(childComplexity int) int
+		TotalTables     func(childComplexity int) int
+	}
+
+	CopyTableDetail struct {
+		Message    func(childComplexity int) int
+		Name       func(childComplexity int) int
+		RowsCopied func(childComplexity int) int
+		Status     func(childComplexity int) int
+	}
+
 	CreationOptionDefinition struct {
 		Key      func(childComplexity int) int
 		Label    func(childComplexity int) int
@@ -175,6 +192,7 @@ type ComplexityRoot struct {
 
 	Mutation struct {
 		AddSourceRow                     func(childComplexity int, ref model.SourceObjectRefInput, values []*model.RecordInput) int
+		CopySourceObjects                func(childComplexity int, input model.CopySourceObjectsInput) int
 		CreateSourceObject               func(childComplexity int, parent *model.SourceObjectRefInput, name string, fields []*model.RecordInput) int
 		CreateSourceObjectFromDefinition func(childComplexity int, parent *model.SourceObjectRefInput, definition model.SourceObjectDefinitionInput) int
 		DeleteSourceRow                  func(childComplexity int, ref model.SourceObjectRefInput, values []*model.RecordInput) int
@@ -218,7 +236,7 @@ type ComplexityRoot struct {
 	}
 
 	Query struct {
-		AIModel                      func(childComplexity int, providerID *string, modelType string, token *string) int
+		AIModel                      func(childComplexity int, providerID *string, modelType string, token *string, endpoint *string) int
 		AIProviders                  func(childComplexity int) int
 		AnalyzeMockDataDependencies  func(childComplexity int, ref model.SourceObjectRefInput, rowCount int, fkDensityRatio *int) int
 		Health                       func(childComplexity int) int
@@ -241,6 +259,8 @@ type ComplexityRoot struct {
 		SourceRows                   func(childComplexity int, ref model.SourceObjectRefInput, where *model.WhereCondition, sort []*model.SortCondition, pageSize int, pageOffset int) int
 		SourceSession                func(childComplexity int) int
 		SourceSessionMetadata        func(childComplexity int) int
+		SourceTargetDatabases        func(childComplexity int, target model.SourceTargetConnectionInput) int
+		SourceTargetSchemas          func(childComplexity int, target model.SourceTargetConnectionInput) int
 		SourceTypes                  func(childComplexity int) int
 		UpdateInfo                   func(childComplexity int) int
 		Version                      func(childComplexity int) int
@@ -514,6 +534,7 @@ type MutationResolver interface {
 	AddSourceRow(ctx context.Context, ref model.SourceObjectRefInput, values []*model.RecordInput) (*model.StatusResponse, error)
 	DeleteSourceRow(ctx context.Context, ref model.SourceObjectRefInput, values []*model.RecordInput) (*model.StatusResponse, error)
 	GenerateMockData(ctx context.Context, input model.MockDataGenerationInput) (*model.MockDataGenerationStatus, error)
+	CopySourceObjects(ctx context.Context, input model.CopySourceObjectsInput) (*model.CopySourceObjectsResult, error)
 	ImportSQL(ctx context.Context, input model.ImportSQLInput) (*model.ImportResult, error)
 	ImportPreview(ctx context.Context, file graphql.Upload, options model.ImportFileOptions, ref *model.SourceObjectRefInput, useHeaderMapping *bool) (*model.ImportPreview, error)
 	ImportSourceObjectFile(ctx context.Context, input model.ImportFileInput) (*model.ImportResult, error)
@@ -541,12 +562,14 @@ type QueryResolver interface {
 	RunSourceQuery(ctx context.Context, query string) (*model.RowsResult, error)
 	SourceGraph(ctx context.Context, ref *model.SourceObjectRefInput) ([]*model.GraphUnit, error)
 	AIProviders(ctx context.Context) ([]*model.AIProvider, error)
-	AIModel(ctx context.Context, providerID *string, modelType string, token *string) ([]string, error)
+	AIModel(ctx context.Context, providerID *string, modelType string, token *string, endpoint *string) ([]string, error)
 	SettingsConfig(ctx context.Context) (*model.SettingsConfig, error)
 	MockDataMaxRowCount(ctx context.Context) (int, error)
 	AnalyzeMockDataDependencies(ctx context.Context, ref model.SourceObjectRefInput, rowCount int, fkDensityRatio *int) (*model.MockDataDependencyAnalysis, error)
 	SSLStatus(ctx context.Context) (*model.SSLStatus, error)
 	SourceQuerySuggestions(ctx context.Context, ref *model.SourceObjectRefInput) ([]*model.SourceQuerySuggestion, error)
+	SourceTargetDatabases(ctx context.Context, target model.SourceTargetConnectionInput) ([]string, error)
+	SourceTargetSchemas(ctx context.Context, target model.SourceTargetConnectionInput) ([]string, error)
 }
 
 // endregion ************************** generated!.gotpl **************************
@@ -805,6 +828,74 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.ColumnCreationLabels.Unique(childComplexity), true
+
+	case "CopySourceObjectsResult.Details":
+		if e.ComplexityRoot.CopySourceObjectsResult.Details == nil {
+			break
+		}
+
+		return e.ComplexityRoot.CopySourceObjectsResult.Details(childComplexity), true
+	case "CopySourceObjectsResult.FailedCount":
+		if e.ComplexityRoot.CopySourceObjectsResult.FailedCount == nil {
+			break
+		}
+
+		return e.ComplexityRoot.CopySourceObjectsResult.FailedCount(childComplexity), true
+	case "CopySourceObjectsResult.SkippedCount":
+		if e.ComplexityRoot.CopySourceObjectsResult.SkippedCount == nil {
+			break
+		}
+
+		return e.ComplexityRoot.CopySourceObjectsResult.SkippedCount(childComplexity), true
+	case "CopySourceObjectsResult.Status":
+		if e.ComplexityRoot.CopySourceObjectsResult.Status == nil {
+			break
+		}
+
+		return e.ComplexityRoot.CopySourceObjectsResult.Status(childComplexity), true
+	case "CopySourceObjectsResult.SucceededCount":
+		if e.ComplexityRoot.CopySourceObjectsResult.SucceededCount == nil {
+			break
+		}
+
+		return e.ComplexityRoot.CopySourceObjectsResult.SucceededCount(childComplexity), true
+	case "CopySourceObjectsResult.TotalRowsCopied":
+		if e.ComplexityRoot.CopySourceObjectsResult.TotalRowsCopied == nil {
+			break
+		}
+
+		return e.ComplexityRoot.CopySourceObjectsResult.TotalRowsCopied(childComplexity), true
+	case "CopySourceObjectsResult.TotalTables":
+		if e.ComplexityRoot.CopySourceObjectsResult.TotalTables == nil {
+			break
+		}
+
+		return e.ComplexityRoot.CopySourceObjectsResult.TotalTables(childComplexity), true
+
+	case "CopyTableDetail.Message":
+		if e.ComplexityRoot.CopyTableDetail.Message == nil {
+			break
+		}
+
+		return e.ComplexityRoot.CopyTableDetail.Message(childComplexity), true
+	case "CopyTableDetail.Name":
+		if e.ComplexityRoot.CopyTableDetail.Name == nil {
+			break
+		}
+
+		return e.ComplexityRoot.CopyTableDetail.Name(childComplexity), true
+	case "CopyTableDetail.RowsCopied":
+		if e.ComplexityRoot.CopyTableDetail.RowsCopied == nil {
+			break
+		}
+
+		return e.ComplexityRoot.CopyTableDetail.RowsCopied(childComplexity), true
+	case "CopyTableDetail.Status":
+		if e.ComplexityRoot.CopyTableDetail.Status == nil {
+			break
+		}
+
+		return e.ComplexityRoot.CopyTableDetail.Status(childComplexity), true
 
 	case "CreationOptionDefinition.Key":
 		if e.ComplexityRoot.CreationOptionDefinition.Key == nil {
@@ -1088,6 +1179,17 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.Mutation.AddSourceRow(childComplexity, args["ref"].(model.SourceObjectRefInput), args["values"].([]*model.RecordInput)), true
+	case "Mutation.CopySourceObjects":
+		if e.ComplexityRoot.Mutation.CopySourceObjects == nil {
+			break
+		}
+
+		args, err := ec.field_Mutation_CopySourceObjects_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.ComplexityRoot.Mutation.CopySourceObjects(childComplexity, args["input"].(model.CopySourceObjectsInput)), true
 	case "Mutation.CreateSourceObject":
 		if e.ComplexityRoot.Mutation.CreateSourceObject == nil {
 			break
@@ -1385,7 +1487,7 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 			return 0, false
 		}
 
-		return e.ComplexityRoot.Query.AIModel(childComplexity, args["providerId"].(*string), args["modelType"].(string), args["token"].(*string)), true
+		return e.ComplexityRoot.Query.AIModel(childComplexity, args["providerId"].(*string), args["modelType"].(string), args["token"].(*string), args["endpoint"].(*string)), true
 	case "Query.AIProviders":
 		if e.ComplexityRoot.Query.AIProviders == nil {
 			break
@@ -1584,6 +1686,28 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.Query.SourceSessionMetadata(childComplexity), true
+	case "Query.SourceTargetDatabases":
+		if e.ComplexityRoot.Query.SourceTargetDatabases == nil {
+			break
+		}
+
+		args, err := ec.field_Query_SourceTargetDatabases_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.ComplexityRoot.Query.SourceTargetDatabases(childComplexity, args["target"].(model.SourceTargetConnectionInput)), true
+	case "Query.SourceTargetSchemas":
+		if e.ComplexityRoot.Query.SourceTargetSchemas == nil {
+			break
+		}
+
+		args, err := ec.field_Query_SourceTargetSchemas_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.ComplexityRoot.Query.SourceTargetSchemas(childComplexity, args["target"].(model.SourceTargetConnectionInput)), true
 	case "Query.SourceTypes":
 		if e.ComplexityRoot.Query.SourceTypes == nil {
 			break
@@ -2553,6 +2677,7 @@ func (e *executableSchema) Exec(ctx context.Context) graphql.ResponseHandler {
 			graphql.NewInputUnmarshaler("AtomicWhereCondition", ec.unmarshalInputAtomicWhereCondition),
 			graphql.NewInputUnmarshaler("ChatInput", ec.unmarshalInputChatInput),
 			graphql.NewInputUnmarshaler("ColumnDefinitionInput", ec.unmarshalInputColumnDefinitionInput),
+			graphql.NewInputUnmarshaler("CopySourceObjectsInput", ec.unmarshalInputCopySourceObjectsInput),
 			graphql.NewInputUnmarshaler("ForeignKeyDefinitionInput", ec.unmarshalInputForeignKeyDefinitionInput),
 			graphql.NewInputUnmarshaler("GenerateChatTitleInput", ec.unmarshalInputGenerateChatTitleInput),
 			graphql.NewInputUnmarshaler("ImportColumnMapping", ec.unmarshalInputImportColumnMapping),
@@ -2569,6 +2694,7 @@ func (e *executableSchema) Exec(ctx context.Context) graphql.ResponseHandler {
 			graphql.NewInputUnmarshaler("SourceObjectDefinitionInput", ec.unmarshalInputSourceObjectDefinitionInput),
 			graphql.NewInputUnmarshaler("SourceObjectRefInput", ec.unmarshalInputSourceObjectRefInput),
 			graphql.NewInputUnmarshaler("SourceProfileLoginInput", ec.unmarshalInputSourceProfileLoginInput),
+			graphql.NewInputUnmarshaler("SourceTargetConnectionInput", ec.unmarshalInputSourceTargetConnectionInput),
 			graphql.NewInputUnmarshaler("WhereCondition", ec.unmarshalInputWhereCondition),
 		)
 	}
@@ -2771,6 +2897,40 @@ func (ec *executionContext) childFields_ColumnCreationLabels(ctx context.Context
 		return ec.fieldContext_ColumnCreationLabels_ForeignKey(ctx, field)
 	}
 	return nil, fmt.Errorf("no field named %q was found under type ColumnCreationLabels", field.Name)
+}
+
+func (ec *executionContext) childFields_CopySourceObjectsResult(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+	switch field.Name {
+	case "Status":
+		return ec.fieldContext_CopySourceObjectsResult_Status(ctx, field)
+	case "TotalTables":
+		return ec.fieldContext_CopySourceObjectsResult_TotalTables(ctx, field)
+	case "SucceededCount":
+		return ec.fieldContext_CopySourceObjectsResult_SucceededCount(ctx, field)
+	case "SkippedCount":
+		return ec.fieldContext_CopySourceObjectsResult_SkippedCount(ctx, field)
+	case "FailedCount":
+		return ec.fieldContext_CopySourceObjectsResult_FailedCount(ctx, field)
+	case "TotalRowsCopied":
+		return ec.fieldContext_CopySourceObjectsResult_TotalRowsCopied(ctx, field)
+	case "Details":
+		return ec.fieldContext_CopySourceObjectsResult_Details(ctx, field)
+	}
+	return nil, fmt.Errorf("no field named %q was found under type CopySourceObjectsResult", field.Name)
+}
+
+func (ec *executionContext) childFields_CopyTableDetail(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+	switch field.Name {
+	case "Name":
+		return ec.fieldContext_CopyTableDetail_Name(ctx, field)
+	case "Status":
+		return ec.fieldContext_CopyTableDetail_Status(ctx, field)
+	case "RowsCopied":
+		return ec.fieldContext_CopyTableDetail_RowsCopied(ctx, field)
+	case "Message":
+		return ec.fieldContext_CopyTableDetail_Message(ctx, field)
+	}
+	return nil, fmt.Errorf("no field named %q was found under type CopyTableDetail", field.Name)
 }
 
 func (ec *executionContext) childFields_CreationOptionDefinition(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
@@ -3601,6 +3761,20 @@ func (ec *executionContext) field_Mutation_AddSourceRow_args(ctx context.Context
 	return args, nil
 }
 
+func (ec *executionContext) field_Mutation_CopySourceObjects_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "input",
+		func(ctx context.Context, v any) (model.CopySourceObjectsInput, error) {
+			return ec.unmarshalNCopySourceObjectsInput2githubᚗcomᚋclideyᚋwhodbᚋcoreᚋgraphᚋmodelᚐCopySourceObjectsInput(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["input"] = arg0
+	return args, nil
+}
+
 func (ec *executionContext) field_Mutation_CreateSourceObjectFromDefinition_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
 	var err error
 	args := map[string]any{}
@@ -3940,6 +4114,14 @@ func (ec *executionContext) field_Query_AIModel_args(ctx context.Context, rawArg
 		return nil, err
 	}
 	args["token"] = arg2
+	arg3, err := graphql.ProcessArgField(ctx, rawArgs, "endpoint",
+		func(ctx context.Context, v any) (*string, error) {
+			return ec.unmarshalOString2ᚖstring(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["endpoint"] = arg3
 	return args, nil
 }
 
@@ -4194,6 +4376,34 @@ func (ec *executionContext) field_Query_SourceRows_args(ctx context.Context, raw
 		return nil, err
 	}
 	args["pageOffset"] = arg4
+	return args, nil
+}
+
+func (ec *executionContext) field_Query_SourceTargetDatabases_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "target",
+		func(ctx context.Context, v any) (model.SourceTargetConnectionInput, error) {
+			return ec.unmarshalNSourceTargetConnectionInput2githubᚗcomᚋclideyᚋwhodbᚋcoreᚋgraphᚋmodelᚐSourceTargetConnectionInput(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["target"] = arg0
+	return args, nil
+}
+
+func (ec *executionContext) field_Query_SourceTargetSchemas_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "target",
+		func(ctx context.Context, v any) (model.SourceTargetConnectionInput, error) {
+			return ec.unmarshalNSourceTargetConnectionInput2githubᚗcomᚋclideyᚋwhodbᚋcoreᚋgraphᚋmodelᚐSourceTargetConnectionInput(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["target"] = arg0
 	return args, nil
 }
 
@@ -5175,6 +5385,268 @@ func (ec *executionContext) _ColumnCreationLabels_ForeignKey(ctx context.Context
 }
 func (ec *executionContext) fieldContext_ColumnCreationLabels_ForeignKey(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
 	return graphql.NewScalarFieldContext("ColumnCreationLabels", field, false, false, "String")
+}
+
+func (ec *executionContext) _CopySourceObjectsResult_Status(ctx context.Context, field graphql.CollectedField, obj *model.CopySourceObjectsResult) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_CopySourceObjectsResult_Status(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Status, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v bool) graphql.Marshaler {
+			return ec.marshalNBoolean2bool(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_CopySourceObjectsResult_Status(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("CopySourceObjectsResult", field, false, false, "Boolean")
+}
+
+func (ec *executionContext) _CopySourceObjectsResult_TotalTables(ctx context.Context, field graphql.CollectedField, obj *model.CopySourceObjectsResult) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_CopySourceObjectsResult_TotalTables(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.TotalTables, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v int) graphql.Marshaler {
+			return ec.marshalNInt2int(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_CopySourceObjectsResult_TotalTables(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("CopySourceObjectsResult", field, false, false, "Int")
+}
+
+func (ec *executionContext) _CopySourceObjectsResult_SucceededCount(ctx context.Context, field graphql.CollectedField, obj *model.CopySourceObjectsResult) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_CopySourceObjectsResult_SucceededCount(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.SucceededCount, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v int) graphql.Marshaler {
+			return ec.marshalNInt2int(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_CopySourceObjectsResult_SucceededCount(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("CopySourceObjectsResult", field, false, false, "Int")
+}
+
+func (ec *executionContext) _CopySourceObjectsResult_SkippedCount(ctx context.Context, field graphql.CollectedField, obj *model.CopySourceObjectsResult) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_CopySourceObjectsResult_SkippedCount(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.SkippedCount, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v int) graphql.Marshaler {
+			return ec.marshalNInt2int(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_CopySourceObjectsResult_SkippedCount(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("CopySourceObjectsResult", field, false, false, "Int")
+}
+
+func (ec *executionContext) _CopySourceObjectsResult_FailedCount(ctx context.Context, field graphql.CollectedField, obj *model.CopySourceObjectsResult) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_CopySourceObjectsResult_FailedCount(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.FailedCount, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v int) graphql.Marshaler {
+			return ec.marshalNInt2int(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_CopySourceObjectsResult_FailedCount(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("CopySourceObjectsResult", field, false, false, "Int")
+}
+
+func (ec *executionContext) _CopySourceObjectsResult_TotalRowsCopied(ctx context.Context, field graphql.CollectedField, obj *model.CopySourceObjectsResult) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_CopySourceObjectsResult_TotalRowsCopied(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.TotalRowsCopied, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v int) graphql.Marshaler {
+			return ec.marshalNInt2int(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_CopySourceObjectsResult_TotalRowsCopied(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("CopySourceObjectsResult", field, false, false, "Int")
+}
+
+func (ec *executionContext) _CopySourceObjectsResult_Details(ctx context.Context, field graphql.CollectedField, obj *model.CopySourceObjectsResult) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_CopySourceObjectsResult_Details(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Details, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v []*model.CopyTableDetail) graphql.Marshaler {
+			return ec.marshalNCopyTableDetail2ᚕᚖgithubᚗcomᚋclideyᚋwhodbᚋcoreᚋgraphᚋmodelᚐCopyTableDetailᚄ(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_CopySourceObjectsResult_Details(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "CopySourceObjectsResult",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_CopyTableDetail(ctx, field)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _CopyTableDetail_Name(ctx context.Context, field graphql.CollectedField, obj *model.CopyTableDetail) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_CopyTableDetail_Name(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Name, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_CopyTableDetail_Name(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("CopyTableDetail", field, false, false, "String")
+}
+
+func (ec *executionContext) _CopyTableDetail_Status(ctx context.Context, field graphql.CollectedField, obj *model.CopyTableDetail) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_CopyTableDetail_Status(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Status, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v model.CopyTableStatus) graphql.Marshaler {
+			return ec.marshalNCopyTableStatus2githubᚗcomᚋclideyᚋwhodbᚋcoreᚋgraphᚋmodelᚐCopyTableStatus(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_CopyTableDetail_Status(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("CopyTableDetail", field, false, false, "CopyTableStatus")
+}
+
+func (ec *executionContext) _CopyTableDetail_RowsCopied(ctx context.Context, field graphql.CollectedField, obj *model.CopyTableDetail) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_CopyTableDetail_RowsCopied(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.RowsCopied, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v int) graphql.Marshaler {
+			return ec.marshalNInt2int(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_CopyTableDetail_RowsCopied(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("CopyTableDetail", field, false, false, "Int")
+}
+
+func (ec *executionContext) _CopyTableDetail_Message(ctx context.Context, field graphql.CollectedField, obj *model.CopyTableDetail) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_CopyTableDetail_Message(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Message, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *string) graphql.Marshaler {
+			return ec.marshalOString2ᚖstring(ctx, selections, v)
+		},
+		true,
+		false,
+	)
+}
+func (ec *executionContext) fieldContext_CopyTableDetail_Message(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("CopyTableDetail", field, false, false, "String")
 }
 
 func (ec *executionContext) _CreationOptionDefinition_Key(ctx context.Context, field graphql.CollectedField, obj *model.CreationOptionDefinition) (ret graphql.Marshaler) {
@@ -6835,6 +7307,50 @@ func (ec *executionContext) fieldContext_Mutation_GenerateMockData(ctx context.C
 	return fc, nil
 }
 
+func (ec *executionContext) _Mutation_CopySourceObjects(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Mutation_CopySourceObjects(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.Resolvers.Mutation().CopySourceObjects(ctx, fc.Args["input"].(model.CopySourceObjectsInput))
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *model.CopySourceObjectsResult) graphql.Marshaler {
+			return ec.marshalNCopySourceObjectsResult2ᚖgithubᚗcomᚋclideyᚋwhodbᚋcoreᚋgraphᚋmodelᚐCopySourceObjectsResult(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Mutation_CopySourceObjects(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Mutation",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_CopySourceObjectsResult(ctx, field)
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Mutation_CopySourceObjects_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
 func (ec *executionContext) _Mutation_ImportSQL(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -8218,7 +8734,7 @@ func (ec *executionContext) _Query_AIModel(ctx context.Context, field graphql.Co
 		},
 		func(ctx context.Context) (any, error) {
 			fc := graphql.GetFieldContext(ctx)
-			return ec.Resolvers.Query().AIModel(ctx, fc.Args["providerId"].(*string), fc.Args["modelType"].(string), fc.Args["token"].(*string))
+			return ec.Resolvers.Query().AIModel(ctx, fc.Args["providerId"].(*string), fc.Args["modelType"].(string), fc.Args["token"].(*string), fc.Args["endpoint"].(*string))
 		},
 		nil,
 		func(ctx context.Context, selections ast.SelectionSet, v []string) graphql.Marshaler {
@@ -8421,6 +8937,94 @@ func (ec *executionContext) fieldContext_Query_SourceQuerySuggestions(ctx contex
 	}()
 	ctx = graphql.WithFieldContext(ctx, fc)
 	if fc.Args, err = ec.field_Query_SourceQuerySuggestions_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Query_SourceTargetDatabases(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Query_SourceTargetDatabases(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.Resolvers.Query().SourceTargetDatabases(ctx, fc.Args["target"].(model.SourceTargetConnectionInput))
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v []string) graphql.Marshaler {
+			return ec.marshalNString2ᚕstringᚄ(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Query_SourceTargetDatabases(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Query",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type String does not have child fields")
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Query_SourceTargetDatabases_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Query_SourceTargetSchemas(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Query_SourceTargetSchemas(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.Resolvers.Query().SourceTargetSchemas(ctx, fc.Args["target"].(model.SourceTargetConnectionInput))
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v []string) graphql.Marshaler {
+			return ec.marshalNString2ᚕstringᚄ(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Query_SourceTargetSchemas(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Query",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type String does not have child fields")
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Query_SourceTargetSchemas_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
 		ec.Error(ctx, err)
 		return fc, err
 	}
@@ -13480,6 +14084,83 @@ func UnmarshalColumnDefinitionInput(ctx context.Context, raw any) (model.ColumnD
 	return out, err
 }
 
+func (ec *executionContext) unmarshalInputCopySourceObjectsInput(ctx context.Context, obj any) (model.CopySourceObjectsInput, error) {
+	var it model.CopySourceObjectsInput
+	if obj == nil {
+		return it, nil
+	}
+
+	asMap := map[string]any{}
+	for k, v := range obj.(map[string]any) {
+		asMap[k] = v
+	}
+
+	fieldsInOrder := [...]string{"SourceParent", "Target", "TargetSchema", "ObjectNames", "Mode", "ExistingStrategy"}
+	for _, k := range fieldsInOrder {
+		v, ok := asMap[k]
+		if !ok {
+			continue
+		}
+		switch k {
+		case "SourceParent":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("SourceParent"))
+			data, err := ec.unmarshalOSourceObjectRefInput2ᚖgithubᚗcomᚋclideyᚋwhodbᚋcoreᚋgraphᚋmodelᚐSourceObjectRefInput(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.SourceParent = data
+		case "Target":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("Target"))
+			data, err := ec.unmarshalNSourceTargetConnectionInput2ᚖgithubᚗcomᚋclideyᚋwhodbᚋcoreᚋgraphᚋmodelᚐSourceTargetConnectionInput(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.Target = data
+		case "TargetSchema":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("TargetSchema"))
+			data, err := ec.unmarshalOString2ᚖstring(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.TargetSchema = data
+		case "ObjectNames":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("ObjectNames"))
+			data, err := ec.unmarshalNString2ᚕstringᚄ(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.ObjectNames = data
+		case "Mode":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("Mode"))
+			data, err := ec.unmarshalNCopyDataMode2githubᚗcomᚋclideyᚋwhodbᚋcoreᚋgraphᚋmodelᚐCopyDataMode(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.Mode = data
+		case "ExistingStrategy":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("ExistingStrategy"))
+			data, err := ec.unmarshalNCopyExistingStrategy2githubᚗcomᚋclideyᚋwhodbᚋcoreᚋgraphᚋmodelᚐCopyExistingStrategy(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.ExistingStrategy = data
+		}
+	}
+	return it, nil
+}
+
+// UnmarshalCopySourceObjectsInput unmarshals raw into the CopySourceObjectsInput input type, using the
+// unmarshaler bound to ctx's request. Call it from a resolver to decode an input
+// object that was not passed as a field argument.
+//
+// ctx must come from a gqlgen request; outside one there is no unmarshaler to use
+// and the returned error says so.
+func UnmarshalCopySourceObjectsInput(ctx context.Context, raw any) (model.CopySourceObjectsInput, error) {
+	var out model.CopySourceObjectsInput
+	err := graphql.UnmarshalNamedInputFromContext(ctx, "CopySourceObjectsInput", raw, &out)
+	return out, err
+}
+
 func (ec *executionContext) unmarshalInputForeignKeyDefinitionInput(ctx context.Context, obj any) (model.ForeignKeyDefinitionInput, error) {
 	var it model.ForeignKeyDefinitionInput
 	if obj == nil {
@@ -14397,6 +15078,76 @@ func UnmarshalSourceProfileLoginInput(ctx context.Context, raw any) (model.Sourc
 	return out, err
 }
 
+func (ec *executionContext) unmarshalInputSourceTargetConnectionInput(ctx context.Context, obj any) (model.SourceTargetConnectionInput, error) {
+	var it model.SourceTargetConnectionInput
+	if obj == nil {
+		return it, nil
+	}
+
+	asMap := map[string]any{}
+	for k, v := range obj.(map[string]any) {
+		asMap[k] = v
+	}
+
+	fieldsInOrder := [...]string{"ProfileId", "SourceType", "Database", "Values", "AccessToken"}
+	for _, k := range fieldsInOrder {
+		v, ok := asMap[k]
+		if !ok {
+			continue
+		}
+		switch k {
+		case "ProfileId":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("ProfileId"))
+			data, err := ec.unmarshalOString2ᚖstring(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.ProfileID = data
+		case "SourceType":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("SourceType"))
+			data, err := ec.unmarshalOString2ᚖstring(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.SourceType = data
+		case "Database":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("Database"))
+			data, err := ec.unmarshalOString2ᚖstring(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.Database = data
+		case "Values":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("Values"))
+			data, err := ec.unmarshalORecordInput2ᚕᚖgithubᚗcomᚋclideyᚋwhodbᚋcoreᚋgraphᚋmodelᚐRecordInputᚄ(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.Values = data
+		case "AccessToken":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("AccessToken"))
+			data, err := ec.unmarshalOString2ᚖstring(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.AccessToken = data
+		}
+	}
+	return it, nil
+}
+
+// UnmarshalSourceTargetConnectionInput unmarshals raw into the SourceTargetConnectionInput input type, using the
+// unmarshaler bound to ctx's request. Call it from a resolver to decode an input
+// object that was not passed as a field argument.
+//
+// ctx must come from a gqlgen request; outside one there is no unmarshaler to use
+// and the returned error says so.
+func UnmarshalSourceTargetConnectionInput(ctx context.Context, raw any) (model.SourceTargetConnectionInput, error) {
+	var out model.SourceTargetConnectionInput
+	err := graphql.UnmarshalNamedInputFromContext(ctx, "SourceTargetConnectionInput", raw, &out)
+	return out, err
+}
+
 func (ec *executionContext) unmarshalInputWhereCondition(ctx context.Context, obj any) (model.WhereCondition, error) {
 	var it model.WhereCondition
 	if obj == nil {
@@ -14784,6 +15535,117 @@ func (ec *executionContext) _ColumnCreationLabels(ctx context.Context, sel ast.S
 		case "ForeignKey":
 			out.Values[i] = ec._ColumnCreationLabels_ForeignKey(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	if n := len(deferred.Defers); n > 0 {
+		atomic.AddInt32(&ec.Deferred, int32(min(n, math.MaxInt32)))
+		ec.ProcessDeferredGroup(deferred)
+	}
+
+	return out
+}
+
+var copySourceObjectsResultImplementors = []string{"CopySourceObjectsResult"}
+
+func (ec *executionContext) _CopySourceObjectsResult(ctx context.Context, sel ast.SelectionSet, obj *model.CopySourceObjectsResult) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, copySourceObjectsResultImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferred := graphql.NewDeferredGroup(ctx)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("CopySourceObjectsResult")
+		case "Status":
+			out.Values[i] = ec._CopySourceObjectsResult_Status(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "TotalTables":
+			out.Values[i] = ec._CopySourceObjectsResult_TotalTables(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "SucceededCount":
+			out.Values[i] = ec._CopySourceObjectsResult_SucceededCount(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "SkippedCount":
+			out.Values[i] = ec._CopySourceObjectsResult_SkippedCount(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "FailedCount":
+			out.Values[i] = ec._CopySourceObjectsResult_FailedCount(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "TotalRowsCopied":
+			out.Values[i] = ec._CopySourceObjectsResult_TotalRowsCopied(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "Details":
+			out.Values[i] = ec._CopySourceObjectsResult_Details(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	if n := len(deferred.Defers); n > 0 {
+		atomic.AddInt32(&ec.Deferred, int32(min(n, math.MaxInt32)))
+		ec.ProcessDeferredGroup(deferred)
+	}
+
+	return out
+}
+
+var copyTableDetailImplementors = []string{"CopyTableDetail"}
+
+func (ec *executionContext) _CopyTableDetail(ctx context.Context, sel ast.SelectionSet, obj *model.CopyTableDetail) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, copyTableDetailImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferred := graphql.NewDeferredGroup(ctx)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("CopyTableDetail")
+		case "Name":
+			out.Values[i] = ec._CopyTableDetail_Name(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "Status":
+			out.Values[i] = ec._CopyTableDetail_Status(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "RowsCopied":
+			out.Values[i] = ec._CopyTableDetail_RowsCopied(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "Message":
+			out.Values[i] = ec._CopyTableDetail_Message(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
 				out.Invalids++
 			}
 		default:
@@ -15506,6 +16368,13 @@ func (ec *executionContext) _Mutation(ctx context.Context, sel ast.SelectionSet)
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
 			}
+		case "CopySourceObjects":
+			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
+				return ec._Mutation_CopySourceObjects(ctx, field)
+			})
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
 		case "ImportSQL":
 			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
 				return ec._Mutation_ImportSQL(ctx, field)
@@ -15863,6 +16732,18 @@ func (ec *executionContext) _Query(ctx context.Context, sel ast.SelectionSet) gr
 				true, true,
 				func(ctx context.Context) graphql.Marshaler {
 					return ec._Query_SourceQuerySuggestions(ctx, field)
+				})
+		case "SourceTargetDatabases":
+			out.ResolveRootConcurrently(innerCtx, ec.OperationContext, i,
+				true, true,
+				func(ctx context.Context) graphql.Marshaler {
+					return ec._Query_SourceTargetDatabases(ctx, field)
+				})
+		case "SourceTargetSchemas":
+			out.ResolveRootConcurrently(innerCtx, ec.OperationContext, i,
+				true, true,
+				func(ctx context.Context) graphql.Marshaler {
+					return ec._Query_SourceTargetSchemas(ctx, field)
 				})
 		case "__type":
 			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
@@ -18013,6 +18894,73 @@ func (ec *executionContext) unmarshalNColumnDefinitionInput2ᚖgithubᚗcomᚋcl
 	return &res, graphql.ErrorOnPath(ctx, err)
 }
 
+func (ec *executionContext) unmarshalNCopyDataMode2githubᚗcomᚋclideyᚋwhodbᚋcoreᚋgraphᚋmodelᚐCopyDataMode(ctx context.Context, v any) (model.CopyDataMode, error) {
+	var res model.CopyDataMode
+	err := res.UnmarshalGQL(v)
+	return res, graphql.ErrorOnPath(ctx, err)
+}
+
+func (ec *executionContext) marshalNCopyDataMode2githubᚗcomᚋclideyᚋwhodbᚋcoreᚋgraphᚋmodelᚐCopyDataMode(ctx context.Context, sel ast.SelectionSet, v model.CopyDataMode) graphql.Marshaler {
+	return v
+}
+
+func (ec *executionContext) unmarshalNCopyExistingStrategy2githubᚗcomᚋclideyᚋwhodbᚋcoreᚋgraphᚋmodelᚐCopyExistingStrategy(ctx context.Context, v any) (model.CopyExistingStrategy, error) {
+	var res model.CopyExistingStrategy
+	err := res.UnmarshalGQL(v)
+	return res, graphql.ErrorOnPath(ctx, err)
+}
+
+func (ec *executionContext) marshalNCopyExistingStrategy2githubᚗcomᚋclideyᚋwhodbᚋcoreᚋgraphᚋmodelᚐCopyExistingStrategy(ctx context.Context, sel ast.SelectionSet, v model.CopyExistingStrategy) graphql.Marshaler {
+	return v
+}
+
+func (ec *executionContext) unmarshalNCopySourceObjectsInput2githubᚗcomᚋclideyᚋwhodbᚋcoreᚋgraphᚋmodelᚐCopySourceObjectsInput(ctx context.Context, v any) (model.CopySourceObjectsInput, error) {
+	res, err := ec.unmarshalInputCopySourceObjectsInput(ctx, v)
+	return res, graphql.ErrorOnPath(ctx, err)
+}
+
+func (ec *executionContext) marshalNCopySourceObjectsResult2ᚖgithubᚗcomᚋclideyᚋwhodbᚋcoreᚋgraphᚋmodelᚐCopySourceObjectsResult(ctx context.Context, sel ast.SelectionSet, v *model.CopySourceObjectsResult) graphql.Marshaler {
+	if v == nil {
+		graphql.AddInvalidNullError(ctx, "CopySourceObjectsResult!")
+		return graphql.Null
+	}
+	return ec._CopySourceObjectsResult(ctx, sel, v)
+}
+
+func (ec *executionContext) marshalNCopyTableDetail2ᚕᚖgithubᚗcomᚋclideyᚋwhodbᚋcoreᚋgraphᚋmodelᚐCopyTableDetailᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.CopyTableDetail) graphql.Marshaler {
+	ret := graphql.MarshalSliceConcurrently(ctx, len(v), 0, false, func(ctx context.Context, i int) graphql.Marshaler {
+		fc := graphql.GetFieldContext(ctx)
+		fc.Result = &v[i]
+		return ec.marshalNCopyTableDetail2ᚖgithubᚗcomᚋclideyᚋwhodbᚋcoreᚋgraphᚋmodelᚐCopyTableDetail(ctx, sel, v[i])
+	})
+
+	for _, e := range ret {
+		if e == graphql.Null {
+			return graphql.Null
+		}
+	}
+
+	return ret
+}
+
+func (ec *executionContext) marshalNCopyTableDetail2ᚖgithubᚗcomᚋclideyᚋwhodbᚋcoreᚋgraphᚋmodelᚐCopyTableDetail(ctx context.Context, sel ast.SelectionSet, v *model.CopyTableDetail) graphql.Marshaler {
+	if v == nil {
+		graphql.AddInvalidNullError(ctx, "CopyTableDetail!")
+		return graphql.Null
+	}
+	return ec._CopyTableDetail(ctx, sel, v)
+}
+
+func (ec *executionContext) unmarshalNCopyTableStatus2githubᚗcomᚋclideyᚋwhodbᚋcoreᚋgraphᚋmodelᚐCopyTableStatus(ctx context.Context, v any) (model.CopyTableStatus, error) {
+	var res model.CopyTableStatus
+	err := res.UnmarshalGQL(v)
+	return res, graphql.ErrorOnPath(ctx, err)
+}
+
+func (ec *executionContext) marshalNCopyTableStatus2githubᚗcomᚋclideyᚋwhodbᚋcoreᚋgraphᚋmodelᚐCopyTableStatus(ctx context.Context, sel ast.SelectionSet, v model.CopyTableStatus) graphql.Marshaler {
+	return v
+}
+
 func (ec *executionContext) marshalNCreationOptionDefinition2ᚕᚖgithubᚗcomᚋclideyᚋwhodbᚋcoreᚋgraphᚋmodelᚐCreationOptionDefinitionᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.CreationOptionDefinition) graphql.Marshaler {
 	ret := graphql.MarshalSliceConcurrently(ctx, len(v), 0, false, func(ctx context.Context, i int) graphql.Marshaler {
 		fc := graphql.GetFieldContext(ctx)
@@ -18947,6 +19895,16 @@ func (ec *executionContext) marshalNSourceSurface2ᚕgithubᚗcomᚋclideyᚋwho
 	}
 
 	return ret
+}
+
+func (ec *executionContext) unmarshalNSourceTargetConnectionInput2githubᚗcomᚋclideyᚋwhodbᚋcoreᚋgraphᚋmodelᚐSourceTargetConnectionInput(ctx context.Context, v any) (model.SourceTargetConnectionInput, error) {
+	res, err := ec.unmarshalInputSourceTargetConnectionInput(ctx, v)
+	return res, graphql.ErrorOnPath(ctx, err)
+}
+
+func (ec *executionContext) unmarshalNSourceTargetConnectionInput2ᚖgithubᚗcomᚋclideyᚋwhodbᚋcoreᚋgraphᚋmodelᚐSourceTargetConnectionInput(ctx context.Context, v any) (*model.SourceTargetConnectionInput, error) {
+	res, err := ec.unmarshalInputSourceTargetConnectionInput(ctx, v)
+	return &res, graphql.ErrorOnPath(ctx, err)
 }
 
 func (ec *executionContext) marshalNSourceTraits2ᚖgithubᚗcomᚋclideyᚋwhodbᚋcoreᚋgraphᚋmodelᚐSourceTraits(ctx context.Context, sel ast.SelectionSet, v *model.SourceTraits) graphql.Marshaler {

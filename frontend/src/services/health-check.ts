@@ -23,7 +23,36 @@ import { graphqlClient } from '@/config/graphql-client';
 type HealthResponse = {
     server: 'healthy' | 'error' | 'unavailable';
     database: 'healthy' | 'error' | 'unavailable';
+    serverError?: string | null;
+    databaseError?: string | null;
 };
+
+function formatErrorDetail(err: unknown): string {
+    if (!err) {
+        return 'Unknown error';
+    }
+    if (err instanceof Error) {
+        const statusCode = (err as { statusCode?: number }).statusCode;
+        if (typeof statusCode === 'number') {
+            return `HTTP ${statusCode}: ${err.message}`;
+        }
+        return err.message;
+    }
+    return String(err);
+}
+
+function getCurrentDatabaseSummary(): string {
+    const current = reduxStore.getState().auth.current;
+    if (!current) {
+        return '';
+    }
+    const parts = [
+        current.Type,
+        current.Hostname || current.DisplayName,
+        current.Database,
+    ].filter(Boolean);
+    return parts.join(' · ');
+}
 
 type HealthCheckConfig = {
     initialInterval: number;
@@ -59,7 +88,7 @@ class HealthCheckService {
     /**
      * Performs a single health check using GraphQL Health query.
      */
-    private async checkHealth(): Promise<HealthResponse | null> {
+    private async checkHealth(): Promise<HealthResponse> {
         try {
             const result = await graphqlClient.query({
                 query: GetHealthDocument,
@@ -70,29 +99,52 @@ class HealthCheckService {
             // Check for GraphQL errors: if the GraphQL server responded with a GraphQL error payload,
             // the backend server itself is reachable even if the session/query failed.
             if (result.error) {
+                const detail = formatErrorDetail(result.error);
                 if (CombinedGraphQLErrors.is(result.error)) {
                     return {
                         server: 'healthy',
                         database: 'unavailable',
+                        databaseError: detail,
                     };
                 }
-                return null;
+                return {
+                    server: 'error',
+                    database: 'unavailable',
+                    serverError: `GraphQL Health Check Failed: ${detail}`,
+                };
             }
 
             // Check if data exists
             if (!result.data?.Health) {
-                return null;
+                return {
+                    server: 'error',
+                    database: 'unavailable',
+                    serverError: 'Empty response from /api/query (Health)',
+                };
             }
 
             const health = result.data.Health;
+            const serverStatus = (health.Server?.toLowerCase() || 'unavailable') as 'healthy' | 'error' | 'unavailable';
+            const databaseStatus = (health.Database?.toLowerCase() || 'unavailable') as 'healthy' | 'error' | 'unavailable';
+            const dbSummary = getCurrentDatabaseSummary();
 
             return {
-                server: (health.Server?.toLowerCase() || 'unavailable') as 'healthy' | 'error' | 'unavailable',
-                database: (health.Database?.toLowerCase() || 'unavailable') as 'healthy' | 'error' | 'unavailable',
+                server: serverStatus,
+                database: databaseStatus,
+                serverError: serverStatus === 'error' ? 'Backend service reported unhealthy status' : null,
+                databaseError: databaseStatus === 'error'
+                    ? (dbSummary
+                        ? `数据源心跳检测失败或连接超时 (${dbSummary})`
+                        : '数据源心跳检测失败或连接超时 (4s timeout)')
+                    : null,
             };
-        } catch {
+        } catch (err) {
             // Network error or server unreachable
-            return null;
+            return {
+                server: 'error',
+                database: 'unavailable',
+                serverError: `请求后端健康检查接口 (/api/query) 失败: ${formatErrorDetail(err)}`,
+            };
         }
     }
 
@@ -103,15 +155,20 @@ class HealthCheckService {
     private async performHealthCheck(): Promise<void> {
         const result = await this.checkHealth();
 
-        if (result === null) {
-            // Server is down
-            reduxStore.dispatch(HealthActions.setHealthStatus({
-                server: 'error',
-                database: 'unavailable',
-            }));
+        if (result.server === 'error') {
             this.consecutiveFailures++;
-            this.wasDown = true;
-            this.wasDatabaseDown = true;
+            // Require at least 2 consecutive failures before surfacing the modal
+            // so a single transient request abort during database/page switching doesn't flash.
+            if (this.consecutiveFailures >= 2 || this.wasDown) {
+                reduxStore.dispatch(HealthActions.setHealthStatus({
+                    server: 'error',
+                    database: 'unavailable',
+                    serverError: result.serverError ?? '无法连接到本地 WhoDB 服务接口 (/api/query)',
+                    databaseError: result.databaseError ?? null,
+                }));
+                this.wasDown = true;
+                this.wasDatabaseDown = true;
+            }
             this.increaseInterval();
         } else {
             // Server is up
@@ -128,6 +185,8 @@ class HealthCheckService {
             reduxStore.dispatch(HealthActions.setHealthStatus({
                 server: isServerHealthy ? 'healthy' : 'error',
                 database: result.database,
+                serverError: result.serverError ?? null,
+                databaseError: result.databaseError ?? null,
             }));
 
             // Reload if server or database recovered after being down

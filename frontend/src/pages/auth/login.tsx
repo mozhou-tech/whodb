@@ -337,6 +337,7 @@ export const LoginForm: FC<LoginFormProps> = ({
             dispatch(HealthActions.setHealthStatus({
                 server: 'error',
                 database: 'unavailable',
+                serverError: errorMessage,
             }));
         }
 

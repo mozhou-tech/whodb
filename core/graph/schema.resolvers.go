@@ -81,10 +81,23 @@ func (r *mutationResolver) LogoutOpsControlPlane(ctx context.Context) (*model.St
 // LoginSource is the resolver for the LoginSource field.
 func (r *mutationResolver) LoginSource(ctx context.Context, credentials model.SourceLoginInput) (*model.StatusResponse, error) {
 	creds := sourceCredentialsFromInput(credentials)
+	projectID := strings.TrimSpace(extractOpsProjectID(creds.Values))
+	if projectID != "" && projectID != "__local__" {
+		opsplane.RegisterEnvironmentTargetProxy(projectID, creds.Values["Hostname"], creds.Values["Port"])
+	}
 	if current := auth.GetSourceCredentials(ctx); current != nil && current.SourceType == creds.SourceType {
 		creds.Values = mergeCurrentSourceValues(current, creds.Values)
 	}
-	return performSourceLogin(ctx, creds, "")
+	resp, err := performSourceLogin(ctx, creds, "")
+	if err != nil || resp == nil || !resp.Status {
+		return resp, err
+	}
+	if projectID != "" && projectID != "__local__" {
+		if _, saveErr := opsplane.SaveEnvironmentDatabase(ctx, projectID, creds.SourceType, creds.Values); saveErr != nil {
+			return nil, saveErr
+		}
+	}
+	return resp, nil
 }
 
 // LoginWithSourceProfile is the resolver for the LoginWithSourceProfile field.
@@ -182,7 +195,11 @@ func (r *mutationResolver) ExportSourceConnection(ctx context.Context, id string
 
 // TestSourceConnection is the resolver for the TestSourceConnection field.
 func (r *mutationResolver) TestSourceConnection(ctx context.Context, credentials model.SourceLoginInput) (*model.StatusResponse, error) {
-	return testSourceConnection(ctx, sourceCredentialsFromInput(credentials))
+	creds := sourceCredentialsFromInput(credentials)
+	if projectID := strings.TrimSpace(extractOpsProjectID(creds.Values)); projectID != "" && projectID != "__local__" {
+		opsplane.RegisterEnvironmentTargetProxy(projectID, creds.Values["Hostname"], creds.Values["Port"])
+	}
+	return testSourceConnection(ctx, creds)
 }
 
 // UpdateSettings is the resolver for the UpdateSettings field.
@@ -349,6 +366,11 @@ func (r *mutationResolver) GenerateMockData(ctx context.Context, input model.Moc
 	return generateMockDataForRef(ctx, input)
 }
 
+// CopySourceObjects is the resolver for the CopySourceObjects field.
+func (r *mutationResolver) CopySourceObjects(ctx context.Context, input model.CopySourceObjectsInput) (*model.CopySourceObjectsResult, error) {
+	return copySourceObjects(ctx, input)
+}
+
 // ImportSQL is the resolver for the ImportSQL field.
 func (r *mutationResolver) ImportSQL(ctx context.Context, input model.ImportSQLInput) (*model.ImportResult, error) {
 	spec, session, err := getSourceSessionForContext(ctx)
@@ -497,36 +519,42 @@ func (r *queryResolver) Health(ctx context.Context) (*model.HealthStatus, error)
 	// Check if user is authenticated and has credentials
 	credentials := auth.GetSourceCredentials(ctx)
 	if credentials != nil && credentials.SourceType != "" {
-		spec, session, err := getSourceSessionForContext(ctx)
-		if err == nil {
-			availability, ok := source.AsAvailabilityChecker(sourceAuditScopeFromContext(ctx, spec), session)
-			if ok {
-				healthCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-				defer cancel()
+		healthCtx, cancel := context.WithTimeout(ctx, 4*time.Second)
+		defer cancel()
 
-				result := make(chan string, 1)
+		result := make(chan string, 1)
 
-				go func() {
-					defer func() {
-						if r := recover(); r != nil {
-							log.Errorf("Panic during health check for source: %v", r)
-							result <- "error"
-						}
-					}()
-
-					if availability.IsAvailable(healthCtx) {
-						result <- "healthy"
-					} else {
-						result <- "error"
-					}
-				}()
-
-				select {
-				case status.Database = <-result:
-				case <-healthCtx.Done():
-					status.Database = "error"
+		go func() {
+			defer func() {
+				if r := recover(); r != nil {
+					log.Errorf("Panic during health check for source: %v", r)
+					result <- "error"
 				}
+			}()
+
+			spec, session, err := getSourceSessionForContext(healthCtx)
+			if err != nil {
+				result <- "error"
+				return
 			}
+
+			availability, ok := source.AsAvailabilityChecker(sourceAuditScopeFromContext(healthCtx, spec), session)
+			if !ok {
+				result <- "healthy"
+				return
+			}
+
+			if availability.IsAvailable(healthCtx) {
+				result <- "healthy"
+			} else {
+				result <- "error"
+			}
+		}()
+
+		select {
+		case status.Database = <-result:
+		case <-healthCtx.Done():
+			status.Database = "error"
 		}
 	}
 
@@ -942,7 +970,7 @@ func (r *queryResolver) AIProviders(ctx context.Context) ([]*model.AIProvider, e
 }
 
 // AIModel is the resolver for the AIModel field.
-func (r *queryResolver) AIModel(ctx context.Context, providerID *string, modelType string, token *string) ([]string, error) {
+func (r *queryResolver) AIModel(ctx context.Context, providerID *string, modelType string, token *string, endpoint *string) ([]string, error) {
 	provider := ""
 	if providerID != nil {
 		provider = *providerID
@@ -951,10 +979,15 @@ func (r *queryResolver) AIModel(ctx context.Context, providerID *string, modelTy
 	if token != nil {
 		requestToken = *token
 	}
+	requestEndpoint := ""
+	if endpoint != nil {
+		requestEndpoint = *endpoint
+	}
 	models, err := llm.ListSupportedModels(llm.ModelLookupOptions{
 		ProviderID:          provider,
 		ModelType:           modelType,
 		Token:               requestToken,
+		Endpoint:            requestEndpoint,
 		ConfiguredProviders: envconfig.GetConfiguredChatProviders(),
 		AllowTokenFallback:  true,
 	})
@@ -1028,6 +1061,16 @@ func (r *queryResolver) SSLStatus(ctx context.Context) (*model.SSLStatus, error)
 // SourceQuerySuggestions is the resolver for the SourceQuerySuggestions field.
 func (r *queryResolver) SourceQuerySuggestions(ctx context.Context, ref *model.SourceObjectRefInput) ([]*model.SourceQuerySuggestion, error) {
 	return sourceQuerySuggestionsForRef(ctx, ref)
+}
+
+// SourceTargetDatabases is the resolver for the SourceTargetDatabases field.
+func (r *queryResolver) SourceTargetDatabases(ctx context.Context, target model.SourceTargetConnectionInput) ([]string, error) {
+	return sourceTargetDatabases(ctx, target)
+}
+
+// SourceTargetSchemas is the resolver for the SourceTargetSchemas field.
+func (r *queryResolver) SourceTargetSchemas(ctx context.Context, target model.SourceTargetConnectionInput) ([]string, error) {
+	return sourceTargetSchemas(ctx, target)
 }
 
 // Mutation returns MutationResolver implementation.

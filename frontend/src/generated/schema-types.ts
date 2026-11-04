@@ -97,6 +97,51 @@ export type ColumnDefinitionInput = {
   Unique: Scalars['Boolean']['input'];
 };
 
+export enum CopyDataMode {
+  StructureAndData = 'STRUCTURE_AND_DATA',
+  StructureOnly = 'STRUCTURE_ONLY'
+}
+
+export enum CopyExistingStrategy {
+  Append = 'APPEND',
+  Overwrite = 'OVERWRITE',
+  Skip = 'SKIP'
+}
+
+export type CopySourceObjectsInput = {
+  ExistingStrategy: CopyExistingStrategy;
+  Mode: CopyDataMode;
+  ObjectNames: Array<Scalars['String']['input']>;
+  SourceParent?: InputMaybe<SourceObjectRefInput>;
+  Target: SourceTargetConnectionInput;
+  TargetSchema?: InputMaybe<Scalars['String']['input']>;
+};
+
+export type CopySourceObjectsResult = {
+  __typename?: 'CopySourceObjectsResult';
+  Details: Array<CopyTableDetail>;
+  FailedCount: Scalars['Int']['output'];
+  SkippedCount: Scalars['Int']['output'];
+  Status: Scalars['Boolean']['output'];
+  SucceededCount: Scalars['Int']['output'];
+  TotalRowsCopied: Scalars['Int']['output'];
+  TotalTables: Scalars['Int']['output'];
+};
+
+export type CopyTableDetail = {
+  __typename?: 'CopyTableDetail';
+  Message?: Maybe<Scalars['String']['output']>;
+  Name: Scalars['String']['output'];
+  RowsCopied: Scalars['Int']['output'];
+  Status: CopyTableStatus;
+};
+
+export enum CopyTableStatus {
+  Failed = 'FAILED',
+  Skipped = 'SKIPPED',
+  Success = 'SUCCESS'
+}
+
 export type CreationOptionDefinition = {
   __typename?: 'CreationOptionDefinition';
   Key: Scalars['String']['output'];
@@ -272,6 +317,7 @@ export type MockDataTableInfo = {
 export type Mutation = {
   __typename?: 'Mutation';
   AddSourceRow: StatusResponse;
+  CopySourceObjects: CopySourceObjectsResult;
   CreateSourceObject: StatusResponse;
   CreateSourceObjectFromDefinition: StatusResponse;
   DeleteSourceRow: StatusResponse;
@@ -297,6 +343,11 @@ export type Mutation = {
 export type MutationAddSourceRowArgs = {
   ref: SourceObjectRefInput;
   values: Array<RecordInput>;
+};
+
+
+export type MutationCopySourceObjectsArgs = {
+  input: CopySourceObjectsInput;
 };
 
 
@@ -448,6 +499,8 @@ export type Query = {
   SourceRows: RowsResult;
   SourceSession?: Maybe<SourceSession>;
   SourceSessionMetadata?: Maybe<SourceSessionMetadata>;
+  SourceTargetDatabases: Array<Scalars['String']['output']>;
+  SourceTargetSchemas: Array<Scalars['String']['output']>;
   SourceTypes: Array<SourceType>;
   UpdateInfo: UpdateInfo;
   Version: Scalars['String']['output'];
@@ -455,6 +508,7 @@ export type Query = {
 
 
 export type QueryAiModelArgs = {
+  endpoint?: InputMaybe<Scalars['String']['input']>;
   modelType: Scalars['String']['input'];
   providerId?: InputMaybe<Scalars['String']['input']>;
   token?: InputMaybe<Scalars['String']['input']>;
@@ -532,6 +586,16 @@ export type QuerySourceRowsArgs = {
   ref: SourceObjectRefInput;
   sort?: InputMaybe<Array<SortCondition>>;
   where?: InputMaybe<WhereCondition>;
+};
+
+
+export type QuerySourceTargetDatabasesArgs = {
+  target: SourceTargetConnectionInput;
+};
+
+
+export type QuerySourceTargetSchemasArgs = {
+  target: SourceTargetConnectionInput;
 };
 
 export type Record = {
@@ -908,6 +972,14 @@ export enum SourceSurface {
   Graph = 'Graph',
   Query = 'Query'
 }
+
+export type SourceTargetConnectionInput = {
+  AccessToken?: InputMaybe<Scalars['String']['input']>;
+  Database?: InputMaybe<Scalars['String']['input']>;
+  ProfileId?: InputMaybe<Scalars['String']['input']>;
+  SourceType?: InputMaybe<Scalars['String']['input']>;
+  Values?: InputMaybe<Array<RecordInput>>;
+};
 
 export type SourceTraits = {
   __typename?: 'SourceTraits';

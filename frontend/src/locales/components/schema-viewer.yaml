@@ -115,8 +115,8 @@ sv_SE:
 zh_CN:
   title: "模式"
   indexes: "索引"
-  relationships: "人际关系"
-  noResults: "没有找到桌子"
+  relationships: "关联关系"
+  noResults: "未找到数据表"
 
 zh_TW:
   title: "模式"

@@ -100,6 +100,8 @@ func init() {
 }
 
 func registerSessionMetadata() {
+	RegisterSessionMetadata(string(engine.DatabaseType_OpenObserve),
+		SessionMetadataFromOperators(specs.OpenObserveTypeDefinitions, specs.OpenObserveOperators, nil))
 	RegisterSessionMetadataAliases(
 		SessionMetadataFromOperatorMap(specs.PostgresTypeDefinitions, specs.PostgreSQLSupportedOperators, specs.PostgresAliasMap),
 		string(engine.DatabaseType_Postgres),

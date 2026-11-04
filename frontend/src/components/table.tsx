@@ -1298,12 +1298,12 @@ export const StorageUnitTable: FC<TableProps> = ({
                         "hidden": disableEdit,
                     })}
                 >
-                    <div className="ce-table-selection-control"><Checkbox
+                    <div className="ce-table-selection-control" onClick={(e) => { e.stopPropagation(); }}><Checkbox
                         checked={isSelected}
                         onCheckedChange={() => { setChecked(isSelected ? checked.filter(i => i !== index) : [...checked, index]); }}
                         aria-label={isSelected ? t('deselectRow') : t('selectRow')}
                     /></div>
-                    <Button variant="secondary" className="opacity-0 group-hover:opacity-100 absolute right-2 w-0 top-1.5" onClick={(e) => {
+                    <Button variant="secondary" className="opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto absolute right-2 w-0 top-1.5" onClick={(e) => {
                         e.preventDefault();
                         e.stopPropagation();
                         // Manually trigger context menu on this row
@@ -1561,14 +1561,14 @@ export const StorageUnitTable: FC<TableProps> = ({
                                         <TableHead className={cn("ce-table-selection-cell min-w-[40px] w-[40px] relative", {
                                             "hidden": disableEdit,
                                         })}>
-                                            <div className="ce-table-selection-control"><Checkbox
+                                            <div className="ce-table-selection-control" onClick={(e) => { e.stopPropagation(); }}><Checkbox
                                                 checked={checked.length === paginatedRows.length && paginatedRows.length > 0}
                                                 onCheckedChange={() => {
                                                     setChecked(checked.length === paginatedRows.length ? [] : paginatedRows.map((_, index) => index));
                                                 }}
                                                 aria-label={checked.length === paginatedRows.length ? t('deselectAll') : t('selectAll')}
                                             /></div>
-                                            <Button variant="secondary" className="opacity-0 group-hover:opacity-100 absolute right-2 top-1.5 w-0" onClick={(e) => {
+                                            <Button variant="secondary" className="opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto absolute right-2 top-1.5 w-0" onClick={(e) => {
                                                 e.preventDefault();
                                                 e.stopPropagation();
                                                 // Manually trigger context menu on this row

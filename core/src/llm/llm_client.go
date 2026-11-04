@@ -55,8 +55,9 @@ func RegisterGenericProviders(name string, providerId string, models []string, c
 }
 
 type LLMClient struct {
-	Type   providers.LLMType
-	APIKey string
+	Type     providers.LLMType
+	APIKey   string
+	Endpoint string
 }
 
 // getEndpointForProvider returns the appropriate endpoint for a provider type
@@ -96,11 +97,15 @@ func (c *LLMClient) GetSupportedModels() ([]string, error) {
 		return nil, err
 	}
 
-	// Build provider config with endpoint from environment
+	// Build provider config with custom endpoint or default from environment
+	endpoint := c.Endpoint
+	if endpoint == "" {
+		endpoint = getEndpointForProvider(c.Type)
+	}
 	config := &providers.ProviderConfig{
 		Type:     c.Type,
 		APIKey:   c.APIKey,
-		Endpoint: getEndpointForProvider(c.Type),
+		Endpoint: endpoint,
 	}
 
 	// Use provider to get supported models

@@ -4,6 +4,11 @@ en_US:
   reconnecting: Reconnecting...
   retryingIn: Trying again in {seconds}s
   retryNow: Retry now
+  dismissOverlay: Dismiss
+  errorReasonLabel: Specific Reason
+  targetConnectionLabel: Current Connection
+  defaultServerError: Failed to reach local backend health endpoint (/api/query).
+  defaultDatabaseError: Database health check timed out or connection was interrupted.
   databaseDownTitle: Database Connection Lost
   databaseDownMessage: The database connection is unavailable. You can switch to another profile or logout.
   selectProfilePlaceholder: Choose a profile...
@@ -267,16 +272,21 @@ sv_SE:
 zh_CN:
   serverDownTitle: "我们连接时遇到问题"
   serverDownMessage: "你的工作是安全的。 我们将在后台继续尝试，并从您上次停下的地方继续。"
-  databaseDownTitle: "数据库连接丢失"
-  databaseDownMessage: "数据库连接不可用。 您可以切换到另一个配置文件或注销。"
-  selectProfilePlaceholder: "选择个人资料..."
-  switching: "交换..."
-  switchSuccessful: "已成功切换个人资料"
-  switchFailed: "无法切换个人资料"
-  switchFailedWithError: "无法切换配置文件：{error}"
+  databaseDownTitle: "数据库连接异常"
+  databaseDownMessage: "当前数据库连接不可用或响应超时。您可以立即重试、切换到另一个数据库实例，或先忽略此提示。"
+  selectProfilePlaceholder: "选择数据库实例..."
+  switching: "切换中..."
+  switchSuccessful: "已成功切换数据库实例"
+  switchFailed: "无法切换数据库实例"
+  switchFailedWithError: "无法切换数据库实例：{error}"
   reconnecting: "正在重新连接..."
   retryingIn: "{seconds} 秒后重试"
   retryNow: "立即重试"
+  dismissOverlay: "暂不处理"
+  errorReasonLabel: "具体原因"
+  targetConnectionLabel: "当前连接"
+  defaultServerError: "无法连接本地服务接口 (/api/query)，请检查后台进程或网络状态。"
+  defaultDatabaseError: "数据源心跳检测超时或连接已断开，请检查数据库实例及网络/VPN 连通性。"
 
 zh_TW:
   serverDownTitle: "我們連接時遇到問題"

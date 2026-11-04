@@ -10,6 +10,7 @@ type ModelLookupOptions struct {
 	ProviderID          string
 	ModelType           string
 	Token               string
+	Endpoint            string
 	ConfiguredProviders []env.ChatProvider
 	AllowTokenFallback  bool
 }
@@ -24,7 +25,10 @@ func ListSupportedModels(options ModelLookupOptions) ([]string, error) {
 }
 
 func resolveModelLookup(options ModelLookupOptions) (source.ExternalModel, []string) {
-	model := source.ExternalModel{Type: options.ModelType}
+	model := source.ExternalModel{
+		Type:     options.ModelType,
+		Endpoint: options.Endpoint,
+	}
 	if options.ProviderID == "" {
 		model.Token = options.Token
 		return model, nil
@@ -35,6 +39,9 @@ func resolveModelLookup(options ModelLookupOptions) (source.ExternalModel, []str
 			continue
 		}
 		model.Token = provider.APIKey
+		if provider.Endpoint != "" {
+			model.Endpoint = provider.Endpoint
+		}
 		if provider.IsGeneric {
 			for _, genericProvider := range env.GenericProviders {
 				if genericProvider.ProviderId == options.ProviderID {

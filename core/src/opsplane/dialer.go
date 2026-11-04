@@ -46,7 +46,34 @@ var (
 	proxyRoutesMu     sync.RWMutex
 	proxyRoutesByAddr = map[string]ProxyConfig{}
 	proxyRoutesByHost = map[string]ProxyConfig{}
+	proxyRoutesByEnv  = map[string]ProxyConfig{}
 )
+
+// RegisterEnvironmentProxy records the proxy configuration associated with an environment slug.
+func RegisterEnvironmentProxy(envSlug string, proxy ProxyConfig) {
+	trimmedSlug := strings.TrimSpace(envSlug)
+	if trimmedSlug == "" {
+		return
+	}
+	proxyRoutesMu.Lock()
+	defer proxyRoutesMu.Unlock()
+	proxyRoutesByEnv[trimmedSlug] = proxy
+}
+
+// RegisterEnvironmentTargetProxy associates a target database host (and optional port) with the proxy configured for envSlug.
+func RegisterEnvironmentTargetProxy(envSlug string, host string, port string) {
+	trimmedSlug := strings.TrimSpace(envSlug)
+	if trimmedSlug == "" {
+		return
+	}
+	proxyRoutesMu.RLock()
+	proxy, ok := proxyRoutesByEnv[trimmedSlug]
+	proxyRoutesMu.RUnlock()
+	if !ok {
+		return
+	}
+	RegisterTargetProxy(host, port, proxy)
+}
 
 // RegisterTargetProxy associates a target database host (and optional port) with an environment proxy.
 func RegisterTargetProxy(host string, port string, proxy ProxyConfig) {

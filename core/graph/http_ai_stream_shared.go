@@ -66,6 +66,19 @@ func SetupSSEHeaders(w http.ResponseWriter) http.Flusher {
 // BuildObjectDetails builds the browse-object schema string for BAML context.
 // It fetches column metadata concurrently to avoid N+1 query latency.
 func BuildObjectDetails(ctx context.Context, scope source.AuditScope, session source.SourceSession, parent *source.ObjectRef, kind source.ObjectKind) (string, error) {
+	return BuildObjectDetailsWithProgress(ctx, scope, session, parent, kind, nil)
+}
+
+// BuildObjectDetailsWithProgress builds the browse-object schema string for BAML context
+// and invokes onProgress as table metadata is loaded.
+func BuildObjectDetailsWithProgress(
+	ctx context.Context,
+	scope source.AuditScope,
+	session source.SourceSession,
+	parent *source.ObjectRef,
+	kind source.ObjectKind,
+	onProgress func(completed, total int, currentName, summary string),
+) (string, error) {
 	browser, ok := source.AsSourceBrowser(scope, session)
 	if !ok {
 		return "", errors.New("source browsing is not supported")
@@ -81,6 +94,15 @@ func BuildObjectDetails(ctx context.Context, scope source.AuditScope, session so
 		return "", err
 	}
 
+	total := len(objects)
+	if onProgress != nil {
+		if total == 0 {
+			onProgress(0, 0, "", "当前数据库暂无数据表")
+		} else {
+			onProgress(0, total, "", fmt.Sprintf("发现 %d 张数据表，正在读取字段结构...", total))
+		}
+	}
+
 	type objectResult struct {
 		name    string
 		kind    source.ObjectKind
@@ -89,6 +111,7 @@ func BuildObjectDetails(ctx context.Context, scope source.AuditScope, session so
 
 	results := make([]objectResult, len(objects))
 	var mu sync.Mutex
+	completed := 0
 	g := new(errgroup.Group)
 	g.SetLimit(10)
 
@@ -98,10 +121,20 @@ func BuildObjectDetails(ctx context.Context, scope source.AuditScope, session so
 			columns, err := reader.Columns(ctx, object.Ref)
 			if err != nil {
 				log.WithError(err).Warnf("Failed to get columns for %s %s in streaming chat", object.Kind, object.Name)
+				mu.Lock()
+				completed++
+				if onProgress != nil {
+					onProgress(completed, total, object.Name, fmt.Sprintf("正在读取表结构 (%d/%d): %s", completed, total, object.Name))
+				}
+				mu.Unlock()
 				return nil
 			}
 			mu.Lock()
 			results[i] = objectResult{name: object.Name, kind: object.Kind, columns: columns}
+			completed++
+			if onProgress != nil {
+				onProgress(completed, total, object.Name, fmt.Sprintf("正在读取表结构 (%d/%d): %s（%d 个字段）", completed, total, object.Name, len(columns)))
+			}
 			mu.Unlock()
 			return nil
 		})
@@ -112,13 +145,30 @@ func BuildObjectDetails(ctx context.Context, scope source.AuditScope, session so
 	}
 
 	var b strings.Builder
+	var tableNames []string
+	totalColumns := 0
 	for _, r := range results {
 		if r.name == "" {
 			continue
 		}
+		tableNames = append(tableNames, r.name)
+		totalColumns += len(r.columns)
 		fmt.Fprintf(&b, "%s: %s\n", strings.ToLower(string(r.kind)), r.name)
 		for _, col := range r.columns {
 			fmt.Fprintf(&b, "- %s (%s)\n", col.Name, col.Type)
+		}
+	}
+	if onProgress != nil {
+		if len(tableNames) > 0 {
+			preview := tableNames
+			suffix := ""
+			if len(preview) > 6 {
+				preview = preview[:6]
+				suffix = " 等"
+			}
+			onProgress(total, total, "", fmt.Sprintf("已读取 %d 张数据表（%s%s），共 %d 个字段", len(tableNames), strings.Join(preview, "、"), suffix, totalColumns))
+		} else {
+			onProgress(total, total, "", "当前数据库暂无可用数据表")
 		}
 	}
 	return b.String(), nil
@@ -137,11 +187,30 @@ func SendSSEMessage(w http.ResponseWriter, flusher http.Flusher, message *model.
 
 // SendSSEProgress reports a backend chat action and its current status.
 func SendSSEProgress(w http.ResponseWriter, flusher http.Flusher, step, status string) {
-	data, err := json.Marshal(map[string]string{"step": step, "status": status})
+	SendSSEProgressDetail(w, flusher, step, status, "")
+}
+
+// SendSSEProgressDetail reports a backend chat action, its current status, and human-readable detail.
+func SendSSEProgressDetail(w http.ResponseWriter, flusher http.Flusher, step, status, detail string) {
+	payload := map[string]string{"step": step, "status": status}
+	if detail != "" {
+		payload["detail"] = detail
+	}
+	data, err := json.Marshal(payload)
 	if err != nil {
 		return
 	}
 	fmt.Fprintf(w, "event: progress\ndata: %s\n\n", data)
+	flusher.Flush()
+}
+
+// SendSSEChunk streams a partial text chunk via SSE.
+func SendSSEChunk(w http.ResponseWriter, flusher http.Flusher, chunkType, text string) {
+	data, err := json.Marshal(map[string]string{"type": chunkType, "text": text})
+	if err != nil {
+		return
+	}
+	fmt.Fprintf(w, "event: chunk\ndata: %s\n\n", data)
 	flusher.Flush()
 }
 

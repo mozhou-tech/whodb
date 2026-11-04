@@ -94,13 +94,26 @@ export default function localePacksPlugin({ roots, defaultLanguage }) {
             }
             const all = collect();
             if (moduleId === INDEX_ID) {
-                const loaders = [...all.keys()]
-                    .filter(language => language !== defaultLanguage)
-                    .map(language => `    ${JSON.stringify(language)}: () => import(${JSON.stringify(PACK_PREFIX + language)}),`)
-                    .join('\n');
+                const enPack = all.get('en_US') ?? {};
+                const targetPack = all.get(defaultLanguage) ?? {};
+                const mergedDefaultPack = {};
+                const layers = new Set([...Object.keys(enPack), ...Object.keys(targetPack)]);
+                for (const layer of layers) {
+                    mergedDefaultPack[layer] = {};
+                    const paths = new Set([
+                        ...Object.keys(enPack[layer] ?? {}),
+                        ...Object.keys(targetPack[layer] ?? {}),
+                    ]);
+                    for (const componentPath of paths) {
+                        mergedDefaultPack[layer][componentPath] = {
+                            ...(enPack[layer]?.[componentPath] ?? {}),
+                            ...(targetPack[layer]?.[componentPath] ?? {}),
+                        };
+                    }
+                }
                 return [
-                    `export const defaultLanguagePack = ${JSON.stringify(all.get(defaultLanguage) ?? {})};`,
-                    `export const languagePackLoaders = {\n${loaders}\n};`,
+                    `export const defaultLanguagePack = ${JSON.stringify(mergedDefaultPack)};`,
+                    `export const languagePackLoaders = {};`,
                 ].join('\n');
             }
             const language = moduleId.slice(PACK_PREFIX.length);

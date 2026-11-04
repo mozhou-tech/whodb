@@ -22,6 +22,8 @@ type HealthStatus = 'healthy' | 'error' | 'unavailable' | 'unknown';
 type IHealthState = {
     serverStatus: HealthStatus;
     databaseStatus: HealthStatus;
+    serverError: string | null;
+    databaseError: string | null;
     lastChecked: number | null;
     hasEverConnected: boolean;
     checksPerformed: number;
@@ -30,6 +32,8 @@ type IHealthState = {
 const initialState: IHealthState = {
     serverStatus: 'unknown',
     databaseStatus: 'unknown',
+    serverError: null,
+    databaseError: null,
     lastChecked: null,
     hasEverConnected: false,
     checksPerformed: 0,
@@ -41,15 +45,28 @@ export const healthSlice = createSlice({
     reducers: {
         setServerStatus: (state, action: PayloadAction<HealthStatus>) => {
             state.serverStatus = action.payload;
+            if (action.payload === 'healthy') {
+                state.serverError = null;
+            }
             state.lastChecked = Date.now();
         },
         setDatabaseStatus: (state, action: PayloadAction<HealthStatus>) => {
             state.databaseStatus = action.payload;
+            if (action.payload === 'healthy') {
+                state.databaseError = null;
+            }
             state.lastChecked = Date.now();
         },
-        setHealthStatus: (state, action: PayloadAction<{server: HealthStatus, database: HealthStatus}>) => {
+        setHealthStatus: (state, action: PayloadAction<{
+            server: HealthStatus;
+            database: HealthStatus;
+            serverError?: string | null;
+            databaseError?: string | null;
+        }>) => {
             state.serverStatus = action.payload.server;
             state.databaseStatus = action.payload.database;
+            state.serverError = action.payload.server === 'healthy' ? null : (action.payload.serverError ?? state.serverError);
+            state.databaseError = action.payload.database === 'healthy' ? null : (action.payload.databaseError ?? state.databaseError);
             state.lastChecked = Date.now();
             state.checksPerformed += 1;
             // Mark as connected if server is healthy
@@ -60,6 +77,8 @@ export const healthSlice = createSlice({
         resetHealth: (state) => {
             state.serverStatus = 'unknown';
             state.databaseStatus = 'unknown';
+            state.serverError = null;
+            state.databaseError = null;
             state.lastChecked = null;
             state.hasEverConnected = false;
             state.checksPerformed = 0;

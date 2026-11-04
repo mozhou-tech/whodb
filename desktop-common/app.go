@@ -22,6 +22,8 @@ import (
 	"os"
 	goruntime "runtime"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/wailsapp/wails/v2/pkg/menu"
 	"github.com/wailsapp/wails/v2/pkg/menu/keys"
@@ -42,16 +44,18 @@ const (
 type App struct {
 	ctx            context.Context
 	edition        string // "ce" or "ee"
+	windowMu       sync.Mutex
 	windowSettings WindowSettings
 }
 
 // WindowSettings stores window state
 type WindowSettings struct {
-	X         int  `json:"x"`
-	Y         int  `json:"y"`
-	Width     int  `json:"width"`
-	Height    int  `json:"height"`
-	Maximized bool `json:"maximized"`
+	X          int  `json:"x"`
+	Y          int  `json:"y"`
+	Width      int  `json:"width"`
+	Height     int  `json:"height"`
+	Maximized  bool `json:"maximized"`
+	CocoaFrame bool `json:"cocoaFrame,omitempty"`
 }
 
 // NewApp creates a new App application struct
@@ -65,7 +69,7 @@ func NewApp(edition string) *App {
 func (a *App) Startup(ctx context.Context) {
 	a.ctx = ctx
 	a.RestoreSecurityScopedBookmarks()
-	a.RestoreWindowState()
+	_ = a.RestoreWindowState()
 	a.SetupApplicationMenu()
 	a.SetupSystemTray()
 
@@ -79,12 +83,13 @@ func (a *App) Startup(ctx context.Context) {
 
 // Shutdown is called when the app is closing
 func (a *App) Shutdown(ctx context.Context) {
+	_ = a.SaveWindowState()
 	// Track desktop app shutdown
 	analytics.Capture(ctx, "desktop_app_closed", nil)
 }
 
 func (a *App) beforeClose(ctx context.Context) bool {
-	// Save window geometry before Wails tears down the Linux frontend.
+	// Save window geometry before Wails tears down the frontend.
 	if err := a.SaveWindowState(); err != nil {
 		log.Warnf("Failed to save window state: %v", err)
 	}
@@ -93,7 +98,8 @@ func (a *App) beforeClose(ctx context.Context) bool {
 
 // DomReady is called when the frontend is loaded
 func (a *App) DomReady(ctx context.Context) {
-	// Frontend is ready
+	_ = a.RestoreWindowState()
+	go a.watchWindowState(ctx)
 }
 
 // OpenURL opens a URL in the system's default browser
@@ -284,17 +290,25 @@ func (a *App) getConfigOptions() datadir.Options {
 
 // SaveWindowState saves current window position, size, and zoom
 func (a *App) SaveWindowState() error {
-	// Get current window state
-	x, y := runtime.WindowGetPosition(a.ctx)
-	width, height := runtime.WindowGetSize(a.ctx)
-	maximized := runtime.WindowIsMaximised(a.ctx)
+	a.windowMu.Lock()
+	defer a.windowMu.Unlock()
 
-	a.windowSettings = WindowSettings{
-		X:         x,
-		Y:         y,
-		Width:     width,
-		Height:    height,
-		Maximized: maximized,
+	if settings, ok := getPlatformWindowSettings(); ok {
+		a.windowSettings = settings
+	} else {
+		x, y := runtime.WindowGetPosition(a.ctx)
+		width, height := runtime.WindowGetSize(a.ctx)
+		maximized := runtime.WindowIsMaximised(a.ctx)
+		if width <= 0 || height <= 0 {
+			return nil
+		}
+		a.windowSettings = WindowSettings{
+			X:         x,
+			Y:         y,
+			Width:     width,
+			Height:    height,
+			Maximized: maximized,
+		}
 	}
 
 	// Save to unified config.json
@@ -302,8 +316,49 @@ func (a *App) SaveWindowState() error {
 	return config.WriteSection(config.SectionDesktop, a.windowSettings, opts)
 }
 
+func (a *App) watchWindowState(ctx context.Context) {
+	ticker := time.NewTicker(500 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			var current WindowSettings
+			if settings, ok := getPlatformWindowSettings(); ok {
+				current = settings
+			} else {
+				x, y := runtime.WindowGetPosition(a.ctx)
+				width, height := runtime.WindowGetSize(a.ctx)
+				if width <= 0 || height <= 0 {
+					continue
+				}
+				current = WindowSettings{
+					X:         x,
+					Y:         y,
+					Width:     width,
+					Height:    height,
+					Maximized: runtime.WindowIsMaximised(a.ctx),
+				}
+			}
+
+			a.windowMu.Lock()
+			changed := current != a.windowSettings
+			if changed {
+				a.windowSettings = current
+				opts := a.getConfigOptions()
+				_ = config.WriteSection(config.SectionDesktop, a.windowSettings, opts)
+			}
+			a.windowMu.Unlock()
+		}
+	}
+}
+
 // RestoreWindowState restores window position, size, and zoom
 func (a *App) RestoreWindowState() error {
+	a.windowMu.Lock()
+	defer a.windowMu.Unlock()
+
 	opts := a.getConfigOptions()
 
 	// Read from unified config.json
@@ -311,12 +366,14 @@ func (a *App) RestoreWindowState() error {
 		return err
 	}
 
-	// Apply window settings (guard against invalid geometry)
-	if a.windowSettings.X != 0 || a.windowSettings.Y != 0 {
-		runtime.WindowSetPosition(a.ctx, a.windowSettings.X, a.windowSettings.Y)
+	if setPlatformWindowSettings(a.windowSettings) {
+		return nil
 	}
+
+	// Apply window settings (set size before position so Y calculation uses final height)
 	if a.windowSettings.Width > 0 && a.windowSettings.Height > 0 {
 		runtime.WindowSetSize(a.ctx, a.windowSettings.Width, a.windowSettings.Height)
+		runtime.WindowSetPosition(a.ctx, a.windowSettings.X, a.windowSettings.Y)
 	}
 	if a.windowSettings.Maximized {
 		runtime.WindowMaximise(a.ctx)

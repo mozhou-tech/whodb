@@ -93,6 +93,32 @@ type ColumnDefinitionInput struct {
 	ForeignKey   *ForeignKeyDefinitionInput `json:"ForeignKey,omitempty"`
 }
 
+type CopySourceObjectsInput struct {
+	SourceParent     *SourceObjectRefInput        `json:"SourceParent,omitempty"`
+	Target           *SourceTargetConnectionInput `json:"Target"`
+	TargetSchema     *string                      `json:"TargetSchema,omitempty"`
+	ObjectNames      []string                     `json:"ObjectNames"`
+	Mode             CopyDataMode                 `json:"Mode"`
+	ExistingStrategy CopyExistingStrategy         `json:"ExistingStrategy"`
+}
+
+type CopySourceObjectsResult struct {
+	Status          bool               `json:"Status"`
+	TotalTables     int                `json:"TotalTables"`
+	SucceededCount  int                `json:"SucceededCount"`
+	SkippedCount    int                `json:"SkippedCount"`
+	FailedCount     int                `json:"FailedCount"`
+	TotalRowsCopied int                `json:"TotalRowsCopied"`
+	Details         []*CopyTableDetail `json:"Details"`
+}
+
+type CopyTableDetail struct {
+	Name       string          `json:"Name"`
+	Status     CopyTableStatus `json:"Status"`
+	RowsCopied int             `json:"RowsCopied"`
+	Message    *string         `json:"Message,omitempty"`
+}
+
 type CreationOptionDefinition struct {
 	Key      string   `json:"Key"`
 	Label    string   `json:"Label"`
@@ -493,6 +519,14 @@ type SourceSessionMetadata struct {
 	AliasMap        []*Record         `json:"AliasMap"`
 }
 
+type SourceTargetConnectionInput struct {
+	ProfileID   *string        `json:"ProfileId,omitempty"`
+	SourceType  *string        `json:"SourceType,omitempty"`
+	Database    *string        `json:"Database,omitempty"`
+	Values      []*RecordInput `json:"Values,omitempty"`
+	AccessToken *string        `json:"AccessToken,omitempty"`
+}
+
 type SourceTraits struct {
 	Connection   *SourceConnectionTraits   `json:"Connection"`
 	Presentation *SourcePresentationTraits `json:"Presentation"`
@@ -555,6 +589,175 @@ type WhereCondition struct {
 	Atomic *AtomicWhereCondition    `json:"Atomic,omitempty"`
 	And    *OperationWhereCondition `json:"And,omitempty"`
 	Or     *OperationWhereCondition `json:"Or,omitempty"`
+}
+
+type CopyDataMode string
+
+const (
+	CopyDataModeStructureAndData CopyDataMode = "STRUCTURE_AND_DATA"
+	CopyDataModeStructureOnly    CopyDataMode = "STRUCTURE_ONLY"
+)
+
+var AllCopyDataMode = []CopyDataMode{
+	CopyDataModeStructureAndData,
+	CopyDataModeStructureOnly,
+}
+
+func (e CopyDataMode) IsValid() bool {
+	switch e {
+	case CopyDataModeStructureAndData, CopyDataModeStructureOnly:
+		return true
+	}
+	return false
+}
+
+func (e CopyDataMode) String() string {
+	return string(e)
+}
+
+func (e *CopyDataMode) UnmarshalGQL(v any) error {
+	str, ok := v.(string)
+	if !ok {
+		return fmt.Errorf("enums must be strings")
+	}
+
+	*e = CopyDataMode(str)
+	if !e.IsValid() {
+		return fmt.Errorf("%s is not a valid CopyDataMode", str)
+	}
+	return nil
+}
+
+func (e CopyDataMode) MarshalGQL(w io.Writer) {
+	_, _ = fmt.Fprint(w, strconv.Quote(e.String()))
+}
+
+func (e *CopyDataMode) UnmarshalJSON(b []byte) error {
+	s, err := strconv.Unquote(string(b))
+	if err != nil {
+		return err
+	}
+	return e.UnmarshalGQL(s)
+}
+
+func (e CopyDataMode) MarshalJSON() ([]byte, error) {
+	var buf bytes.Buffer
+	e.MarshalGQL(&buf)
+	return buf.Bytes(), nil
+}
+
+type CopyExistingStrategy string
+
+const (
+	CopyExistingStrategySkip      CopyExistingStrategy = "SKIP"
+	CopyExistingStrategyOverwrite CopyExistingStrategy = "OVERWRITE"
+	CopyExistingStrategyAppend    CopyExistingStrategy = "APPEND"
+)
+
+var AllCopyExistingStrategy = []CopyExistingStrategy{
+	CopyExistingStrategySkip,
+	CopyExistingStrategyOverwrite,
+	CopyExistingStrategyAppend,
+}
+
+func (e CopyExistingStrategy) IsValid() bool {
+	switch e {
+	case CopyExistingStrategySkip, CopyExistingStrategyOverwrite, CopyExistingStrategyAppend:
+		return true
+	}
+	return false
+}
+
+func (e CopyExistingStrategy) String() string {
+	return string(e)
+}
+
+func (e *CopyExistingStrategy) UnmarshalGQL(v any) error {
+	str, ok := v.(string)
+	if !ok {
+		return fmt.Errorf("enums must be strings")
+	}
+
+	*e = CopyExistingStrategy(str)
+	if !e.IsValid() {
+		return fmt.Errorf("%s is not a valid CopyExistingStrategy", str)
+	}
+	return nil
+}
+
+func (e CopyExistingStrategy) MarshalGQL(w io.Writer) {
+	_, _ = fmt.Fprint(w, strconv.Quote(e.String()))
+}
+
+func (e *CopyExistingStrategy) UnmarshalJSON(b []byte) error {
+	s, err := strconv.Unquote(string(b))
+	if err != nil {
+		return err
+	}
+	return e.UnmarshalGQL(s)
+}
+
+func (e CopyExistingStrategy) MarshalJSON() ([]byte, error) {
+	var buf bytes.Buffer
+	e.MarshalGQL(&buf)
+	return buf.Bytes(), nil
+}
+
+type CopyTableStatus string
+
+const (
+	CopyTableStatusSuccess CopyTableStatus = "SUCCESS"
+	CopyTableStatusSkipped CopyTableStatus = "SKIPPED"
+	CopyTableStatusFailed  CopyTableStatus = "FAILED"
+)
+
+var AllCopyTableStatus = []CopyTableStatus{
+	CopyTableStatusSuccess,
+	CopyTableStatusSkipped,
+	CopyTableStatusFailed,
+}
+
+func (e CopyTableStatus) IsValid() bool {
+	switch e {
+	case CopyTableStatusSuccess, CopyTableStatusSkipped, CopyTableStatusFailed:
+		return true
+	}
+	return false
+}
+
+func (e CopyTableStatus) String() string {
+	return string(e)
+}
+
+func (e *CopyTableStatus) UnmarshalGQL(v any) error {
+	str, ok := v.(string)
+	if !ok {
+		return fmt.Errorf("enums must be strings")
+	}
+
+	*e = CopyTableStatus(str)
+	if !e.IsValid() {
+		return fmt.Errorf("%s is not a valid CopyTableStatus", str)
+	}
+	return nil
+}
+
+func (e CopyTableStatus) MarshalGQL(w io.Writer) {
+	_, _ = fmt.Fprint(w, strconv.Quote(e.String()))
+}
+
+func (e *CopyTableStatus) UnmarshalJSON(b []byte) error {
+	s, err := strconv.Unquote(string(b))
+	if err != nil {
+		return err
+	}
+	return e.UnmarshalGQL(s)
+}
+
+func (e CopyTableStatus) MarshalJSON() ([]byte, error) {
+	var buf bytes.Buffer
+	e.MarshalGQL(&buf)
+	return buf.Bytes(), nil
 }
 
 type DataShape string

@@ -56,3 +56,13 @@ func handleMongoError(err error) error {
 	msg = strings.ReplaceAll(msg, "\n", " ")
 	return fmt.Errorf("mongodb operation failed: %s", msg)
 }
+
+func isNamespaceExistsError(err error) bool {
+	if err == nil {
+		return false
+	}
+	if ce, ok := errors.AsType[mongo.CommandError](err); ok && ce.Code == 48 {
+		return true
+	}
+	return strings.Contains(strings.ToLower(err.Error()), "already exists")
+}

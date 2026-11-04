@@ -26,7 +26,8 @@ func ClientForModel(model *source.ExternalModel) *LLMClient {
 	}
 
 	return &LLMClient{
-		Type:   providers.LLMType(model.Type),
-		APIKey: model.Token,
+		Type:     providers.LLMType(model.Type),
+		APIKey:   model.Token,
+		Endpoint: model.Endpoint,
 	}
 }

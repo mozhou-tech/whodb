@@ -21,6 +21,7 @@ package graph
 import (
 	stdctx "context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -82,18 +83,31 @@ func ceAIChatStreamHandler(w http.ResponseWriter, r *http.Request) {
 		Endpoint: creds.Endpoint,
 	}
 
-	SendSSEProgress(w, flusher, "schema", "started")
+	SendSSEProgressDetail(w, flusher, "schema", "started", "正在扫描当前数据库的表与字段定义...")
 	// Build object details for the selected chat scope.
 	log.Debugf("AI Chat Stream: Building object details for ref=%+v", req.Ref)
 	resolvedRef := sourceRefFromInput(req.Ref)
-	tableDetails, err := BuildObjectDetails(chatContext, auditScope, session, resolvedRef, spec.Contract.DefaultObjectKind)
+	var schemaSummary string
+	tableDetails, err := BuildObjectDetailsWithProgress(
+		chatContext,
+		auditScope,
+		session,
+		resolvedRef,
+		spec.Contract.DefaultObjectKind,
+		func(completed, total int, _ string, summary string) {
+			schemaSummary = summary
+			if completed < total {
+				SendSSEProgressDetail(w, flusher, "schema", "started", summary)
+			}
+		},
+	)
 	if err != nil {
 		log.Debugf("AI Chat Stream: BuildObjectDetails failed: %v", err)
 		SendSSEError(w, flusher, "Failed to get table info: "+err.Error())
 		return
 	}
 	log.Debugf("AI Chat Stream: Table details built, length=%d", len(tableDetails))
-	SendSSEProgress(w, flusher, "schema", "completed")
+	SendSSEProgressDetail(w, flusher, "schema", "completed", schemaSummary)
 
 	scope := sourceScopeForChat(spec, resolvedRef)
 
@@ -122,13 +136,14 @@ func runChatLoop(
 	request := userQuery
 	var lastFailedSQL, lastQueryError string
 	for attempt := range 2 {
-		SendSSEProgress(w, flusher, "plan", "started")
+		SendSSEProgressDetail(w, flusher, "plan", "started", "正在调用模型分析表结构与问题，生成思考与查询方案...")
 		stream, err := baml_client.Stream.GenerateSQLQuery(ctx, dbContext, request, callOpts...)
 		if err != nil {
 			sendModelError(w, flusher, err.Error())
 			return
 		}
 		var responses *[]types.ChatResponse
+		var lastStreamedThought, lastStreamedDetail string
 		for chunk := range stream {
 			if chunk.IsError {
 				sendModelError(w, flusher, chunk.Error.Error())
@@ -138,6 +153,47 @@ func runChatLoop(
 				responses = chunk.Final()
 				break
 			}
+			if partial := chunk.Stream(); partial != nil {
+				var currentThought, currentSQL strings.Builder
+				for _, item := range *partial {
+					if item.Text == nil || *item.Text == "" {
+						continue
+					}
+					itemType := "message"
+					if item.Type != nil {
+						itemType = bamlconfig.ConvertBAMLTypeToWhoDB(*item.Type)
+					}
+					if itemType == "sql" {
+						if currentSQL.Len() > 0 {
+							currentSQL.WriteString("\n")
+						}
+						currentSQL.WriteString(*item.Text)
+					} else if itemType == "message" || itemType == "text" {
+						if currentThought.Len() > 0 {
+							currentThought.WriteString("\n\n")
+						}
+						currentThought.WriteString(*item.Text)
+					}
+				}
+				thoughtStr := strings.TrimSpace(currentThought.String())
+				sqlStr := strings.TrimSpace(currentSQL.String())
+				if thoughtStr != "" && thoughtStr != lastStreamedThought {
+					lastStreamedThought = thoughtStr
+					SendSSEChunk(w, flusher, "message", thoughtStr)
+				}
+				detail := thoughtStr
+				if sqlStr != "" {
+					if detail != "" {
+						detail += "\n\nSQL:\n" + sqlStr
+					} else {
+						detail = "SQL:\n" + sqlStr
+					}
+				}
+				if detail != "" && detail != lastStreamedDetail {
+					lastStreamedDetail = detail
+					SendSSEProgressDetail(w, flusher, "plan", "started", detail)
+				}
+			}
 		}
 		if err := ctx.Err(); err != nil {
 			if err == stdctx.DeadlineExceeded {
@@ -145,11 +201,34 @@ func runChatLoop(
 			}
 			return
 		}
-		SendSSEProgress(w, flusher, "plan", "completed")
 		if responses == nil || len(*responses) == 0 {
+			SendSSEProgressDetail(w, flusher, "plan", "completed", lastStreamedDetail)
 			SendSSEError(w, flusher, "The model returned no answer")
 			return
 		}
+
+		var finalThoughts, finalSQLs []string
+		for _, r := range *responses {
+			txt := strings.TrimSpace(r.Text)
+			if txt == "" {
+				continue
+			}
+			if r.Type == types.ChatMessageTypeSQL {
+				finalSQLs = append(finalSQLs, txt)
+			} else if r.Type == types.ChatMessageTypeMESSAGE {
+				finalThoughts = append(finalThoughts, txt)
+			}
+		}
+		planSummary := strings.Join(finalThoughts, "\n\n")
+		if len(finalSQLs) > 0 {
+			sqlBlock := "生成 SQL:\n" + strings.Join(finalSQLs, "\n")
+			if planSummary != "" {
+				planSummary += "\n\n" + sqlBlock
+			} else {
+				planSummary = sqlBlock
+			}
+		}
+		SendSSEProgressDetail(w, flusher, "plan", "completed", planSummary)
 
 		messages := make([]*model.AIChatMessage, 0, len(*responses))
 		var retryReason string
@@ -163,9 +242,17 @@ func runChatLoop(
 				if sqlguard.Classify(response.Text).Mutating {
 					step = "draft"
 				}
-				SendSSEProgress(w, flusher, step, "started")
+				SendSSEProgressDetail(w, flusher, step, "started", response.Text)
 				message := processFinalResponse(ctx, &response, queryRunner)
-				SendSSEProgress(w, flusher, step, "completed")
+				stepDetail := response.Text
+				if message.Type == "error" {
+					stepDetail = fmt.Sprintf("%s\n→ 执行失败：%s", response.Text, message.Text)
+				} else if message.RequiresConfirmation {
+					stepDetail = fmt.Sprintf("%s\n→ 已生成变更语句，等待人工确认", response.Text)
+				} else if message.Result != nil {
+					stepDetail = fmt.Sprintf("%s\n→ 查询成功，返回 %d 行数据", response.Text, len(message.Result.Rows))
+				}
+				SendSSEProgressDetail(w, flusher, step, "completed", stepDetail)
 				if message.Type == "error" {
 					retryReason = message.Text
 					lastFailedSQL = response.Text
@@ -179,9 +266,10 @@ func runChatLoop(
 			messages = append(messages, message)
 		}
 		if retryReason != "" && attempt == 0 {
-			SendSSEProgress(w, flusher, "retry", "started")
+			retryDetail := fmt.Sprintf("上一次查询失败：%s\n正在根据错误信息重新生成 SQL...", retryReason)
+			SendSSEProgressDetail(w, flusher, "retry", "started", retryDetail)
 			request = userQuery + "\nThe previous plan failed: " + retryReason + "\nReturn a corrected answer. Use only SQL on the listed database tables; do not claim that any action has run."
-			SendSSEProgress(w, flusher, "retry", "completed")
+			SendSSEProgressDetail(w, flusher, "retry", "completed", retryDetail)
 			continue
 		}
 		if retryReason != "" {
@@ -208,9 +296,6 @@ func runChatLoop(
 			return
 		}
 		for _, message := range messages {
-			if hasSQL && message.Type == "message" {
-				continue
-			}
 			SendSSEMessage(w, flusher, message)
 		}
 		SendSSEDone(w, flusher)

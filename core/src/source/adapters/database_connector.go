@@ -20,14 +20,19 @@ package adapters
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
+	"flag"
 	"fmt"
 	"maps"
 	"slices"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/clidey/whodb/core/src"
+	"github.com/clidey/whodb/core/src/common/metadatacache"
 	"github.com/clidey/whodb/core/src/engine"
 	"github.com/clidey/whodb/core/src/importer"
 	"github.com/clidey/whodb/core/src/log"
@@ -36,6 +41,11 @@ import (
 	"github.com/clidey/whodb/core/src/querysuggestions"
 	"github.com/clidey/whodb/core/src/source"
 	"github.com/clidey/whodb/core/src/sourcecatalog"
+)
+
+const (
+	metadataSoftTTL = 10 * time.Minute
+	metadataHardTTL = 7 * 24 * time.Hour
 )
 
 func init() {
@@ -62,12 +72,18 @@ func (c *DatabaseConnector) Open(_ context.Context, spec source.TypeSpec, creden
 		return nil, fmt.Errorf("unsupported source connector: %s", spec.Connector)
 	}
 
+	var store *metadatacache.Store
+	if flag.Lookup("test.v") == nil {
+		store = metadatacache.Default()
+	}
+
 	return &DatabaseSession{
 		spec:        spec,
 		plugin:      plugin,
 		credentials: credentials,
 		validated:   map[databaseObjectCacheKey]struct{}{},
 		columns:     map[databaseObjectCacheKey][]source.Column{},
+		store:       store,
 	}, nil
 }
 
@@ -75,6 +91,10 @@ func (c *DatabaseConnector) Open(_ context.Context, spec source.TypeSpec, creden
 // source credential set.
 func (c *DatabaseConnector) Invalidate(_ context.Context, spec source.TypeSpec, credentials *source.Credentials) error {
 	plugins.RemoveConnection(engine.NewPluginConfig(EngineCredentials(spec, credentials)))
+	if flag.Lookup("test.v") == nil {
+		s := &DatabaseSession{spec: spec, credentials: credentials, store: metadatacache.Default()}
+		s.invalidatePersistentCache()
+	}
 	return nil
 }
 
@@ -93,6 +113,7 @@ type DatabaseSession struct {
 	mu          sync.RWMutex
 	validated   map[databaseObjectCacheKey]struct{}
 	columns     map[databaseObjectCacheKey][]source.Column
+	store       *metadatacache.Store
 }
 
 type databaseObjectCacheKey struct {
@@ -134,9 +155,36 @@ func (s *DatabaseSession) ConnectionFieldOptions(ctx context.Context, fieldKey s
 		return []string{}, nil
 	}
 
+	scope := s.baseCacheScope()
+	cacheKey := "field_options:Database"
+	if s.store != nil && len(values) == 0 {
+		var cached []string
+		if hit, stale := s.store.Get(scope, cacheKey, &cached); hit {
+			if stale {
+				s.store.TriggerRefresh(scope, cacheKey, func() {
+					bgCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+					defer cancel()
+					cfg := engine.NewPluginConfig(s.engineCredentials(nil))
+					cfg.Context = bgCtx
+					if fresh, err := s.plugin.GetDatabases(cfg); err == nil {
+						s.store.Set(scope, cacheKey, fresh, metadataSoftTTL, metadataHardTTL)
+					}
+				})
+			}
+			return cached, nil
+		}
+	}
+
 	config := engine.NewPluginConfig(s.engineCredentials(values))
 	config.Context = ctx
-	return s.plugin.GetDatabases(config)
+	databases, err := s.plugin.GetDatabases(config)
+	if err != nil {
+		return nil, err
+	}
+	if s.store != nil && len(values) == 0 {
+		s.store.Set(scope, cacheKey, databases, metadataSoftTTL, metadataHardTTL)
+	}
+	return databases, nil
 }
 
 // ListObjects lists child objects beneath the provided parent.
@@ -152,6 +200,49 @@ func (s *DatabaseSession) ListObjects(ctx context.Context, parent *source.Object
 		return nil, err
 	}
 
+	scope := s.baseCacheScope()
+	cacheKey := s.listObjectsCacheKey(nextKind, parent, kinds)
+	namespace := s.namespaceForRef(parent)
+
+	if s.store != nil {
+		var cached []source.Object
+		if hit, stale := s.store.Get(scope, cacheKey, &cached); hit {
+			for i := range cached {
+				if !s.hasChildren(cached[i].Kind) {
+					s.rememberValidatedObject(namespace, cached[i].Name)
+				}
+			}
+			if stale {
+				parentCopy := cloneObjectRefPtr(parent)
+				kindsCopy := slices.Clone(kinds)
+				s.store.TriggerRefresh(scope, cacheKey, func() {
+					bgCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+					defer cancel()
+					if fresh, err := s.fetchObjectsFromPlugin(bgCtx, nextKind, parentCopy, kindsCopy); err == nil {
+						s.store.Set(scope, cacheKey, fresh, metadataSoftTTL, metadataHardTTL)
+					}
+				})
+			}
+			return cached, nil
+		}
+	}
+
+	objects, err := s.fetchObjectsFromPlugin(ctx, nextKind, parent, kinds)
+	if err != nil {
+		return nil, err
+	}
+	for i := range objects {
+		if !s.hasChildren(objects[i].Kind) {
+			s.rememberValidatedObject(namespace, objects[i].Name)
+		}
+	}
+	if s.store != nil {
+		s.store.Set(scope, cacheKey, objects, metadataSoftTTL, metadataHardTTL)
+	}
+	return objects, nil
+}
+
+func (s *DatabaseSession) fetchObjectsFromPlugin(ctx context.Context, nextKind source.ObjectKind, parent *source.ObjectRef, kinds []source.ObjectKind) ([]source.Object, error) {
 	config := s.pluginConfig(ctx, parent)
 
 	switch nextKind {
@@ -297,13 +388,22 @@ func (s *DatabaseSession) Columns(ctx context.Context, ref source.ObjectRef) ([]
 	config := s.pluginConfig(ctx, &ref)
 	namespace := s.namespaceForRef(&ref)
 	name := objectName(ref)
+	if cachedColumns, ok := s.cachedColumns(&ref, namespace, name); ok {
+		return cachedColumns, nil
+	}
 	if err := s.validateObject(config, namespace, name); err != nil {
 		return nil, err
 	}
-	if cachedColumns, ok := s.cachedColumns(namespace, name); ok {
-		return cachedColumns, nil
-	}
 
+	columns, err := s.fetchColumnsFromPlugin(config, namespace, name)
+	if err != nil {
+		return nil, err
+	}
+	s.cacheColumns(namespace, name, columns)
+	return cloneSourceColumns(columns), nil
+}
+
+func (s *DatabaseSession) fetchColumnsFromPlugin(config *engine.PluginConfig, namespace string, name string) ([]source.Column, error) {
 	columns, err := s.plugin.GetColumnsForTable(config, namespace, name)
 	if err != nil {
 		return nil, err
@@ -315,8 +415,7 @@ func (s *DatabaseSession) Columns(ctx context.Context, ref source.ObjectRef) ([]
 	if err := source.ValidateColumns(columns); err != nil {
 		return nil, err
 	}
-	s.cacheColumns(namespace, name, columns)
-	return cloneSourceColumns(columns), nil
+	return columns, nil
 }
 
 // ColumnsBatch returns columns for multiple source objects.
@@ -345,11 +444,39 @@ func (s *DatabaseSession) ColumnConstraints(ctx context.Context, ref source.Obje
 	config := s.pluginConfig(ctx, &ref)
 	namespace := s.namespaceForRef(&ref)
 	name := objectName(ref)
+	scope := s.baseCacheScope()
+	cacheKey := "col_constraints:" + namespace + ":" + name
+	if s.store != nil {
+		var cached map[string]map[string]any
+		if hit, stale := s.store.Get(scope, cacheKey, &cached); hit {
+			s.rememberValidatedObject(namespace, name)
+			if stale {
+				refCopy := source.NewObjectRef(ref.Kind, ref.Path)
+				s.store.TriggerRefresh(scope, cacheKey, func() {
+					bgCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+					defer cancel()
+					cfg := s.pluginConfig(bgCtx, &refCopy)
+					if fresh, err := s.plugin.GetColumnConstraints(cfg, namespace, name); err == nil {
+						s.store.Set(scope, cacheKey, fresh, metadataSoftTTL, metadataHardTTL)
+					}
+				})
+			}
+			return cached, nil
+		}
+	}
+
 	if err := s.validateObject(config, namespace, name); err != nil {
 		return nil, err
 	}
 
-	return s.plugin.GetColumnConstraints(config, namespace, name)
+	constraints, err := s.plugin.GetColumnConstraints(config, namespace, name)
+	if err != nil {
+		return nil, err
+	}
+	if s.store != nil {
+		s.store.Set(scope, cacheKey, constraints, metadataSoftTTL, metadataHardTTL)
+	}
+	return constraints, nil
 }
 
 // FieldConstraints returns normalized source-level field constraints for one
@@ -362,10 +489,41 @@ func (s *DatabaseSession) FieldConstraints(ctx context.Context, ref source.Objec
 	config := s.pluginConfig(ctx, &ref)
 	namespace := s.namespaceForRef(&ref)
 	name := objectName(ref)
+	scope := s.baseCacheScope()
+	cacheKey := "field_constraints:" + namespace + ":" + name
+	if s.store != nil {
+		var cached []source.FieldConstraints
+		if hit, stale := s.store.Get(scope, cacheKey, &cached); hit {
+			s.rememberValidatedObject(namespace, name)
+			if stale {
+				refCopy := source.NewObjectRef(ref.Kind, ref.Path)
+				s.store.TriggerRefresh(scope, cacheKey, func() {
+					bgCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+					defer cancel()
+					if fresh, err := s.computeFieldConstraints(bgCtx, refCopy, s.pluginConfig(bgCtx, &refCopy), namespace, name); err == nil {
+						s.store.Set(scope, cacheKey, fresh, metadataSoftTTL, metadataHardTTL)
+					}
+				})
+			}
+			return cached, nil
+		}
+	}
+
 	if err := s.validateObject(config, namespace, name); err != nil {
 		return nil, err
 	}
 
+	fields, err := s.computeFieldConstraints(ctx, ref, config, namespace, name)
+	if err != nil {
+		return nil, err
+	}
+	if s.store != nil {
+		s.store.Set(scope, cacheKey, fields, metadataSoftTTL, metadataHardTTL)
+	}
+	return fields, nil
+}
+
+func (s *DatabaseSession) computeFieldConstraints(ctx context.Context, ref source.ObjectRef, config *engine.PluginConfig, namespace string, name string) ([]source.FieldConstraints, error) {
 	columns, err := s.Columns(ctx, ref)
 	if err != nil {
 		return nil, err
@@ -421,7 +579,11 @@ func (s *DatabaseSession) RunQuery(ctx context.Context, sql string, params ...an
 	}
 
 	config := s.pluginConfig(ctx, nil)
-	return s.plugin.RawExecute(config, sql, params...)
+	res, err := s.plugin.RawExecute(config, sql, params...)
+	if err == nil && isLikelySchemaMutatingQuery(sql) {
+		s.invalidatePersistentCache()
+	}
+	return res, err
 }
 
 // RunReadOnlyQuery validates and executes SQL through the source's protected path.
@@ -472,7 +634,11 @@ func (s *DatabaseSession) RunScript(ctx context.Context, script string, multiSta
 
 	config := s.pluginConfig(ctx, nil)
 	config.MultiStatement = multiStatement
-	return s.plugin.RawExecute(config, script, params...)
+	res, err := s.plugin.RawExecute(config, script, params...)
+	if err == nil && isLikelySchemaMutatingQuery(script) {
+		s.invalidatePersistentCache()
+	}
+	return res, err
 }
 
 // ReadGraph returns graph data for a source scope.
@@ -481,11 +647,41 @@ func (s *DatabaseSession) ReadGraph(ctx context.Context, ref *source.ObjectRef) 
 		return nil, err
 	}
 
-	config := s.pluginConfig(ctx, ref)
 	scope := ""
 	if ref != nil {
 		scope = s.graphScopeForRef(*ref)
 	}
+	cacheScope := s.baseCacheScope()
+	cacheKey := "graph:" + scope
+	if s.store != nil {
+		var cached []source.GraphUnit
+		if hit, stale := s.store.Get(cacheScope, cacheKey, &cached); hit {
+			if stale {
+				refCopy := cloneObjectRefPtr(ref)
+				s.store.TriggerRefresh(cacheScope, cacheKey, func() {
+					bgCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+					defer cancel()
+					if fresh, err := s.fetchGraphFromPlugin(bgCtx, refCopy, scope); err == nil {
+						s.store.Set(cacheScope, cacheKey, fresh, metadataSoftTTL, metadataHardTTL)
+					}
+				})
+			}
+			return cached, nil
+		}
+	}
+
+	units, err := s.fetchGraphFromPlugin(ctx, ref, scope)
+	if err != nil {
+		return nil, err
+	}
+	if s.store != nil {
+		s.store.Set(cacheScope, cacheKey, units, metadataSoftTTL, metadataHardTTL)
+	}
+	return units, nil
+}
+
+func (s *DatabaseSession) fetchGraphFromPlugin(ctx context.Context, ref *source.ObjectRef, scope string) ([]source.GraphUnit, error) {
+	config := s.pluginConfig(ctx, ref)
 	units, err := s.plugin.GetGraph(config, scope)
 	if err != nil {
 		return nil, err
@@ -535,7 +731,11 @@ func (s *DatabaseSession) CreateObject(ctx context.Context, parent *source.Objec
 
 	config := s.pluginConfig(ctx, parent)
 	namespace := s.namespaceForRef(parent)
-	return s.plugin.CreateStorageUnit(config, namespace, source.RecordsToObjectDefinition(name, fields))
+	ok, err := s.plugin.CreateStorageUnit(config, namespace, source.RecordsToObjectDefinition(name, fields))
+	if err == nil && ok {
+		s.invalidatePersistentCache()
+	}
+	return ok, err
 }
 
 // UpdateObject updates data within an existing source object.
@@ -752,6 +952,101 @@ func (s *DatabaseSession) QuerySuggestions(ctx context.Context, ref *source.Obje
 	return mapped, nil
 }
 
+// ListTargetDatabases returns the available database names for the session's target connection.
+func (s *DatabaseSession) ListTargetDatabases(ctx context.Context) ([]string, error) {
+	config := s.pluginConfig(ctx, nil)
+	databases, err := s.plugin.GetDatabases(config)
+	if err != nil {
+		if errors.Is(err, errors.ErrUnsupported) {
+			if config.Credentials != nil && config.Credentials.Database != "" {
+				return []string{config.Credentials.Database}, nil
+			}
+			return []string{}, nil
+		}
+		return nil, err
+	}
+	return databases, nil
+}
+
+// ListTargetSchemas returns the available schema names for the session's target connection.
+func (s *DatabaseSession) ListTargetSchemas(ctx context.Context) ([]string, error) {
+	config := s.pluginConfig(ctx, nil)
+	schemas, err := s.plugin.GetAllSchemas(config)
+	if err != nil {
+		if errors.Is(err, errors.ErrUnsupported) {
+			return []string{}, nil
+		}
+		return nil, err
+	}
+	return schemas, nil
+}
+
+// CopyObjects copies the specified storage units from the current source session into targetSession.
+func (s *DatabaseSession) CopyObjects(
+	ctx context.Context,
+	sourceParent *source.ObjectRef,
+	targetSession *DatabaseSession,
+	targetNamespace string,
+	objectNames []string,
+	includeData bool,
+	existingStrategy engine.CopyExistingStrategy,
+) ([]engine.CopyTableDetail, error) {
+	if s == nil || s.plugin == nil {
+		return nil, errors.New("source database session is not initialized")
+	}
+	if targetSession == nil || targetSession.plugin == nil {
+		return nil, errors.New("target database session is not initialized")
+	}
+	if s.plugin.Type != targetSession.plugin.Type {
+		return nil, fmt.Errorf("cross-type copy from %s to %s is not supported", s.plugin.Type, targetSession.plugin.Type)
+	}
+
+	sourceConfig := s.pluginConfig(ctx, sourceParent)
+	sourceNamespace := s.namespaceForRef(sourceParent)
+	if sourceNamespace == "" && sourceConfig.Credentials != nil {
+		sourceNamespace = sourceConfig.Credentials.Database
+	}
+
+	targetConfig := targetSession.pluginConfig(ctx, nil)
+	resolvedTargetNamespace := strings.TrimSpace(targetNamespace)
+	if resolvedTargetNamespace == "" && targetConfig.Credentials != nil {
+		resolvedTargetNamespace = targetConfig.Credentials.Database
+	}
+
+	details := make([]engine.CopyTableDetail, 0, len(objectNames))
+	for _, rawName := range objectNames {
+		name := strings.TrimSpace(rawName)
+		if name == "" {
+			continue
+		}
+		detail, err := engine.CopyStorageUnit(
+			s.plugin,
+			sourceConfig,
+			sourceNamespace,
+			targetConfig,
+			resolvedTargetNamespace,
+			name,
+			includeData,
+			existingStrategy,
+		)
+		if err != nil {
+			details = append(details, engine.CopyTableDetail{
+				Name:       name,
+				Status:     engine.CopyTableStatusFailed,
+				RowsCopied: 0,
+				Message:    err.Error(),
+			})
+			continue
+		}
+		if detail != nil {
+			details = append(details, *detail)
+		}
+	}
+
+	targetSession.invalidatePersistentCache()
+	return details, nil
+}
+
 func (s *DatabaseSession) engineCredentials(values map[string]string) *engine.Credentials {
 	mergedValues := s.credentials.CloneValues()
 	for i := range s.spec.ConnectionFields {
@@ -961,52 +1256,183 @@ func (s *DatabaseSession) cacheKey(namespace string, name string) databaseObject
 
 func (s *DatabaseSession) isValidatedObject(namespace string, name string) bool {
 	s.mu.RLock()
-	defer s.mu.RUnlock()
-	if len(s.validated) == 0 {
-		return false
+	_, ok := s.validated[s.cacheKey(namespace, name)]
+	s.mu.RUnlock()
+	if ok {
+		return true
 	}
 
-	_, ok := s.validated[s.cacheKey(namespace, name)]
-	return ok
+	if s.store != nil {
+		var valid bool
+		if hit, _ := s.store.Get(s.baseCacheScope(), "validated:"+namespace+":"+name, &valid); hit && valid {
+			s.mu.Lock()
+			if s.validated == nil {
+				s.validated = map[databaseObjectCacheKey]struct{}{}
+			}
+			s.validated[s.cacheKey(namespace, name)] = struct{}{}
+			s.mu.Unlock()
+			return true
+		}
+	}
+	return false
 }
 
 func (s *DatabaseSession) rememberValidatedObject(namespace string, name string) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	if s.validated == nil {
 		s.validated = map[databaseObjectCacheKey]struct{}{}
 	}
-
 	s.validated[s.cacheKey(namespace, name)] = struct{}{}
+	s.mu.Unlock()
+
+	if s.store != nil {
+		s.store.Set(s.baseCacheScope(), "validated:"+namespace+":"+name, true, metadataSoftTTL, metadataHardTTL)
+	}
 }
 
-func (s *DatabaseSession) cachedColumns(namespace string, name string) ([]source.Column, bool) {
+func (s *DatabaseSession) cachedColumns(ref *source.ObjectRef, namespace string, name string) ([]source.Column, bool) {
 	s.mu.RLock()
-	defer s.mu.RUnlock()
-	if len(s.columns) == 0 {
-		return nil, false
-	}
-
 	columns, ok := s.columns[s.cacheKey(namespace, name)]
-	if !ok {
-		return nil, false
+	s.mu.RUnlock()
+	if ok {
+		return cloneSourceColumns(columns), true
 	}
 
-	return cloneSourceColumns(columns), true
+	if s.store != nil {
+		scope := s.baseCacheScope()
+		cacheKey := "columns:" + namespace + ":" + name
+		var persisted []source.Column
+		if hit, stale := s.store.Get(scope, cacheKey, &persisted); hit {
+			s.mu.Lock()
+			if s.columns == nil {
+				s.columns = map[databaseObjectCacheKey][]source.Column{}
+			}
+			s.columns[s.cacheKey(namespace, name)] = cloneSourceColumns(persisted)
+			if s.validated == nil {
+				s.validated = map[databaseObjectCacheKey]struct{}{}
+			}
+			s.validated[s.cacheKey(namespace, name)] = struct{}{}
+			s.mu.Unlock()
+
+			if stale && s.plugin != nil {
+				refCopy := cloneObjectRefPtr(ref)
+				s.store.TriggerRefresh(scope, cacheKey, func() {
+					bgCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+					defer cancel()
+					cfg := s.pluginConfig(bgCtx, refCopy)
+					if fresh, err := s.fetchColumnsFromPlugin(cfg, namespace, name); err == nil {
+						s.store.Set(scope, cacheKey, fresh, metadataSoftTTL, metadataHardTTL)
+					}
+				})
+			}
+			return cloneSourceColumns(persisted), true
+		}
+	}
+
+	return nil, false
 }
 
 func (s *DatabaseSession) cacheColumns(namespace string, name string, columns []source.Column) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	if s.columns == nil {
 		s.columns = map[databaseObjectCacheKey][]source.Column{}
 	}
-
 	s.columns[s.cacheKey(namespace, name)] = cloneSourceColumns(columns)
 	if s.validated == nil {
 		s.validated = map[databaseObjectCacheKey]struct{}{}
 	}
 	s.validated[s.cacheKey(namespace, name)] = struct{}{}
+	s.mu.Unlock()
+
+	if s.store != nil {
+		scope := s.baseCacheScope()
+		s.store.Set(scope, "columns:"+namespace+":"+name, columns, metadataSoftTTL, metadataHardTTL)
+		s.store.Set(scope, "validated:"+namespace+":"+name, true, metadataSoftTTL, metadataHardTTL)
+	}
+}
+
+func (s *DatabaseSession) baseCacheScope() string {
+	if s.credentials == nil {
+		return s.spec.ID + "|" + s.spec.Connector
+	}
+	creds := s.engineCredentials(nil)
+	adv := slices.Clone(creds.Advanced)
+	slices.SortFunc(adv, func(a, b engine.Record) int {
+		if c := strings.Compare(a.Key, b.Key); c != 0 {
+			return c
+		}
+		return strings.Compare(a.Value, b.Value)
+	})
+	var b strings.Builder
+	b.WriteString(s.spec.ID)
+	b.WriteByte('|')
+	b.WriteString(s.spec.Connector)
+	b.WriteByte('|')
+	b.WriteString(creds.Hostname)
+	b.WriteByte('|')
+	b.WriteString(creds.Username)
+	b.WriteByte('|')
+	b.WriteString(creds.Database)
+	for _, item := range adv {
+		if strings.EqualFold(item.Key, "Password") || strings.EqualFold(item.Key, "AccessToken") {
+			continue
+		}
+		b.WriteByte('|')
+		b.WriteString(item.Key)
+		b.WriteByte('=')
+		b.WriteString(item.Value)
+	}
+	sum := sha256.Sum256([]byte(b.String()))
+	return s.spec.ID + ":" + hex.EncodeToString(sum[:12])
+}
+
+func (s *DatabaseSession) listObjectsCacheKey(nextKind source.ObjectKind, parent *source.ObjectRef, kinds []source.ObjectKind) string {
+	var b strings.Builder
+	b.WriteString("list_objects:")
+	b.WriteString(string(nextKind))
+	b.WriteByte(':')
+	if parent != nil {
+		b.WriteString(string(parent.Kind))
+		b.WriteByte('/')
+		b.WriteString(strings.Join(parent.Path, "/"))
+	}
+	b.WriteByte(':')
+	for i, k := range kinds {
+		if i > 0 {
+			b.WriteByte(',')
+		}
+		b.WriteString(string(k))
+	}
+	return b.String()
+}
+
+func (s *DatabaseSession) invalidatePersistentCache() {
+	s.mu.Lock()
+	clear(s.validated)
+	clear(s.columns)
+	s.mu.Unlock()
+
+	if s.store != nil {
+		s.store.InvalidateScope(s.baseCacheScope())
+	}
+}
+
+func cloneObjectRefPtr(ref *source.ObjectRef) *source.ObjectRef {
+	if ref == nil {
+		return nil
+	}
+	cloned := source.NewObjectRef(ref.Kind, ref.Path)
+	return &cloned
+}
+
+func isLikelySchemaMutatingQuery(rawSQL string) bool {
+	upper := strings.ToUpper(strings.TrimSpace(rawSQL))
+	for _, kw := range []string{"CREATE ", "ALTER ", "DROP ", "TRUNCATE ", "RENAME "} {
+		if strings.Contains(upper, kw) {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *DatabaseSession) ensureSurface(surface source.Surface) error {

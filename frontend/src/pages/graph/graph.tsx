@@ -45,7 +45,6 @@ import {
     Sidebar as SidebarComponent,
     SidebarContent,
     SidebarGroup,
-    SidebarHeader,
     toTitleCase,
     IconFolder as FolderIcon,
     IconApp as RectangleGroupIcon,
@@ -91,7 +90,6 @@ const GraphSidebar: FC<GraphSidebarProps> = ({
     unitsLoading
 }) => {
     const { t } = useTranslation('pages/graph');
-    const { storageUnitLabel } = useSourceContract(current?.Type);
     const children = useMemo(() => {
         const units = storageUnits
             .filter((u: GraphStorageUnit) => u.Name.toLowerCase().includes(search.trim().toLowerCase()));
@@ -131,12 +129,7 @@ const GraphSidebar: FC<GraphSidebarProps> = ({
         <div className="dark flex grow">
             <SidebarComponent variant="embed" className="w-64 h-full flex flex-col">
                 <SidebarContent data-testid="graph-sidebar-content">
-                    <SidebarHeader>
-                        <h1 className="text-lg font-semibold pt-8 px-4">
-                            {storageUnitLabel}
-                        </h1>
-                    </SidebarHeader>
-                    <div className="px-4">
+                    <div className="px-4 pt-3">
                         <SearchInput
                             value={search}
                             onChange={(e) => { setSearch(e.target.value); }}
@@ -171,7 +164,7 @@ export const GraphPage: FC = () => {
     const { item, singularStorageUnitLabel, storageUnitLabel } = useSourceContract(currentType);
     const navigate = useNavigate();
     const [search, setSearch] = useState("");
-    const [selectedUnits, setSelectedUnits] = useState<Set<string>>(new Set());
+    const [selectedUnits, setSelectedUnits] = useState<Set<string> | null>(null);
     const [isInitialized, setIsInitialized] = useState(false);
     const [tableColumns, setTableColumns] = useState<Record<string, any[]>>({});
     const [loadingColumns, setLoadingColumns] = useState<Record<string, boolean>>({});
@@ -202,7 +195,7 @@ export const GraphPage: FC = () => {
     // Clear graph-specific UI state when the connection context changes.
     const currentProfileId = current?.Id;
     useEffect(() => {
-        setSelectedUnits(new Set());
+        setSelectedUnits(null);
         setTableColumns({});
         setLoadingColumns({});
     }, [currentProfileId, currentDatabase, schema]);
@@ -221,14 +214,17 @@ export const GraphPage: FC = () => {
         }
     }, [currentProfileId, currentDatabase, shouldSkipGraph, refetchGraph]);
 
-    // Default selection logic: auto-select up to 10 units
-    useEffect(() => {
-        const units = storageUnits;
-        if (units.length === 0) return;
+    const effectiveSelectedUnits = useMemo(() => {
+        if (selectedUnits != null) {
+            return selectedUnits;
+        }
+        return new Set(storageUnits.slice(0, 10).map(u => u.Name));
+    }, [selectedUnits, storageUnits]);
+
+    const handleSetSelectedUnits = useCallback((updater: Set<string> | ((prev: Set<string>) => Set<string>)) => {
         setSelectedUnits(prev => {
-            if (prev.size > 0) return prev;
-            const toSelect = units.slice(0, 10);
-            return new Set(toSelect.map(u => u.Name));
+            const base = prev ?? new Set(storageUnits.slice(0, 10).map(u => u.Name));
+            return typeof updater === "function" ? updater(base) : updater;
         });
     }, [storageUnits]);
 
@@ -283,10 +279,10 @@ export const GraphPage: FC = () => {
 
     useEffect(() => {
         const refs = storageUnits
-            .filter(unit => selectedUnits.has(unit.Name))
+            .filter(unit => effectiveSelectedUnits.has(unit.Name))
             .map(unit => unit.Ref);
         loadColumnsForRefs(refs);
-    }, [loadColumnsForRefs, selectedUnits, storageUnits]);
+    }, [effectiveSelectedUnits, loadColumnsForRefs, storageUnits]);
 
     const handleNodeClick = useCallback<NodeMouseHandler>((_, node) => {
         const ref = node.data?.Ref;
@@ -298,7 +294,7 @@ export const GraphPage: FC = () => {
 
     // Build nodes and edges from graph data and selection
     const { computedNodes, computedEdges } = useMemo(() => {
-        if (!graphData || selectedUnits.size === 0) {
+        if (!graphData || effectiveSelectedUnits.size === 0) {
             return { computedNodes: [], computedEdges: [] };
         }
 
@@ -308,7 +304,7 @@ export const GraphPage: FC = () => {
 
         // Create nodes for selected units with column data
         for (const node of graphData) {
-            if (!selectedUnits.has(node.Unit.Name)) continue;
+            if (!effectiveSelectedUnits.has(node.Unit.Name)) continue;
             const columns = tableColumns[node.Unit.Name] || [];
 
             // Calculate node height based on content
@@ -335,9 +331,9 @@ export const GraphPage: FC = () => {
         
         // Create edges between selected nodes with column-level connections
         for (const node of graphData) {
-            if (!selectedUnits.has(node.Unit.Name)) continue;
+            if (!effectiveSelectedUnits.has(node.Unit.Name)) continue;
             for (const relation of node.Relations) {
-                if (!selectedUnits.has(relation.Name)) continue;
+                if (!effectiveSelectedUnits.has(relation.Name)) continue;
 
                 const sourceColumn = relation.SourceColumn;
                 const targetColumn = relation.TargetColumn;
@@ -424,7 +420,7 @@ export const GraphPage: FC = () => {
         }
 
         return { computedNodes: newNodes, computedEdges: newEdges };
-    }, [graphData, loadingColumns, selectedUnits, tableColumns]);
+    }, [effectiveSelectedUnits, graphData, loadingColumns, tableColumns]);
 
     // Update nodes and edges when computed values change
     useEffect(() => {
@@ -452,44 +448,46 @@ export const GraphPage: FC = () => {
         [GraphElements.StorageUnit]: StorageUnitGraphCard,
     }), []);
 
-    if (graphLoading) {
-        return <InternalPage key="graph-loading" routes={[InternalRoutes.Graph]}>
-            <LoadingPage />
-        </InternalPage>
-    }
+    const displayNodes = nodes.length > 0 ? nodes : computedNodes;
+    const displayEdges = edges.length > 0 ? edges : computedEdges;
 
-
-    return <InternalPage key="graph" routes={[InternalRoutes.Graph]} sidebar={
-        <GraphSidebar
-            current={current}
-            search={search}
-            setSearch={setSearch}
-            selectedUnits={selectedUnits}
-            setSelectedUnits={setSelectedUnits}
-            storageUnits={storageUnits}
-            unitsLoading={graphLoading}
-        />
+    return <InternalPage routes={[InternalRoutes.Graph]} sidebar={
+        graphLoading && storageUnits.length === 0 ? undefined : (
+            <GraphSidebar
+                current={current}
+                search={search}
+                setSearch={setSearch}
+                selectedUnits={effectiveSelectedUnits}
+                setSelectedUnits={handleSetSelectedUnits}
+                storageUnits={storageUnits}
+                unitsLoading={graphLoading}
+            />
+        )
     }>
-        <div className="flex-1 h-full">
-            <ReactFlowProvider>
-                {
-                    !graphLoading && nodes.length === 0
-                        ? <EmptyState
-                            icon={<RectangleGroupIcon className="w-4 h-4" />}
-                            title={t('noNodesTitle')}
-                            description={t('noNodesDescription', { storageUnit: storageUnitLabel.toLowerCase() })}>
-                            <Button onClick={() => { void navigate(InternalRoutes.Dashboard.StorageUnit.path + "?create=true"); }}>
-                                {t('createButton', { storageUnit: singularStorageUnitLabel })}
-                            </Button>
-                        </EmptyState>
-                        : <Graph nodes={nodes} edges={edges} nodeTypes={nodeTypes}
-                                setNodes={setNodes} setEdges={setEdges}
-                                onNodesChange={onNodesChange} onEdgesChange={onEdgesChange}
-                                minZoom={0.1}
-                                onNodeClick={handleNodeClick}
-                                onReady={handleOnReady} />
-                }
-            </ReactFlowProvider>
-        </div>
+        {graphLoading && storageUnits.length === 0 ? (
+            <LoadingPage />
+        ) : (
+            <div className="flex-1 h-full">
+                <ReactFlowProvider>
+                    {
+                        !graphLoading && displayNodes.length === 0
+                            ? <EmptyState
+                                icon={<RectangleGroupIcon className="w-4 h-4" />}
+                                title={t('noNodesTitle')}
+                                description={t('noNodesDescription', { storageUnit: storageUnitLabel.toLowerCase() })}>
+                                <Button onClick={() => { void navigate(InternalRoutes.Dashboard.ExploreStorageUnit.path + "?create=true"); }}>
+                                    {t('createButton', { storageUnit: singularStorageUnitLabel })}
+                                </Button>
+                            </EmptyState>
+                            : <Graph nodes={displayNodes} edges={displayEdges} nodeTypes={nodeTypes}
+                                    setNodes={setNodes} setEdges={setEdges}
+                                    onNodesChange={onNodesChange} onEdgesChange={onEdgesChange}
+                                    minZoom={0.1}
+                                    onNodeClick={handleNodeClick}
+                                    onReady={handleOnReady} />
+                    }
+                </ReactFlowProvider>
+            </div>
+        )}
     </InternalPage>
 }
