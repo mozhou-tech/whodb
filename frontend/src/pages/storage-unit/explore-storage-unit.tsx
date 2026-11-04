@@ -94,7 +94,7 @@ import {useContainerWidth} from "../../hooks/use-container-width";
 import {getComponent} from "../../config/component-registry";
 import { findSourceObjectType } from "../../config/source-types";
 import {buildSourceObjectRef, buildSourceParentRef} from "../../utils/source-refs";
-import {formatAttributeValue} from "../../utils/functions";
+import {formatAttributeKey, formatAttributeValue} from "../../utils/functions";
 import {ph} from "../../utils/privacy";
 
 type SourceBrowserObject = GetStorageUnitsQuery['StorageUnit'][number];
@@ -986,10 +986,11 @@ export const ExploreStorageUnit: FC = () => {
                     </div>
                     <StackList>
                         {unit.Attributes.map(attribute => {
-                            const display = formatAttributeValue(attribute.Key, attribute.Value);
+                            const rawDisplay = formatAttributeValue(attribute.Key, attribute.Value);
+                            const display = formatAttributeValue(attribute.Key, attribute.Value, t);
                             return (
-                                <div key={attribute.Key} data-field-key={attribute.Key} data-field-value={display}>
-                                    <StackListItem item={attribute.Key}>
+                                <div key={attribute.Key} data-field-key={attribute.Key} data-field-value={rawDisplay}>
+                                    <StackListItem item={formatAttributeKey(attribute.Key, t)}>
                                         {display}
                                     </StackListItem>
                                 </div>

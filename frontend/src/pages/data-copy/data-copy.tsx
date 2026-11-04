@@ -64,6 +64,7 @@ import { useTranslation } from "../../hooks/use-translation";
 import { useSourceContract } from "../../hooks/useSourceContract";
 import { useAppSelector } from "../../store/hooks";
 import type { LocalLoginProfile } from "../../store/auth";
+import { formatAttributeValue } from "../../utils/functions";
 import { buildSourceParentRef } from "../../utils/source-refs";
 
 type SourceBrowserObject = GetStorageUnitsQuery["StorageUnit"][number];
@@ -1003,9 +1004,9 @@ export const DataCopyPage: FC = () => {
                             {filteredUnits.map(unit => {
                                 const checked = selectedNames.has(unit.Name);
                                 const typeAttr = unit.Attributes?.find(a => a.Key === "Type")?.Value;
-                                const countAttr = unit.Attributes?.find(
+                                const countOrSizeAttr = unit.Attributes?.find(
                                     a => a.Key === "Count" || a.Key === "Total Size"
-                                )?.Value;
+                                );
                                 return (
                                     <div
                                         key={unit.Name}
@@ -1039,12 +1040,14 @@ export const DataCopyPage: FC = () => {
                                             </span>
                                         </div>
                                         <div className="flex items-center gap-1.5 shrink-0">
-                                            {countAttr && (
-                                                <span className="text-xs text-muted-foreground">{countAttr}</span>
+                                            {countOrSizeAttr && (
+                                                <span className="text-xs text-muted-foreground">
+                                                    {formatAttributeValue(countOrSizeAttr.Key, countOrSizeAttr.Value, t)}
+                                                </span>
                                             )}
                                             {typeAttr && (
                                                 <Badge variant="outline" className="text-[10px] px-1.5 py-0">
-                                                    {typeAttr}
+                                                    {formatAttributeValue("Type", typeAttr, t)}
                                                 </Badge>
                                             )}
                                         </div>

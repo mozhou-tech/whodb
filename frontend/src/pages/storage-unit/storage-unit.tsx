@@ -65,7 +65,7 @@ import {useAppSelector} from "../../store/hooks";
 import {Tip} from '../../components/tip';
 import {useTranslation} from '../../hooks/use-translation';
 import {buildSourceParentObjectRef, buildSourceParentRef} from '../../utils/source-refs';
-import {formatAttributeValue} from '../../utils/functions';
+import {formatAttributeKey, formatAttributeValue} from '../../utils/functions';
 import { findSourceObjectType, type SourceTypeItem } from '../../config/source-types';
 import { CreateSourceObjectCard } from './create-source-object-card';
 import {ph} from '../../utils/privacy';
@@ -187,14 +187,14 @@ const StorageUnitCard: FC<{
     const objectType = useMemo(() => {
         const type = unit.Attributes.find(attribute => attribute.Key === "Type")?.Value?.trim();
         if (type == null || type === "") return objectLabel;
-        return type;
-    }, [objectLabel, unit.Attributes]);
+        return formatAttributeValue("Type", type, t);
+    }, [objectLabel, t, unit.Attributes]);
 
     const cardMeta = useMemo(() => {
         const parts = introAttributes
             .filter(attribute => attribute.Key !== "Type")
             .slice(0, 2)
-            .map(attribute => formatAttributeValue(attribute.Key, attribute.Value));
+            .map(attribute => formatAttributeValue(attribute.Key, attribute.Value, t));
         if (columnCount != null) parts.unshift(t('columnCount', { count: columnCount }));
         return parts.join(' · ');
     }, [columnCount, introAttributes, t]);
@@ -244,10 +244,11 @@ const StorageUnitCard: FC<{
                         {/* Metadata attributes (Type, Total Size, etc.) */}
                         {
                             introAttributes.map(attribute => {
-                                const display = formatAttributeValue(attribute.Key, attribute.Value);
+                                const rawDisplay = formatAttributeValue(attribute.Key, attribute.Value);
+                                const display = formatAttributeValue(attribute.Key, attribute.Value, t);
                                 return (
-                                    <div key={attribute.Key} data-field-key={attribute.Key} data-field-value={display}>
-                                        <StackListItem item={attribute.Key}>
+                                    <div key={attribute.Key} data-field-key={attribute.Key} data-field-value={rawDisplay}>
+                                        <StackListItem item={formatAttributeKey(attribute.Key, t)}>
                                             {display}
                                         </StackListItem>
                                     </div>
@@ -256,10 +257,11 @@ const StorageUnitCard: FC<{
                         }
                         {
                             expandedAttributes.map(attribute => {
-                                const display = formatAttributeValue(attribute.Key, attribute.Value);
+                                const rawDisplay = formatAttributeValue(attribute.Key, attribute.Value);
+                                const display = formatAttributeValue(attribute.Key, attribute.Value, t);
                                 return (
-                                    <div key={attribute.Key} data-field-key={attribute.Key} data-field-value={display}>
-                                        <StackListItem item={attribute.Key}>
+                                    <div key={attribute.Key} data-field-key={attribute.Key} data-field-value={rawDisplay}>
+                                        <StackListItem item={formatAttributeKey(attribute.Key, t)}>
                                             {display}
                                         </StackListItem>
                                     </div>
@@ -633,7 +635,7 @@ export const StorageUnitPage: FC = () => {
                         <TableHead>{t('nameLabel')}</TableHead>
                         {/** Dynamically render shared attribute keys as columns */}
                         {sharedAttributeKeys.map(key => (
-                            <TableHead key={key}>{key}</TableHead>
+                            <TableHead key={key}>{formatAttributeKey(key, t)}</TableHead>
                         ))}
                         <TableHead>{t('actions')}</TableHead>
                     </TableHeadRow>
@@ -645,7 +647,7 @@ export const StorageUnitPage: FC = () => {
                             <TableRow key={unit.Name} className="group">
                                 <TableCell>{unit.Name}</TableCell>
                                 {sharedAttributeKeys.map(key => (
-                                    <TableCell key={key}>{formatAttributeValue(key, attrMap[key])}</TableCell>
+                                    <TableCell key={key}>{formatAttributeValue(key, attrMap[key], t)}</TableCell>
                                 ))}
                                 <TableCell className="relative">
                                     <div className="flex gap-xs opacity-0 group-hover:opacity-100 transition-opacity">
@@ -681,20 +683,22 @@ export const StorageUnitPage: FC = () => {
                                     <StackList>
                                         {/* Metadata attributes */}
                                         {introAttributes.map(attribute => {
-                                            const display = formatAttributeValue(attribute.Key, attribute.Value);
+                                            const rawDisplay = formatAttributeValue(attribute.Key, attribute.Value);
+                                            const display = formatAttributeValue(attribute.Key, attribute.Value, t);
                                             return (
-                                                <div key={attribute.Key} data-field-key={attribute.Key} data-field-value={display}>
-                                                    <StackListItem item={attribute.Key}>
+                                                <div key={attribute.Key} data-field-key={attribute.Key} data-field-value={rawDisplay}>
+                                                    <StackListItem item={formatAttributeKey(attribute.Key, t)}>
                                                         {display}
                                                     </StackListItem>
                                                 </div>
                                             );
                                         })}
                                         {expandedAttributes.map(attribute => {
-                                            const display = formatAttributeValue(attribute.Key, attribute.Value);
+                                            const rawDisplay = formatAttributeValue(attribute.Key, attribute.Value);
+                                            const display = formatAttributeValue(attribute.Key, attribute.Value, t);
                                             return (
-                                                <div key={attribute.Key} data-field-key={attribute.Key} data-field-value={display}>
-                                                    <StackListItem item={attribute.Key}>
+                                                <div key={attribute.Key} data-field-key={attribute.Key} data-field-value={rawDisplay}>
+                                                    <StackListItem item={formatAttributeKey(attribute.Key, t)}>
                                                         {display}
                                                     </StackListItem>
                                                 </div>
@@ -793,11 +797,12 @@ export const StorageUnitGraphCard: FC<IGraphCardProps<StorageUnitGraphCardData>>
                             {
                                 metadataItems.map((item: any, _index: number) => {
                                     const name = item.Key;
-                                    const value = item.Value?.toLowerCase();
+                                    const rawValue = item.Value?.toLowerCase();
+                                    const displayValue = formatAttributeValue(name, item.Value, t);
                                     return (
-                                        <div key={`meta-${name}`} data-field-key={name} data-field-value={value}>
-                                            <StackListItem rowClassName="items-start" item={name}>
-                                                {value}
+                                        <div key={`meta-${name}`} data-field-key={name} data-field-value={rawValue}>
+                                            <StackListItem rowClassName="items-start" item={formatAttributeKey(name, t)}>
+                                                {displayValue}
                                             </StackListItem>
                                         </div>
                                     );

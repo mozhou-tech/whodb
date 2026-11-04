@@ -79,14 +79,72 @@ export function formatBytes(bytes: number): string {
     return `${value.toFixed(precision)} ${units[unitIndex]}`;
 }
 
+const ATTRIBUTE_KEY_TRANSLATIONS: Readonly<Record<string, string>> = {
+    "Type": "attrType",
+    "Total Size": "attrTotalSize",
+    "Data Size": "attrDataSize",
+    "Count": "attrCount",
+    "Entries": "attrEntries",
+    "Expires": "attrExpires",
+    "View On": "attrViewOn",
+    "Kind": "attrKind",
+    "Child Tables": "attrChildTables",
+    "Super Table": "attrSuperTable",
+};
+
+const ATTRIBUTE_VALUE_TRANSLATIONS: Readonly<Record<string, Readonly<Record<string, string>>>> = {
+    "Type": {
+        "base table": "attrValueBaseTable",
+        "table": "attrValueTable",
+        "view": "attrValueView",
+        "materialized view": "attrValueMaterializedView",
+        "system view": "attrValueSystemView",
+        "foreign table": "attrValueForeignTable",
+        "foreign": "attrValueForeignTable",
+        "partitioned table": "attrValuePartitionedTable",
+        "local temporary": "attrValueTemporaryTable",
+        "temporary": "attrValueTemporaryTable",
+        "collection": "attrValueCollection",
+        "index": "attrValueIndex",
+        "unknown": "attrValueUnknown",
+    },
+    "Kind": {
+        "super table": "attrValueSuperTable",
+        "child table": "attrValueChildTable",
+        "normal table": "attrValueNormalTable",
+    },
+    "Expires": {
+        "never": "attrValueNever",
+    },
+};
+
+/**
+ * Formats a storage-unit attribute key for localized UI display.
+ * Falls back to the raw key when no translation mapping exists.
+ * @param key - Raw attribute key emitted by the backend
+ * @param t - Translation lookup function
+ */
+export function formatAttributeKey(key: string, t?: (key: string) => string): string {
+    if (!t) {
+        return key;
+    }
+    const translationKey = ATTRIBUTE_KEY_TRANSLATIONS[key];
+    return translationKey ? t(translationKey) : key;
+}
+
 /**
  * Formats a storage-unit attribute value for display. Size-keyed attributes
  * (emitted as raw bytes by the backend) are auto-scaled via formatBytes();
- * all other attributes are lowercased to match existing display conventions.
+ * all other attributes are lowercased to match existing display conventions,
+ * and translated when a translation function is provided.
  * Falls through to the raw value if size parsing fails, keeping pre-migration
  * backends forward-compatible.
  */
-export function formatAttributeValue(key: string, value: string | null | undefined): string {
+export function formatAttributeValue(
+    key: string,
+    value: string | null | undefined,
+    t?: (key: string) => string,
+): string {
     if (value == null) {
         return "";
     }
@@ -97,5 +155,12 @@ export function formatAttributeValue(key: string, value: string | null | undefin
         }
         return value;
     }
-    return value.toLowerCase();
+    const normalized = value.toLowerCase();
+    if (t) {
+        const valueTranslationKey = ATTRIBUTE_VALUE_TRANSLATIONS[key]?.[normalized.trim()];
+        if (valueTranslationKey) {
+            return t(valueTranslationKey);
+        }
+    }
+    return normalized;
 }

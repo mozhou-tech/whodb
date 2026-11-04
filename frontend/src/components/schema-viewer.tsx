@@ -53,7 +53,7 @@ import {CreateSourceObjectCard} from "../pages/storage-unit/create-source-object
 import {useAppSelector} from "../store/hooks";
 import {Loading} from "./loading";
 import {useTranslation} from "@/hooks/use-translation";
-import {formatAttributeValue} from "@/utils/functions";
+import {formatAttributeKey, formatAttributeValue} from "@/utils/functions";
 import {buildSourceParentRef} from "@/utils/source-refs";
 import {ph} from "@/utils/privacy";
 
@@ -450,10 +450,11 @@ export const SchemaViewer: FC<SchemaViewerProps> = ({ parentRef: explicitParentR
                                 <div className="flex flex-col gap-xs2">
                                     <StackList>
                                         {activeUnit.Attributes.map(attribute => {
-                                            const display = formatAttributeValue(attribute.Key, attribute.Value);
+                                            const rawDisplay = formatAttributeValue(attribute.Key, attribute.Value);
+                                            const display = formatAttributeValue(attribute.Key, attribute.Value, tCommon);
                                             return (
-                                                <div key={attribute.Key} data-field-key={attribute.Key} data-field-value={display}>
-                                                    <StackListItem item={attribute.Key}>
+                                                <div key={attribute.Key} data-field-key={attribute.Key} data-field-value={rawDisplay}>
+                                                    <StackListItem item={formatAttributeKey(attribute.Key, tCommon)}>
                                                         {display}
                                                     </StackListItem>
                                                 </div>
