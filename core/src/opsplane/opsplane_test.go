@@ -107,6 +107,73 @@ func TestBuildEnvironmentProfilesAndProxyRouting(t *testing.T) {
 	}
 }
 
+func TestSaveEnvironmentDatabaseViaHTTP(t *testing.T) {
+	var putReceived bool
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/environments/lyg-ghzy":
+			_, _ = w.Write([]byte(`{
+				"id": 3,
+				"name": "2026LYG港航智养",
+				"slug": "lyg-ghzy",
+				"ops_level": "P2",
+				"contract_status": "未签订",
+				"tenant_ids": ["10002"],
+				"proxy": {"type": "socks5", "host": "100.64.0.31", "port": 31081},
+				"mysql": {"enabled": true, "host": "10.22.184.109", "port": "3306", "database": "", "username": "root", "password": "pw"},
+				"postgresql": {"enabled": false, "host": "", "port": "5432", "database": "", "username": "", "password": ""}
+			}`))
+		case r.Method == http.MethodPut && r.URL.Path == "/api/v1/environments/lyg-ghzy":
+			putReceived = true
+			_, _ = w.Write([]byte(`{"id": 3, "slug": "lyg-ghzy"}`))
+		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/environments":
+			_, _ = w.Write([]byte(`[{
+				"id": 3,
+				"name": "2026LYG港航智养",
+				"slug": "lyg-ghzy",
+				"proxy": {"type": "socks5", "host": "100.64.0.31", "port": 31081},
+				"mysql": {"enabled": true, "host": "10.22.184.109", "port": "3306", "database": "", "username": "root", "password": "pw"},
+				"postgresql": {"enabled": true, "host": "10.22.184.109", "port": "5432", "database": "appdb", "username": "postgres", "password": "secret"}
+			}]`))
+		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/env-files"):
+			_, _ = w.Write([]byte(`{"data":{"configured":false,"files":[]}}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+
+	SetSessionForTesting(&AuthStatus{
+		Authenticated: true,
+		Username:      "admin@mozyun.cn",
+		Role:          "系统管理员",
+		Endpoint:      srv.URL,
+		Token:         "test-jwt-token",
+		AllowAllEnvs:  true,
+	})
+	t.Cleanup(func() {
+		SetSessionForTesting(nil)
+	})
+
+	saved, err := SaveEnvironmentDatabase(context.Background(), "lyg-ghzy", "Postgres", map[string]string{
+		"Hostname": "10.22.184.109",
+		"Port":     "5432",
+		"Username": "postgres",
+		"Password": "secret",
+		"Database": "appdb",
+	})
+	if err != nil {
+		t.Fatalf("SaveEnvironmentDatabase failed: %v", err)
+	}
+	if !putReceived {
+		t.Fatal("expected PUT /api/v1/environments/lyg-ghzy to be called on ops-control-plane")
+	}
+	if saved == nil || saved.ProjectID != "lyg-ghzy" || saved.Type != "Postgres" || saved.Hostname != "10.22.184.109" {
+		t.Fatalf("unexpected saved profile: %+v", saved)
+	}
+}
+
 func TestLiveOpsControlPlaneDiscovery(t *testing.T) {
 	if _, err := os.Stat(defaultOpsControlPlaneDir); err != nil {
 		t.Skip("ops-control-plane directory not present")

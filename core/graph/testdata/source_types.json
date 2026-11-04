@@ -2147,6 +2147,134 @@
     ]
   },
   {
+    "Id": "OpenObserve",
+    "Label": "OpenObserve",
+    "Connector": "OpenObserve",
+    "Category": "Search",
+    "Traits": {
+      "Connection": {
+        "Transport": "Network",
+        "HostInputMode": "Hostname",
+        "HostInputURLParser": "None",
+        "SupportsCustomCAContent": false
+      },
+      "Presentation": {
+        "ProfileLabelStrategy": "Default",
+        "SchemaFidelity": "Exact"
+      },
+      "Query": {
+        "SupportsAnalyze": false,
+        "SupportsScripts": true,
+        "SupportsStreaming": false,
+        "SupportsMultiStatement": false,
+        "SupportsSqlImport": false,
+        "ExplainMode": "None",
+        "SequentialPaginationOnly": false
+      },
+      "MockData": {
+        "SupportsRelationalDependencies": false
+      },
+      "Metadata": {
+        "Columns": "Exact",
+        "Constraints": "Unsupported",
+        "Graph": "Unsupported",
+        "SystemObjectFiltering": "Unsupported"
+      }
+    },
+    "ConnectionFields": [
+      {
+        "Key": "Database",
+        "Kind": "Text",
+        "Section": "Primary",
+        "Required": true,
+        "LabelKey": "databaseName",
+        "PlaceholderKey": "enterDatabase",
+        "SupportsOptions": false
+      },
+      {
+        "Key": "Hostname",
+        "Kind": "Text",
+        "Section": "Primary",
+        "Required": true,
+        "LabelKey": "hostName",
+        "PlaceholderKey": "enterHostName",
+        "SupportsOptions": false
+      },
+      {
+        "Key": "Password",
+        "Kind": "Password",
+        "Section": "Primary",
+        "Required": true,
+        "LabelKey": "password",
+        "PlaceholderKey": "enterPassword",
+        "SupportsOptions": false
+      },
+      {
+        "Key": "Port",
+        "Kind": "Text",
+        "Section": "Primary",
+        "Required": false,
+        "LabelKey": "advancedFields.port",
+        "DefaultValue": "5080",
+        "SupportsOptions": false
+      },
+      {
+        "Key": "Query Lookback Hours",
+        "Kind": "Text",
+        "Section": "Advanced",
+        "Required": false,
+        "LabelKey": "advancedFields.queryLookbackHours",
+        "DefaultValue": "24",
+        "SupportsOptions": false
+      },
+      {
+        "Key": "Username",
+        "Kind": "Text",
+        "Section": "Primary",
+        "Required": true,
+        "LabelKey": "username",
+        "PlaceholderKey": "enterUsername",
+        "SupportsOptions": false
+      }
+    ],
+    "Contract": {
+      "Model": "Search",
+      "Surfaces": [
+        "Browser",
+        "Query"
+      ],
+      "RootActions": [
+        "Browse",
+        "Execute"
+      ],
+      "BrowsePath": [
+        "Table"
+      ],
+      "DefaultObjectKind": "Table",
+      "ObjectTypes": [
+        {
+          "Kind": "Table",
+          "DataShape": "Tabular",
+          "Actions": [
+            "Inspect",
+            "ViewRows"
+          ],
+          "Views": [
+            "Grid",
+            "Metadata"
+          ],
+          "SingularLabel": "Stream",
+          "PluralLabel": "Streams"
+        }
+      ]
+    },
+    "DiscoveryPrefill": {
+      "AdvancedDefaults": []
+    },
+    "IsAWSManaged": false,
+    "SSLModes": []
+  },
+  {
     "Id": "OpenSearch",
     "Label": "OpenSearch",
     "Connector": "ElasticSearch",
@@ -2859,6 +2987,147 @@
             "InsertData",
             "Inspect",
             "UpdateData",
+            "ViewRows"
+          ],
+          "Views": [
+            "Grid",
+            "Metadata"
+          ],
+          "SingularLabel": "Table",
+          "PluralLabel": "Tables"
+        }
+      ]
+    },
+    "DiscoveryPrefill": {
+      "AdvancedDefaults": []
+    },
+    "IsAWSManaged": false,
+    "SSLModes": []
+  },
+  {
+    "Id": "TDengine",
+    "Label": "TDengine",
+    "Connector": "TDengine",
+    "Category": "Database",
+    "Traits": {
+      "Connection": {
+        "Transport": "Network",
+        "HostInputMode": "Hostname",
+        "HostInputURLParser": "None",
+        "SupportsCustomCAContent": true
+      },
+      "Presentation": {
+        "ProfileLabelStrategy": "Default",
+        "SchemaFidelity": "Exact"
+      },
+      "Query": {
+        "SupportsAnalyze": false,
+        "SupportsScripts": true,
+        "SupportsStreaming": false,
+        "SupportsMultiStatement": false,
+        "SupportsSqlImport": true,
+        "ExplainMode": "None",
+        "SequentialPaginationOnly": false
+      },
+      "MockData": {
+        "SupportsRelationalDependencies": false
+      },
+      "Metadata": {
+        "Columns": "Exact",
+        "Constraints": "Unsupported",
+        "Graph": "Inferred",
+        "SystemObjectFiltering": "Exact"
+      }
+    },
+    "ConnectionFields": [
+      {
+        "Key": "Database",
+        "Kind": "Text",
+        "Section": "Primary",
+        "Required": false,
+        "LabelKey": "databaseName",
+        "PlaceholderKey": "enterDatabase",
+        "SupportsOptions": false
+      },
+      {
+        "Key": "Hostname",
+        "Kind": "Text",
+        "Section": "Primary",
+        "Required": true,
+        "LabelKey": "hostName",
+        "PlaceholderKey": "enterHostName",
+        "SupportsOptions": false
+      },
+      {
+        "Key": "Password",
+        "Kind": "Password",
+        "Section": "Primary",
+        "Required": true,
+        "LabelKey": "password",
+        "PlaceholderKey": "enterPassword",
+        "SupportsOptions": false
+      },
+      {
+        "Key": "Port",
+        "Kind": "Text",
+        "Section": "Primary",
+        "Required": false,
+        "LabelKey": "advancedFields.port",
+        "DefaultValue": "6041",
+        "SupportsOptions": false
+      },
+      {
+        "Key": "Username",
+        "Kind": "Text",
+        "Section": "Primary",
+        "Required": true,
+        "LabelKey": "username",
+        "PlaceholderKey": "enterUsername",
+        "SupportsOptions": false
+      }
+    ],
+    "Contract": {
+      "Model": "Relational",
+      "Surfaces": [
+        "Browser",
+        "Chat",
+        "Graph",
+        "Query"
+      ],
+      "RootActions": [
+        "Browse",
+        "Execute"
+      ],
+      "BrowsePath": [
+        "Database",
+        "Table"
+      ],
+      "DefaultObjectKind": "Table",
+      "GraphScopeKind": "Database",
+      "ObjectTypes": [
+        {
+          "Kind": "Database",
+          "DataShape": "Metadata",
+          "Actions": [
+            "Browse",
+            "CreateChild",
+            "ViewGraph"
+          ],
+          "Views": [
+            "Graph",
+            "Metadata"
+          ],
+          "SingularLabel": "Database",
+          "PluralLabel": "Databases"
+        },
+        {
+          "Kind": "Table",
+          "DataShape": "Tabular",
+          "Actions": [
+            "DeleteData",
+            "InsertData",
+            "Inspect",
+            "ViewDefinition",
             "ViewRows"
           ],
           "Views": [

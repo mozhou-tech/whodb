@@ -1,3 +1,19 @@
+/*
+ * Copyright 2026 Clidey, Inc.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package openobserve
 
 import (
@@ -123,9 +139,11 @@ func search(config *engine.PluginConfig, sql string, size, offset int) (*searchR
 }
 
 func searchWindow(config *engine.PluginConfig, sql string, size, offset int, start, end int64) (*searchResponse, error) {
+	// track_total_hits rewrites SQL into a count query rather than adding totals.
+	// Keep it disabled; the browser counts separately using the same time window.
 	body := map[string]any{"query": map[string]any{
 		"sql": sql, "start_time": start, "end_time": end,
-		"from": offset, "size": size, "track_total_hits": true,
+		"from": offset, "size": size, "track_total_hits": false,
 	}}
 	var response searchResponse
 	if err := request(config.OperationContext(), config, http.MethodPost, []string{config.Credentials.Database, "_search"}, body, &response); err != nil {
@@ -182,7 +200,7 @@ func (p *OpenObservePlugin) ExportData(config *engine.PluginConfig, schema, name
 		if err := writeRows(response); err != nil {
 			return err
 		}
-		if len(response.Hits) < pageSize || int64(offset+len(response.Hits)) >= response.Total {
+		if len(response.Hits) < pageSize {
 			return nil
 		}
 	}
@@ -227,7 +245,15 @@ func (p *OpenObservePlugin) GetRows(config *engine.PluginConfig, req *engine.Get
 	if err != nil {
 		return nil, err
 	}
-	response, err := search(config, sql, req.PageSize, req.PageOffset)
+	start, end, err := queryWindow(config)
+	if err != nil {
+		return nil, err
+	}
+	response, err := searchWindow(config, sql, req.PageSize, req.PageOffset, start, end)
+	if err != nil {
+		return nil, err
+	}
+	response.Total, err = countWindow(config, req, columns, start, end)
 	if err != nil {
 		return nil, err
 	}
@@ -240,11 +266,19 @@ func (p *OpenObservePlugin) GetRowCount(config *engine.PluginConfig, schema, nam
 	if err != nil {
 		return 0, err
 	}
-	sql, err := buildQuery(&engine.GetRowsRequest{StorageUnit: name, Where: where}, columns, true)
+	start, end, err := queryWindow(config)
 	if err != nil {
 		return 0, err
 	}
-	response, err := search(config, sql, 1, 0)
+	return countWindow(config, &engine.GetRowsRequest{StorageUnit: name, Where: where}, columns, start, end)
+}
+
+func countWindow(config *engine.PluginConfig, req *engine.GetRowsRequest, columns []engine.Column, start, end int64) (int64, error) {
+	sql, err := buildQuery(req, columns, true)
+	if err != nil {
+		return 0, err
+	}
+	response, err := searchWindow(config, sql, 1, 0, start, end)
 	if err != nil {
 		return 0, err
 	}

@@ -40,6 +40,7 @@ import {
     IconCloud as CloudIcon,
     IconSettings as CogIcon,
     IconTerminal as CommandLineIcon,
+    IconCopy as DocumentDuplicateIcon,
     IconPlusCircle as PlusCircleIcon,
     IconApp as RectangleGroupIcon,
     IconTable as TableCellsIcon,
@@ -467,7 +468,8 @@ export const Sidebar: FC = () => {
         if (
             pathname !== InternalRoutes.Graph.path &&
             pathname !== InternalRoutes.Dashboard.StorageUnit.path &&
-            pathname !== InternalRoutes.Dashboard.ExploreStorageUnit.path
+            pathname !== InternalRoutes.Dashboard.ExploreStorageUnit.path &&
+            pathname !== InternalRoutes.DataCopy.path
         ) {
             void navigate(InternalRoutes.Dashboard.ExploreStorageUnit.path);
         }
@@ -533,7 +535,10 @@ export const Sidebar: FC = () => {
                 replace: true,
                 state: {},
             });
-        } else if (pathname !== InternalRoutes.Graph.path) {
+        } else if (
+            pathname !== InternalRoutes.Graph.path &&
+            pathname !== InternalRoutes.DataCopy.path
+        ) {
             void navigate(InternalRoutes.Dashboard.ExploreStorageUnit.path);
         }
         dispatch(DatabaseActions.setSchema(value));
@@ -570,6 +575,11 @@ export const Sidebar: FC = () => {
                 path: InternalRoutes.RawExecute.path,
             });
         }
+        routes.push({
+            title: t('dataCopy'),
+            icon: newUIEnabled ? <DocumentDuplicateIcon className="w-4 h-4" /> : <WhoDBChatIcon name="copy" className="size-4" />,
+            path: InternalRoutes.DataCopy.path,
+        });
         return routes;
     }, [current, newUIEnabled, storageUnitLabel, supportsChat, supportsGraph, supportsScratchpad, t]);
 
@@ -1045,11 +1055,15 @@ export const Sidebar: FC = () => {
                 </SidebarContent>
             </SidebarComponent>
             <Sheet open={showLoginCard} onOpenChange={setShowLoginCard}>
-                <SheetContent side="right" className="p-8">
+                <SheetContent side="right" className="w-full sm:max-w-md p-2">
                     <VisuallyHidden>
                         <SheetTitle>{t('databaseLogin')}</SheetTitle>
                     </VisuallyHidden>
-                    <LoginForm advancedDirection="vertical" onLoginSuccess={handleLoginSuccess}/>
+                    <LoginForm
+                        advancedDirection="vertical"
+                        defaultProjectId={currentProjectId !== "__local__" ? currentProjectId : undefined}
+                        onLoginSuccess={handleLoginSuccess}
+                    />
                 </SheetContent>
             </Sheet>
             <PlatformExplainerDialog

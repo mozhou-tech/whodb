@@ -1,0 +1,123 @@
+en_US:
+  title: Data Copy
+  subtitle: Copy selected {storageUnit} from the current project and database to another target project and database.
+  sourceSectionTitle: Source (Current Selection)
+  targetSectionTitle: Target Destination
+  optionsSectionTitle: Copy Options
+  tablesSectionTitle: Select {storageUnit}
+  resultsSectionTitle: Copy Execution Results
+  projectLabel: Project
+  localConnectionsGroup: Local & Environment Connections
+  instanceLabel: Database Instance
+  databaseLabel: Database
+  schemaLabel: Schema
+  sourceTypeLabel: Database Type
+  selectTargetProject: Select target project
+  selectTargetInstance: Select target instance
+  selectTargetDatabase: Select target database
+  selectTargetSchema: Select target schema
+  enterTargetDatabase: Enter target database name
+  enterTargetSchema: Enter target schema name
+  noMatchingInstances: No compatible {sourceType} instances found in this project
+  copyModeLabel: Copy Content
+  modeStructureAndData: Structure & Data
+  modeStructureAndDataDesc: Create target {storageUnit} and copy all rows
+  modeStructureOnly: Structure Only
+  modeStructureOnlyDesc: Create target {storageUnit} without copying rows
+  existingStrategyLabel: Conflict Handling (When Target Exists)
+  strategySkip: Skip Existing
+  strategySkipDesc: Keep existing target {storageUnit} untouched and skip copying
+  strategyOverwrite: Overwrite & Recreate
+  strategyOverwriteDesc: Drop or clear existing target {storageUnit} before copying
+  strategyAppend: Append Data
+  strategyAppendDesc: Keep existing target {storageUnit} and append rows
+  searchPlaceholder: Search {storageUnit}...
+  selectAll: Select All
+  invertSelection: Invert Selection
+  clearSelection: Clear
+  selectedCount: Selected {selected} / {total}
+  noTablesAvailable: No {storageUnit} available in the current source
+  noSearchMatch: No {storageUnit} matching "{filter}"
+  startCopyButton: Start Copy ({count})
+  copyingButton: Copying...
+  refreshSourceButton: Refresh
+  sameSourceAndTargetError: Source and target point to the exact same database/schema. Please choose a different target database, schema, or instance.
+  targetIncompleteError: Please select a target instance and database.
+  noTablesSelectedError: Please select at least one {storageUnit} to copy.
+  copySuccessToast: Copied {succeeded} of {total} {storageUnit} ({rows} rows)
+  copyPartialToast: "Finished with {succeeded} succeeded, {skipped} skipped, {failed} failed"
+  copyFailedToast: "Copy failed: {error}"
+  summaryTotal: Total
+  summarySucceeded: Succeeded
+  summarySkipped: Skipped
+  summaryFailed: Failed
+  summaryRowsCopied: Rows Copied
+  colTableName: Name
+  colStatus: Status
+  colRowsCopied: Rows Copied
+  colMessage: Details
+  statusSuccess: Succeeded
+  statusSkipped: Skipped
+  statusFailed: Failed
+
+zh_CN:
+  title: "数据复制"
+  subtitle: "将当前选中项目和数据库中的{storageUnit}（支持多选、全选）复制到另一个指定的项目和数据库。"
+  sourceSectionTitle: "源端（当前选中）"
+  targetSectionTitle: "目标端配置"
+  optionsSectionTitle: "复制策略与权限范围"
+  tablesSectionTitle: "选择要复制的{storageUnit}"
+  resultsSectionTitle: "复制执行结果"
+  projectLabel: "所属项目"
+  localConnectionsGroup: "本地与环境连接"
+  instanceLabel: "数据库实例"
+  databaseLabel: "数据库"
+  schemaLabel: "Schema / 命名空间"
+  sourceTypeLabel: "数据库类型"
+  selectTargetProject: "选择目标项目"
+  selectTargetInstance: "选择目标数据库实例"
+  selectTargetDatabase: "选择目标数据库"
+  selectTargetSchema: "选择目标 Schema"
+  enterTargetDatabase: "输入目标数据库名称"
+  enterTargetSchema: "输入目标 Schema 名称"
+  noMatchingInstances: "该项目下暂无同类型（{sourceType}）的数据库实例"
+  copyModeLabel: "复制内容"
+  modeStructureAndData: "表结构 + 数据"
+  modeStructureAndDataDesc: "在目标库创建{storageUnit}并复制全部数据行"
+  modeStructureOnly: "仅表结构"
+  modeStructureOnlyDesc: "仅在目标库创建{storageUnit}结构，不复制数据"
+  existingStrategyLabel: "同名冲突处理策略"
+  strategySkip: "跳过已存在表"
+  strategySkipDesc: "目标库已存在同名{storageUnit}时直接跳过"
+  strategyOverwrite: "覆盖重建"
+  strategyOverwriteDesc: "重建或清空目标库已存在的同名{storageUnit}后写入"
+  strategyAppend: "追加数据"
+  strategyAppendDesc: "保留目标库已有数据并追加新数据行"
+  searchPlaceholder: "搜索{storageUnit}名称..."
+  selectAll: "全选当前列表"
+  invertSelection: "反选"
+  clearSelection: "清空选择"
+  selectedCount: "已选 {selected} / 共 {total} 项"
+  noTablesAvailable: "当前源数据库中暂无可复制的{storageUnit}"
+  noSearchMatch: "未找到匹配“{filter}”的{storageUnit}"
+  startCopyButton: "开始复制 ({count})"
+  copyingButton: "正在复制..."
+  refreshSourceButton: "刷新列表"
+  sameSourceAndTargetError: "源端与目标端指向相同的实例、数据库和 Schema，请选择不同的目标位置。"
+  targetIncompleteError: "请完整选择目标数据库实例和目标数据库。"
+  noTablesSelectedError: "请至少选择一个要复制的{storageUnit}。"
+  copySuccessToast: "成功复制 {succeeded}/{total} 个{storageUnit}（共 {rows} 行数据）"
+  copyPartialToast: "复制完成：成功 {succeeded} 个，跳过 {skipped} 个，失败 {failed} 个"
+  copyFailedToast: "复制失败：{error}"
+  summaryTotal: "总表数"
+  summarySucceeded: "成功"
+  summarySkipped: "已跳过"
+  summaryFailed: "失败"
+  summaryRowsCopied: "复制总行数"
+  colTableName: "名称"
+  colStatus: "状态"
+  colRowsCopied: "复制行数"
+  colMessage: "结果说明"
+  statusSuccess: "成功"
+  statusSkipped: "已跳过"
+  statusFailed: "失败"

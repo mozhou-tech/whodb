@@ -1,10 +1,28 @@
+/*
+ * Copyright 2026 Clidey, Inc.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package openobserve
 
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -12,6 +30,64 @@ import (
 	"github.com/clidey/whodb/core/src/engine"
 	"github.com/clidey/whodb/core/src/query"
 )
+
+func TestLiveOpenObserve(t *testing.T) {
+	endpoint := os.Getenv("WHODB_TEST_OPENOBSERVE_URL")
+	if endpoint == "" {
+		t.Skip("set WHODB_TEST_OPENOBSERVE_URL to run against a disposable OpenObserve instance")
+	}
+	config := engine.NewPluginConfig(&engine.Credentials{Hostname: endpoint, Database: "default", Username: "whodb-test@example.com", Password: "whodb-test-local"})
+	p := NewOpenObservePlugin().PluginFunctions
+	if !p.IsAvailable(context.Background(), config) {
+		t.Fatal("OpenObserve unavailable")
+	}
+	name := fmt.Sprintf("whodb_test_%d", time.Now().UnixNano())
+	var result map[string]any
+	if err := request(context.Background(), config, http.MethodPost, []string{"default", name, "_json"}, []map[string]any{
+		{"message": "hello", "id": 1},
+		{"message": "x' OR 1=1;--", "id": 2},
+	}, &result); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := request(context.Background(), config, http.MethodDelete, []string{"default", "streams", name}, nil, &result); err != nil {
+			t.Error(err)
+		}
+	})
+	// Ingestion becomes searchable asynchronously.
+	deadline := time.Now().Add(30 * time.Second)
+	for {
+		count, err := p.GetRowCount(config, "", name, nil)
+		if err == nil && count == 2 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("ingested data unavailable: count=%d, error=%v", count, err)
+		}
+		time.Sleep(250 * time.Millisecond)
+	}
+	filter := &query.WhereCondition{Type: query.WhereConditionTypeAtomic, Atomic: &query.AtomicWhereCondition{Key: "message", Operator: "=", Value: "x' OR 1=1;--"}}
+	rows, err := p.GetRows(config, &engine.GetRowsRequest{StorageUnit: name, PageSize: 10, Where: filter})
+	if err != nil || len(rows.Rows) != 1 {
+		t.Fatalf("filtered rows: %+v, %v", rows, err)
+	}
+	count, err := p.GetRowCount(config, "", name, filter)
+	if err != nil || count != 1 {
+		t.Fatalf("filtered count: %d, %v", count, err)
+	}
+	rows, err = p.GetRows(config, &engine.GetRowsRequest{StorageUnit: name, PageSize: 1, PageOffset: 1, Sort: []*query.SortCondition{{Column: "id", Direction: query.SortDirectionAsc}}})
+	if err != nil || len(rows.Rows) != 1 || rows.TotalCount != 2 {
+		t.Fatalf("paginated rows: %+v, %v", rows, err)
+	}
+	rows, err = p.RawExecute(config, `SELECT count(*) AS total FROM "`+name+`"`)
+	if err != nil || len(rows.Rows) != 1 || rows.Rows[0][0] != "2" {
+		t.Fatalf("raw SQL: %+v, %v", rows, err)
+	}
+	written := 0
+	if err := p.ExportData(config, "", name, func(_ []string) error { written++; return nil }, nil); err != nil || written != 3 {
+		t.Fatalf("export: %d rows, %v", written, err)
+	}
+}
 
 func TestLogStreamOperations(t *testing.T) {
 	var searches int
@@ -48,7 +124,7 @@ func TestLogStreamOperations(t *testing.T) {
 			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 				t.Fatal(err)
 			}
-			if body.Query.End-body.Query.Start != int64(2*time.Hour/time.Microsecond) || !body.Query.Track {
+			if body.Query.End-body.Query.Start != int64(2*time.Hour/time.Microsecond) || body.Query.Track {
 				t.Error("incorrect search window or count flag")
 			}
 			if strings.Contains(body.Query.SQL, "count(*)") {

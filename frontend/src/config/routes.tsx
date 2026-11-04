@@ -32,6 +32,7 @@ import { ExploreStorageUnit } from "../pages/storage-unit/explore-storage-unit";
 import { StorageUnitPage } from "../pages/storage-unit/storage-unit";
 import { RawExecutePage } from "../pages/raw-execute/raw-execute";
 import { ChatPage } from "../pages/chat/chat";
+import { DataCopyPage } from "../pages/data-copy/data-copy";
 import { SettingsPage as CESettingsPage } from "../pages/settings/settings";
 import { ContactUsPage } from "../pages/contact-us/contact-us";
 
@@ -127,6 +128,11 @@ export const InternalRoutes = {
         name: "智能问答",
         path: "/chat",
         component: <ChatRouteComponent />,
+    },
+    DataCopy: {
+        name: "数据复制",
+        path: "/data-copy",
+        component: <LazyRoute component={DataCopyPage} />,
     },
     Logout: {
         name: "退出登录",

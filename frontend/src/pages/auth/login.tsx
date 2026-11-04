@@ -170,6 +170,7 @@ export interface LoginFormProps {
     className?: string;
     advancedDirection?: "horizontal" | "vertical";
     landing?: boolean;
+    defaultProjectId?: string;
 }
 
 export const LoginForm: FC<LoginFormProps> = ({
@@ -178,12 +179,15 @@ export const LoginForm: FC<LoginFormProps> = ({
     className = "",
     advancedDirection = "horizontal",
     landing = false,
+    defaultProjectId,
 }) => {
     const { t } = useTranslation('pages/login');
     const appName = getAppName();
     const dispatch = useAppDispatch();
     const navigate = useNavigate();
-    const currentProfileId = useAppSelector(state => state.auth.current?.Id);
+    const currentProfile = useAppSelector(state => state.auth.current);
+    const storedProfiles = useAppSelector(state => state.auth.profiles);
+    const currentProfileId = currentProfile?.Id;
     const shouldUpdateLastAccessed = useRef(false);
     const usernameInputRef = useRef<HTMLInputElement>(null);
     const loginFormTouchedRef = useRef(false);
@@ -232,10 +236,49 @@ export const LoginForm: FC<LoginFormProps> = ({
     const [formResetKey, setFormResetKey] = useState(0);
     const [platformSourceType, setPlatformSourceType] = useState<{ id: string; label: string }>();
     const [selectedAvailableProfile, setSelectedAvailableProfile] = useState<string>();
+    const [selectedProjectId, setSelectedProjectId] = useState<string>(
+        defaultProjectId ?? currentProfile?.ProjectId ?? ""
+    );
     const [isEmbedded] = useState(() => {
         return searchParams.has("credentials");
     });
     const { isDesktop, selectDatabaseFile } = useDesktopFile();
+
+    const projectOptions = useMemo(() => {
+        const map = new Map<string, { value: string; label: string }>();
+        for (const p of profiles?.SourceProfiles ?? []) {
+            if (p.Source === "builtin") continue;
+            if (p.ProjectId && !map.has(p.ProjectId)) {
+                map.set(p.ProjectId, {
+                    value: p.ProjectId,
+                    label: p.ProjectName ?? p.ProjectId,
+                });
+            }
+        }
+        for (const p of storedProfiles) {
+            if (p.ProjectId && !map.has(p.ProjectId)) {
+                map.set(p.ProjectId, {
+                    value: p.ProjectId,
+                    label: p.ProjectName ?? p.ProjectId,
+                });
+            }
+        }
+        return [...map.values()];
+    }, [profiles?.SourceProfiles, storedProfiles]);
+
+    useEffect(() => {
+        if (defaultProjectId && defaultProjectId !== "__local__") {
+            setSelectedProjectId(defaultProjectId);
+            return;
+        }
+        if (!selectedProjectId && currentProfile?.ProjectId) {
+            setSelectedProjectId(currentProfile.ProjectId);
+            return;
+        }
+        if (projectOptions.length > 0 && (!selectedProjectId || !projectOptions.some(opt => opt.value === selectedProjectId))) {
+            setSelectedProjectId(projectOptions[0].value);
+        }
+    }, [currentProfile?.ProjectId, defaultProjectId, projectOptions, selectedProjectId]);
 
     useEffect(() => { setTestResult(undefined); }, [hostName, username, password, database, advancedForm]);
 
@@ -368,11 +411,14 @@ export const LoginForm: FC<LoginFormProps> = ({
         // Generate ID only for desktop apps, using consistent ID for same credentials
         const credentialId = generateCredentialId(databaseType.id, hostName, username, database);
 
+        const effectiveAdvancedForm = (opsStatus?.Authenticated && selectedProjectId)
+            ? { ...advancedForm, ProjectId: selectedProjectId }
+            : advancedForm;
         const values = buildSourceValues(hostName, database, username, password, advancedForm);
         const credentials = {
             Id: credentialId,
             SourceType: databaseType.id,
-            Values: buildRecordInputs(hostName, database, username, password, advancedForm),
+            Values: buildRecordInputs(hostName, database, username, password, effectiveAdvancedForm),
         };
 
         void (async () => {
@@ -394,12 +440,36 @@ export const LoginForm: FC<LoginFormProps> = ({
                 }
 
                 const sslMode = advancedForm[SSL_KEYS.MODE];
-                const profileData = createProfilePayload(credentialId, databaseType.id, values, {
+                let profileData = createProfilePayload(credentialId, databaseType.id, values, {
                     SSLConfigured: sslMode != null && sslMode !== 'disabled' && sslMode !== '',
                 });
 
                 await clearGraphqlStore();
                 shouldUpdateLastAccessed.current = true;
+                if (opsStatus?.Authenticated && selectedProjectId) {
+                    await refetchOpsStatus();
+                    const refreshed = await refetchProfiles();
+                    const allEnvProfiles = (refreshed.data?.SourceProfiles ?? [])
+                        .filter(p => p.Source !== "builtin");
+                    if (allEnvProfiles.length > 0) {
+                        dispatch(AuthActions.syncSourceProfiles(
+                            allEnvProfiles.map(p => createProfilePayloadFromSourceProfile(p)),
+                        ));
+                    }
+                    const matchedProfile = allEnvProfiles.find(
+                        p => p.ProjectId === selectedProjectId && p.Type.toLowerCase() === databaseType.id.toLowerCase(),
+                    );
+                    if (matchedProfile != null) {
+                        profileData = createProfilePayloadFromSourceProfile(matchedProfile);
+                    } else {
+                        const projectName = projectOptions.find(opt => opt.value === selectedProjectId)?.label ?? selectedProjectId;
+                        profileData = {
+                            ...profileData,
+                            ProjectId: selectedProjectId,
+                            ProjectName: projectName,
+                        };
+                    }
+                }
                 dispatch(AuthActions.login(profileData));
                 markFirstLoginComplete();
                 loginSucceededRef.current = true;
@@ -423,12 +493,12 @@ export const LoginForm: FC<LoginFormProps> = ({
                 } else {
                     void navigate(storageUnitPath);
                 }
-                toast.success(t('loginSuccessful'));
+                toast.success(opsStatus?.Authenticated && selectedProjectId ? t('opsPlane.savedToPlatform') : t('loginSuccessful'));
             } catch (error) {
                 handleLoginError(error);
             }
         })();
-    }, [advancedForm, database, databaseType, dispatch, handleLoginError, hostName, login, markFirstLoginComplete, navigate, onLoginSuccess, password, searchParams, setSearchParams, t, username]);
+    }, [advancedForm, database, databaseType, dispatch, handleLoginError, hostName, isFirstLogin, login, markFirstLoginComplete, navigate, onLoginSuccess, opsStatus?.Authenticated, password, projectOptions, refetchOpsStatus, refetchProfiles, searchParams, selectedProjectId, setSearchParams, t, username]);
 
     const handleTestConnection = useCallback(() => {
         setTestResult(undefined);
@@ -439,7 +509,10 @@ export const LoginForm: FC<LoginFormProps> = ({
             ...loginAnalyticsPropsRef.current,
             database_type: databaseType.id || 'unknown',
         });
-        const values = buildRecordInputs(hostName, database, username, password, advancedForm);
+        const effectiveAdvancedForm = (opsStatus?.Authenticated && selectedProjectId)
+            ? { ...advancedForm, ProjectId: selectedProjectId }
+            : advancedForm;
+        const values = buildRecordInputs(hostName, database, username, password, effectiveAdvancedForm);
         void (async () => {
             try {
                 const { data } = await testConnection({
@@ -468,7 +541,7 @@ export const LoginForm: FC<LoginFormProps> = ({
                 setTestResult({ status: 'error', message: t('testConnectionFailed', { error: e?.message ?? '' }) });
             }
         })();
-    }, [advancedForm, database, databaseType.id, hostName, password, testConnection, t, username]);
+    }, [advancedForm, database, databaseType.id, hostName, opsStatus?.Authenticated, password, selectedProjectId, testConnection, t, username]);
 
     const handleLoginWithSourceProfileSubmit = useCallback((overrideProfileId?: string) => {
         const profileId = overrideProfileId ?? selectedAvailableProfile;
@@ -1181,11 +1254,14 @@ export const LoginForm: FC<LoginFormProps> = ({
     const showSidePanel = sampleProfile && !hideHeader && featureFlags.sampleDatabaseTour && isFirstLogin && !hasCompletedOnboarding();
 
     return (
-        <div className={classNames("w-fit h-fit", className, {
-            "w-full h-full": advancedDirection === "vertical",
-            "flex flex-col gap-8 md:flex-row": showSidePanel && advancedDirection === "horizontal",
-            "ce-connect": landing,
-        })} data-testid="login-form-container">
+        <div className={classNames(
+            advancedDirection === "vertical" ? "w-full min-h-full" : "w-fit h-fit",
+            className,
+            {
+                "flex flex-col gap-8 md:flex-row": showSidePanel && advancedDirection === "horizontal",
+                "ce-connect": landing,
+            },
+        )} data-testid="login-form-container">
             {landing && <section className="ce-connect-story" aria-label={t('storyLabel')}>
                 <div className="ce-connect-brand">
                     {extensions.Logo ?? <img src={logoImage} alt="" className="size-7" />}
@@ -1221,23 +1297,24 @@ export const LoginForm: FC<LoginFormProps> = ({
                     </div>
                 </div>
             </section>}
-            <section className={cn('ce-connect-form-side', !landing && 'contents')}>
-            <div className="fixed top-4 right-4 z-20" data-testid="mode-toggle-login">
-                <ModeToggle />
-            </div>
-            <div className={classNames("flex flex-col grow gap-lg", {
+            <section className={cn(landing ? 'ce-connect-form-side' : 'contents')}>
+            {advancedDirection !== "vertical" && (
+                <div className="fixed top-4 right-4 z-20" data-testid="mode-toggle-login">
+                    <ModeToggle />
+                </div>
+            )}
+            <div className={classNames("flex flex-col grow gap-lg w-full min-w-0", {
                 "justify-between": advancedDirection === "horizontal",
-                "h-full": advancedDirection === "vertical" && availableProfiles.length === 0,
                 "ce-connect-form-inner": landing,
             })}>
                 {!hideHeader && (
-                    <header className={cn('flex justify-between', landing && 'ce-connect-form-header')} data-testid="login-header">
+                    <header className={cn('flex items-center justify-between gap-2', landing && 'ce-connect-form-header', advancedDirection === "vertical" && 'pr-8')} data-testid="login-header">
                         {landing ? <div><p className="ce-connect-eyebrow">{t('connectEyebrow')}</p><h2>{t('connectTitle')}</h2><p className="ce-connect-subtitle">{t('credentialsStayLocal')}</p></div> : <>
-                        <h1 className="flex items-center gap-xs text-xl">
-                            {extensions.Logo ?? <img src={logoImage} alt="WhoDB" className="w-auto h-8 mr-1"/>}
-                            <span className="text-primary" data-testid="app-name">{getAppName()}</span>
+                        <h1 className="flex items-center gap-xs text-xl min-w-0">
+                            {extensions.Logo ?? <img src={logoImage} alt="WhoDB" className="w-auto h-8 mr-1 shrink-0"/>}
+                            <span className="text-primary truncate" data-testid="app-name">{getAppName()}</span>
                         </h1>
-                        <span className="text-xl">{t('title')}</span>
+                        <span className="text-xl shrink-0">{t('title')}</span>
                         </>}
                         {
                             error &&
@@ -1251,8 +1328,8 @@ export const LoginForm: FC<LoginFormProps> = ({
                     "flex-col md:flex-row grow": advancedDirection === "horizontal",
                     "flex-col w-full gap-lg": advancedDirection === "vertical",
                 })} data-testid="login-form">
-                    <div className={classNames("flex flex-col gap-lg grow", advancedDirection === "vertical" ? "w-full" : landing ? "w-full" : "w-full md:w-[350px]")}>
-                        <div className={cn("flex flex-col grow gap-lg", {
+                    <div className={classNames("flex flex-col gap-lg grow min-w-0", advancedDirection === "vertical" ? "w-full" : landing ? "w-full" : "w-full md:w-[350px]")}>
+                        <div className={cn("flex flex-col grow gap-lg min-w-0", {
                             "justify-center": advancedDirection === "horizontal" && !showSidePanel,
                         })}>
                             {disableCredentialForm && !hasAvailableProfiles ? (
@@ -1266,6 +1343,25 @@ export const LoginForm: FC<LoginFormProps> = ({
                                 </Card>
                             ) : (
                                 <>
+                                    {!disableCredentialForm && opsStatus?.Authenticated && projectOptions.length > 0 && (
+                                        <div className="flex flex-col gap-sm w-full">
+                                            <Label>{t('opsPlane.project')}</Label>
+                                            <SearchSelect
+                                                value={selectedProjectId}
+                                                onChange={(value) => {
+                                                    setSelectedProjectId(value);
+                                                }}
+                                                placeholder={t('opsPlane.selectProject')}
+                                                searchPlaceholder={t('opsPlane.searchProject')}
+                                                options={projectOptions}
+                                                buttonProps={{
+                                                    "data-testid": "ops-project-select",
+                                                }}
+                                                contentClassName="w-[var(--radix-popover-trigger-width)] login-select-popover"
+                                                rightIcon={<ChevronDownIcon className="w-4 h-4"/>}
+                                            />
+                                        </div>
+                                    )}
                                     {!disableCredentialForm && (
                                         <div className="flex flex-col gap-sm w-full">
                                             <Label>{t('databaseType')}</Label>
@@ -1360,20 +1456,20 @@ export const LoginForm: FC<LoginFormProps> = ({
                         {!disableCredentialForm &&
                         <div className="flex gap-2">
                             <Button onClick={handleTestConnection} variant="secondary" disabled={!loginWithCredentialsEnabled || testConnectionLoading} className="flex-1">
-                                {t('testConnection')}
+                                {testConnectionLoading ? t('testingConnection') : t('testConnection')}
                             </Button>
-                            <Button onClick={handleSubmit} data-testid="login-button" variant={loginWithCredentialsEnabled ? "default" : "secondary"} disabled={!loginWithCredentialsEnabled} className="flex-1">
-                                <CheckCircleIcon className="w-4 h-4" /> {t('title')}
+                            <Button onClick={handleSubmit} data-testid="login-button" variant={loginWithCredentialsEnabled ? "default" : "secondary"} disabled={!loginWithCredentialsEnabled || loading} className="flex-1">
+                                {loading ? <Spinner className="size-4" aria-hidden="true" /> : <CheckCircleIcon className="w-4 h-4" />} {opsStatus?.Authenticated && selectedProjectId ? t('opsPlane.saveAndConnect') : t('title')}
                             </Button>
                         </div>
                         }
                     </div>
                 )}
-                {!disableCredentialForm && <Separator className="my-6" />}
-                <div className="flex flex-col gap-lg" data-testid="ops-control-plane-section">
-                    <Alert data-testid="ops-plane-synced-alert">
-                        <CheckCircleIcon className="h-4 w-4" aria-hidden="true" />
-                        <AlertTitle>
+                {!disableCredentialForm && <Separator className="my-4" />}
+                <div className="flex flex-col gap-lg w-full min-w-0" data-testid="ops-control-plane-section">
+                    <Alert className="w-full min-w-0" data-testid="ops-plane-synced-alert">
+                        <CheckCircleIcon className="h-4 w-4 shrink-0" aria-hidden="true" />
+                        <AlertTitle className="break-words leading-snug">
                             {t('opsPlane.loggedInAs', {
                                 username: opsStatus.Username ?? '',
                                 role: opsStatus.Role ?? '',
@@ -1409,7 +1505,7 @@ export const LoginForm: FC<LoginFormProps> = ({
                         </AlertDescription>
                     </Alert>
                     {
-                        availableProfiles.length > 0 &&
+                        advancedDirection !== "vertical" && availableProfiles.length > 0 &&
                         <div className="flex flex-col gap-lg">
                             <Label>{t('availableProfiles')}</Label>
                             <SearchSelect
