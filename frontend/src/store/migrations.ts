@@ -14,181 +14,10 @@
  * limitations under the License.
  */
 
-import type { IAIModelType } from './ai-models';
-import { ensureModelTypesArray, ensureModelsArray } from '../utils/ai-models-helper';
 import { featureFlags } from '../config/features';
 import { withBasePath } from '../utils/base-path';
 import { stripProfileSecrets } from '../utils/credential-secrets';
 import { isDesktopApp } from '../utils/external-links';
-
-
-/**
- * Migrates AI-related data from the old database store to the new aiModels store
- */
-export function migrateAIModelsFromDatabase(): void {
-  try {
-    // Check if migration has already been performed
-    const migrationKey = 'aiModels_migration_v1_completed';
-    if (localStorage.getItem(migrationKey) === 'true') {
-      return;
-    }
-
-    // Get the persisted database state
-    const persistedDatabaseState = localStorage.getItem('persist:database');
-    if (!persistedDatabaseState) {
-      // No database state to migrate
-      localStorage.setItem(migrationKey, 'true');
-      return;
-    }
-
-    // Parse the persisted state
-    const databaseState = JSON.parse(persistedDatabaseState);
-    
-    // Redux persist stores each field as a JSON string, so we need to parse them
-    let current, modelTypes, currentModel, models;
-    
-    try {
-      current = databaseState.current ? JSON.parse(databaseState.current) : undefined;
-      modelTypes = databaseState.modelTypes ? JSON.parse(databaseState.modelTypes) : undefined;
-      currentModel = databaseState.currentModel ? JSON.parse(databaseState.currentModel) : undefined;
-      models = databaseState.models ? JSON.parse(databaseState.models) : undefined;
-    } catch {
-      // If parsing fails, the data might be in a different format
-      current = databaseState.current;
-      modelTypes = databaseState.modelTypes;
-      currentModel = databaseState.currentModel;
-      models = databaseState.models;
-    }
-    
-    // Check if there's AI-related data to migrate
-    if (!modelTypes && !current && !currentModel && !models) {
-      // No AI data to migrate
-      localStorage.setItem(migrationKey, 'true');
-      return;
-    }
-
-    // Create the new aiModels state
-    const aiModelsState: Record<string, string> = {};
-    
-    // Ensure we have at least the default model types if none exist
-    const defaultModelTypes = ["Ollama"].map(modelType => ({
-      id: modelType,
-      modelType,
-    }));
-    
-    if (current !== undefined) {
-      aiModelsState.current = JSON.stringify(current);
-    }
-    
-    if (modelTypes !== undefined && Array.isArray(modelTypes)) {
-      aiModelsState.modelTypes = JSON.stringify(modelTypes);
-    } else {
-      // Ensure we always have a valid modelTypes array
-      aiModelsState.modelTypes = JSON.stringify(defaultModelTypes);
-    }
-    
-    if (currentModel !== undefined) {
-      aiModelsState.currentModel = JSON.stringify(currentModel);
-    }
-    
-    if (models !== undefined && Array.isArray(models)) {
-      aiModelsState.models = JSON.stringify(models);
-    } else {
-      aiModelsState.models = JSON.stringify([]);
-    }
-
-    // Add Redux persist metadata
-    aiModelsState._persist = JSON.stringify({ version: -1, rehydrated: true });
-
-    // Save the new aiModels state
-    localStorage.setItem('persist:aiModels', JSON.stringify(aiModelsState));
-
-    // Clean up the old database state - keep only the schema
-    const cleanedDatabaseState = {
-      schema: databaseState.schema ?? '""',
-      _persist: JSON.stringify({ version: -1, rehydrated: true })
-    };
-    localStorage.setItem('persist:database', JSON.stringify(cleanedDatabaseState));
-
-    // Mark migration as completed
-    localStorage.setItem(migrationKey, 'true');
-      } catch (error) {
-    console.error('Error during AI models migration:', error);
-    // Don't mark as completed so it can be retried on next load
-  }
-}
-
-/**
- * Ensure AI models state has valid array values
- */
-function ensureValidAIModelsState(): void {
-  try {
-    const persistedAIModelsState = localStorage.getItem('persist:aiModels');
-    if (!persistedAIModelsState) {
-      return;
-    }
-
-    const aiModelsState = JSON.parse(persistedAIModelsState);
-    let needsUpdate = false;
-
-    // Check and fix modelTypes
-    if (aiModelsState.modelTypes) {
-      try {
-        let modelTypes = JSON.parse(aiModelsState.modelTypes);
-        if (!Array.isArray(modelTypes)) {
-          modelTypes = ensureModelTypesArray(modelTypes);
-          aiModelsState.modelTypes = JSON.stringify(modelTypes);
-          needsUpdate = true;
-        } else {
-          // Ensure each modelType has required properties
-          const validModelTypes = modelTypes.filter((mt: IAIModelType | null) => mt?.id && mt.modelType);
-          if (validModelTypes.length !== modelTypes.length) {
-            modelTypes = validModelTypes.length > 0 ? validModelTypes : ensureModelTypesArray(null);
-            aiModelsState.modelTypes = JSON.stringify(modelTypes);
-            needsUpdate = true;
-          }
-        }
-      } catch {
-        aiModelsState.modelTypes = JSON.stringify(ensureModelTypesArray(null));
-        needsUpdate = true;
-      }
-    } else {
-      // Initialize with default if missing
-      aiModelsState.modelTypes = JSON.stringify(ensureModelTypesArray(null));
-      needsUpdate = true;
-    }
-
-    // Check and fix models
-    if (aiModelsState.models) {
-      try {
-        const models = JSON.parse(aiModelsState.models);
-        if (!Array.isArray(models)) {
-          aiModelsState.models = JSON.stringify(ensureModelsArray(models));
-          needsUpdate = true;
-        }
-      } catch {
-        aiModelsState.models = JSON.stringify(ensureModelsArray(null));
-        needsUpdate = true;
-      }
-    } else {
-      // Initialize with empty array if missing
-      aiModelsState.models = JSON.stringify([]);
-      needsUpdate = true;
-    }
-
-    // Ensure _persist metadata exists
-    if (!aiModelsState._persist) {
-      aiModelsState._persist = JSON.stringify({ version: -1, rehydrated: true });
-      needsUpdate = true;
-    }
-
-    if (needsUpdate) {
-      localStorage.setItem('persist:aiModels', JSON.stringify(aiModelsState));
-    }
-  } catch (error) {
-    console.error('Error ensuring valid AI models state:', error);
-  }
-}
 
 /**
  * Get the current migration version
@@ -206,14 +35,14 @@ function setMigrationVersion(version: number): void {
 }
 
 /**
- * Clear chat state to fix IChatMessage type mismatch
+ * Clear legacy persisted chat and AI model state.
  */
-function clearChatStateV2(): void {
+function clearLegacyChatState(): void {
   try {
-    // Clear the persisted chat (houdini) state
     localStorage.removeItem('persist:houdini');
+    localStorage.removeItem('persist:aiModels');
   } catch (error) {
-    console.error('Error clearing chat state:', error);
+    console.error('Error clearing legacy chat state:', error);
   }
 }
 
@@ -433,16 +262,7 @@ export function clearPersistedAuthStateV10(): void {
 export function runMigrations(): void {
   const currentVersion = getMigrationVersion();
 
-  // Run migrations in order based on version
-  if (currentVersion < 1) {
-    migrateAIModelsFromDatabase();
-    setMigrationVersion(1);
-  }
-
-  if (currentVersion < 2) {
-    clearChatStateV2();
-    setMigrationVersion(2);
-  }
+  clearLegacyChatState();
 
   if (currentVersion < 4) {
     applyEESettingsDefaultsV4();
@@ -466,7 +286,4 @@ export function runMigrations(): void {
 
   // V9 (auth → session cookie) and V10 (remove persisted auth) run separately
   // before the app renders so the cookie beats any query.
-
-  // Always ensure AI models state is valid
-  ensureValidAIModelsState();
 }

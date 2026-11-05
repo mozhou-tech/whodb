@@ -657,6 +657,24 @@ func (a auditedObjectManager) DeleteRow(ctx context.Context, ref ObjectRef, valu
 	return status, err
 }
 
+func (a auditedObjectManager) ClearObjectData(ctx context.Context, ref ObjectRef) (bool, error) {
+	start := time.Now()
+	status, err := a.next.ClearObjectData(ctx, ref)
+	details := objectRefDetails(&ref)
+	details["status"] = status
+	a.scope.record(ctx, "source.clear_object_data", start, err, details)
+	return status, err
+}
+
+func (a auditedObjectManager) DropObject(ctx context.Context, ref ObjectRef) (bool, error) {
+	start := time.Now()
+	status, err := a.next.DropObject(ctx, ref)
+	details := objectRefDetails(&ref)
+	details["status"] = status
+	a.scope.record(ctx, "source.drop_object", start, err, details)
+	return status, err
+}
+
 type auditedConnectionFieldOptionsReader struct {
 	scope AuditScope
 	next  ConnectionFieldOptionsReader

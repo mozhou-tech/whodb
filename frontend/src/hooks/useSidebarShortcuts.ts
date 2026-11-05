@@ -26,7 +26,7 @@ export const useSidebarShortcuts = () => {
     const navigate = useNavigate();
     const currentType = useAppSelector(state => state.auth.current?.Type);
     const isLoggedIn = useAppSelector(state => state.auth.status === "logged-in");
-    const { supportsChat, supportsGraph, supportsScratchpad } = useSourceContract(currentType);
+    const { supportsGraph, supportsScratchpad } = useSourceContract(currentType);
 
     const handleKeyDown = useCallback((event: KeyboardEvent) => {
         // Only handle when logged in
@@ -44,11 +44,6 @@ export const useSidebarShortcuts = () => {
         // Build route list based on database type (same logic as sidebar)
         const routes: string[] = [];
 
-        // Chat is first for SQL databases
-        if (supportsChat && isUnscopedRouteEnabled(InternalRoutes.Chat.path)) {
-            routes.push(InternalRoutes.Chat.path);
-        }
-
         // Storage Units
         if (isUnscopedRouteEnabled(InternalRoutes.Dashboard.StorageUnit.path)) {
             routes.push(InternalRoutes.Dashboard.StorageUnit.path);
@@ -62,6 +57,11 @@ export const useSidebarShortcuts = () => {
         // Scratchpad (if supported)
         if (supportsScratchpad && isUnscopedRouteEnabled(InternalRoutes.RawExecute.path)) {
             routes.push(InternalRoutes.RawExecute.path);
+        }
+
+        // Data Copy
+        if (isUnscopedRouteEnabled(InternalRoutes.DataCopy.path)) {
+            routes.push(InternalRoutes.DataCopy.path);
         }
 
         // Number navigation
@@ -82,9 +82,9 @@ export const useSidebarShortcuts = () => {
             window.dispatchEvent(new CustomEvent('menu:toggle-sidebar'));
         }
     }, [
+	currentType,
 	isLoggedIn,
 	navigate,
-	supportsChat,
 	supportsGraph,
 	supportsScratchpad
 ]);

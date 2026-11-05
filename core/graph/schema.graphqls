@@ -146,6 +146,7 @@ enum ImportMode {
 type Column {
   Type: String!
   Name: String!
+  Comment: String
   MetadataFidelity: SourceMetadataFidelity!
   IsPrimary: Boolean!
   IsForeignKey: Boolean!
@@ -759,6 +760,55 @@ type CopySourceObjectsResult {
   Details: [CopyTableDetail!]!
 }
 
+type FlywayStatus {
+  Installed: Boolean!
+  Version: String
+  BinaryPath: String
+  InstallMethod: String
+}
+
+type FlywayInstallResult {
+  Success: Boolean!
+  Status: FlywayStatus!
+  Output: String!
+  Error: String
+}
+
+type FlywayMigrationFile {
+  Filename: String!
+  RelativePath: String!
+  Version: String!
+  Description: String!
+  Type: String!
+  SizeBytes: Int!
+}
+
+type FlywayDirectoryPreview {
+  Directory: String!
+  Exists: Boolean!
+  Files: [FlywayMigrationFile!]!
+  Error: String
+}
+
+input ExecuteFlywayInput {
+  Target: SourceTargetConnectionInput!
+  TargetSchema: String
+  Directory: String!
+  Action: String!
+  BaselineOnMigrate: Boolean
+  OutOfOrder: Boolean
+  ValidateOnMigrate: Boolean
+}
+
+type FlywayExecutionResult {
+  Success: Boolean!
+  Action: String!
+  Command: String!
+  Output: String!
+  Error: String
+  DurationMs: Int!
+}
+
 type Query {
   Version: String!
   UpdateInfo: UpdateInfo!
@@ -788,6 +838,8 @@ type Query {
   SourceQuerySuggestions(ref: SourceObjectRefInput): [SourceQuerySuggestion!]!
   SourceTargetDatabases(target: SourceTargetConnectionInput!): [String!]!
   SourceTargetSchemas(target: SourceTargetConnectionInput!): [String!]!
+  FlywayStatus: FlywayStatus!
+  InspectFlywayDirectory(directory: String!): FlywayDirectoryPreview!
 
 }
 
@@ -822,8 +874,12 @@ type Mutation {
   UpdateSourceObject(ref: SourceObjectRefInput!, values: [RecordInput!]!, updatedColumns: [String!]!): StatusResponse!
   AddSourceRow(ref: SourceObjectRefInput!, values: [RecordInput!]!): StatusResponse!
   DeleteSourceRow(ref: SourceObjectRefInput!, values: [RecordInput!]!): StatusResponse!
+  ClearSourceObjectData(ref: SourceObjectRefInput!): StatusResponse!
+  DropSourceObject(ref: SourceObjectRefInput!): StatusResponse!
   GenerateMockData(input: MockDataGenerationInput!): MockDataGenerationStatus!
   CopySourceObjects(input: CopySourceObjectsInput!): CopySourceObjectsResult!
+  InstallFlyway: FlywayInstallResult!
+  ExecuteFlyway(input: ExecuteFlywayInput!): FlywayExecutionResult!
 
   ImportSQL(input: ImportSQLInput!): ImportResult!
   ImportPreview(

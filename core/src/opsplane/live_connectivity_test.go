@@ -27,6 +27,7 @@ import (
 	"github.com/clidey/whodb/core/src/plugins/clickhouse"
 	"github.com/clidey/whodb/core/src/plugins/elasticsearch"
 	"github.com/clidey/whodb/core/src/plugins/mysql"
+	"github.com/clidey/whodb/core/src/plugins/openobserve"
 	"github.com/clidey/whodb/core/src/plugins/postgres"
 	"github.com/clidey/whodb/core/src/plugins/redis"
 	"github.com/clidey/whodb/core/src/plugins/tdengine"
@@ -88,6 +89,7 @@ func TestLiveOpsControlPlanePluginConnectivity(t *testing.T) {
 		string(engine.DatabaseType_TDengine):      tdengine.NewTDenginePlugin(),
 		string(engine.DatabaseType_ClickHouse):    clickhouse.NewClickHousePlugin(),
 		string(engine.DatabaseType_ElasticSearch): elasticsearch.NewElasticSearchPlugin(),
+		string(engine.DatabaseType_OpenObserve):   openobserve.NewOpenObservePlugin(),
 	}
 
 	connectedByType := map[string]int{}
@@ -135,7 +137,7 @@ func TestLiveOpsControlPlanePluginConnectivity(t *testing.T) {
 		}
 	}
 
-	for _, wantType := range []string{"Postgres", "MySQL", "Redis", "TDengine", "ClickHouse"} {
+	for _, wantType := range []string{"Postgres", "MySQL", "Redis", "TDengine", "ClickHouse", "OpenObserve"} {
 		if connectedByType[wantType] == 0 {
 			t.Errorf("expected at least 1 live connected %s profile, got %v", wantType, connectedByType)
 		}

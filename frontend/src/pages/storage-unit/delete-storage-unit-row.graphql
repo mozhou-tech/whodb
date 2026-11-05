@@ -3,3 +3,16 @@ mutation DeleteRow($ref: SourceObjectRefInput!, $values: [RecordInput!]!) {
     Status
   }
 }
+
+mutation ClearSourceObjectData($ref: SourceObjectRefInput!) {
+  ClearSourceObjectData(ref: $ref) {
+    Status
+  }
+}
+
+mutation DropSourceObject($ref: SourceObjectRefInput!) {
+  DropSourceObject(ref: $ref) {
+    Status
+  }
+}
+

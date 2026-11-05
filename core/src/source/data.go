@@ -45,6 +45,7 @@ type StorageUnit struct {
 type Column struct {
 	Type             string
 	Name             string
+	Comment          *string
 	MetadataFidelity MetadataFidelity
 	IsNullable       bool
 	IsPrimary        bool

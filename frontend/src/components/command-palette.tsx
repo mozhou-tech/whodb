@@ -86,7 +86,7 @@ const CommandPalette: FC<CommandPaletteProps> = ({open, onOpenChange}) => {
     const isMac = useEffectiveIsMac();
     const [availableColumns, setAvailableColumns] = useState<string[]>([]);
     const [search, setSearch] = useState("");
-    const { supportsChat, supportsGraph, supportsScratchpad, item } = useSourceContract(currentType);
+    const { supportsGraph, supportsScratchpad, item } = useSourceContract(currentType);
     const parentRef = useMemo(() => buildSourceParentRef(item, current, schema), [item, current, schema]);
     const {data: sourceObjects} = useQuery(GetStorageUnitsDocument, {
         variables: {parent: parentRef},
@@ -120,20 +120,6 @@ const CommandPalette: FC<CommandPaletteProps> = ({open, onOpenChange}) => {
         const navDefs = [SHORTCUTS.navFirst, SHORTCUTS.navSecond, SHORTCUTS.navThird, SHORTCUTS.navFourth];
 
         let shortcutIndex = 0;
-
-        if (supportsChat) {
-            navigationActions.push({
-                id: "nav-chat",
-                label: t('goToChat'),
-                icon: <WhoDBChatIcon name="chat" />,
-                shortcut: resolveShortcut(navDefs[shortcutIndex]).displayKeys,
-                onSelect: () => {
-                    void navigate(InternalRoutes.Chat.path);
-                    handlePaletteOpenChange(false);
-                },
-            });
-            shortcutIndex += 1;
-        }
 
         navigationActions.push({
             id: "nav-storage-units",

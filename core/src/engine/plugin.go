@@ -97,6 +97,7 @@ type PluginFunctions interface {
 	// GetColumnConstraints returns database-specific constraints for mock data generation.
 	GetColumnConstraints(config *PluginConfig, schema string, storageUnit string) (map[string]map[string]any, error)
 	ClearTableData(config *PluginConfig, schema string, storageUnit string) (bool, error)
+	DropStorageUnit(config *PluginConfig, schema string, storageUnit string) (bool, error)
 	NullifyFKColumn(config *PluginConfig, schema string, storageUnit string, column string) error
 
 	// GetForeignKeyRelationships returns foreign-key relationships for a storage unit.

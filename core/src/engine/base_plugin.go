@@ -124,6 +124,10 @@ func (b *BasePlugin) ClearTableData(_ *PluginConfig, _ string, _ string) (bool, 
 	return false, errors.ErrUnsupported
 }
 
+func (b *BasePlugin) DropStorageUnit(_ *PluginConfig, _ string, _ string) (bool, error) {
+	return false, errors.ErrUnsupported
+}
+
 func (b *BasePlugin) NullifyFKColumn(_ *PluginConfig, _ string, _ string, _ string) error {
 	return nil
 }

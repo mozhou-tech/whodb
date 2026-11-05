@@ -248,7 +248,7 @@ const StorageUnitCard: FC<{
                                 const display = formatAttributeValue(attribute.Key, attribute.Value, t);
                                 return (
                                     <div key={attribute.Key} data-field-key={attribute.Key} data-field-value={rawDisplay}>
-                                        <StackListItem item={formatAttributeKey(attribute.Key, t)}>
+                                        <StackListItem rowClassName="text-base" item={formatAttributeKey(attribute.Key, t)}>
                                             {display}
                                         </StackListItem>
                                     </div>
@@ -261,7 +261,7 @@ const StorageUnitCard: FC<{
                                 const display = formatAttributeValue(attribute.Key, attribute.Value, t);
                                 return (
                                     <div key={attribute.Key} data-field-key={attribute.Key} data-field-value={rawDisplay}>
-                                        <StackListItem item={formatAttributeKey(attribute.Key, t)}>
+                                        <StackListItem rowClassName="text-base" item={formatAttributeKey(attribute.Key, t)}>
                                             {display}
                                         </StackListItem>
                                     </div>
@@ -276,16 +276,30 @@ const StorageUnitCard: FC<{
                     )}
                     {!columnsLoading && shouldFetchColumns && columns && columns.length > 0 && (
                         <div className="mt-8">
-                            <h3 className="text-xs font-semibold uppercase text-muted-foreground">{t('columns')}</h3>
+                            <div className="grid grid-cols-3 gap-4 mb-2 text-xs font-semibold uppercase text-muted-foreground">
+                                <span>{t('columns')}</span>
+                                <span>{t('comment')}</span>
+                                <span>{t('attrType')}</span>
+                            </div>
                             <StackList>
                                 {columns.map(col => {
                                     const isForeignKey = col.IsForeignKey;
                                     return (
                                         <div key={col.Name} className={ph.mask} data-field-key={col.Name} data-field-value={col.Type?.toLowerCase()} data-is-foreign-key={isForeignKey || undefined}>
-                                            <StackListItem item={isForeignKey ?
-                                                <Badge className="text-lg" data-testid="foreign-key-attribute" variant="secondary">{col.Name}</Badge> : col.Name}>
-                                                {col.Type?.toLowerCase()}
-                                            </StackListItem>
+                                            <div data-slot="stack-list-item" className="flex flex-col">
+                                                <p className="grid grid-cols-3 items-center text-base py-3 min-w-0 gap-4">
+                                                    <span className="font-semibold truncate" title={col.Name}>
+                                                        {isForeignKey ?
+                                                            <Badge className="text-base" data-testid="foreign-key-attribute" variant="secondary">{col.Name}</Badge> : col.Name}
+                                                    </span>
+                                                    <span className="text-muted-foreground truncate min-w-0" title={col.Comment ?? undefined}>
+                                                        {col.Comment ?? '-'}
+                                                    </span>
+                                                    <span className="truncate min-w-0" title={col.Type?.toLowerCase()}>
+                                                        {col.Type?.toLowerCase()}
+                                                    </span>
+                                                </p>
+                                            </div>
                                         </div>
                                     );
                                 })}
@@ -687,7 +701,7 @@ export const StorageUnitPage: FC = () => {
                                             const display = formatAttributeValue(attribute.Key, attribute.Value, t);
                                             return (
                                                 <div key={attribute.Key} data-field-key={attribute.Key} data-field-value={rawDisplay}>
-                                                    <StackListItem item={formatAttributeKey(attribute.Key, t)}>
+                                                    <StackListItem rowClassName="text-base" item={formatAttributeKey(attribute.Key, t)}>
                                                         {display}
                                                     </StackListItem>
                                                 </div>
@@ -698,7 +712,7 @@ export const StorageUnitPage: FC = () => {
                                             const display = formatAttributeValue(attribute.Key, attribute.Value, t);
                                             return (
                                                 <div key={attribute.Key} data-field-key={attribute.Key} data-field-value={rawDisplay}>
-                                                    <StackListItem item={formatAttributeKey(attribute.Key, t)}>
+                                                    <StackListItem rowClassName="text-base" item={formatAttributeKey(attribute.Key, t)}>
                                                         {display}
                                                     </StackListItem>
                                                 </div>
@@ -708,16 +722,30 @@ export const StorageUnitPage: FC = () => {
                                     {expandedUnitColumnsLoading && <Loading hideText={true} />}
                                     {!expandedUnitColumnsLoading && columns && columns.length > 0 && (
                                         <div>
-                                            <h3 className="text-xs font-semibold uppercase text-muted-foreground mb-2">{t('columns')}</h3>
+                                            <div className="grid grid-cols-3 gap-4 mb-2 text-xs font-semibold uppercase text-muted-foreground">
+                                                <span>{t('columns')}</span>
+                                                <span>{t('comment')}</span>
+                                                <span>{t('attrType')}</span>
+                                            </div>
                                             <StackList>
                                                 {columns.map((col: any) => {
                                                     const isForeignKey = col.IsForeignKey;
                                                     return (
                                                         <div key={col.Name} data-field-key={col.Name} data-field-value={col.Type?.toLowerCase()} data-is-foreign-key={isForeignKey ?? undefined}>
-                                                            <StackListItem item={isForeignKey ?
-                                                                <Badge className="text-lg" data-testid="foreign-key-attribute">{col.Name}</Badge> : col.Name}>
-                                                                {col.Type?.toLowerCase()}
-                                                            </StackListItem>
+                                                            <div data-slot="stack-list-item" className="flex flex-col">
+                                                                <p className="grid grid-cols-3 items-center text-base py-3 min-w-0 gap-4">
+                                                                    <span className="font-semibold truncate" title={col.Name}>
+                                                                        {isForeignKey ?
+                                                                            <Badge className="text-base" data-testid="foreign-key-attribute">{col.Name}</Badge> : col.Name}
+                                                                    </span>
+                                                                    <span className="text-muted-foreground truncate min-w-0" title={col.Comment ?? undefined}>
+                                                                        {col.Comment ?? '-'}
+                                                                    </span>
+                                                                    <span className="truncate min-w-0" title={col.Type?.toLowerCase()}>
+                                                                        {col.Type?.toLowerCase()}
+                                                                    </span>
+                                                                </p>
+                                                            </div>
                                                         </div>
                                                     );
                                                 })}

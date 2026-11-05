@@ -1,4 +1,5 @@
 en_US:
+  migrationTool: Migration Tool
   communityEditionShort: CE
   disconnect: Disconnect
   contact: Contact
@@ -1243,6 +1244,7 @@ sv_SE:
   collapseNavigation: "Komprimera navigeringen"
 
 zh_CN:
+  migrationTool: "迁移工具"
   mainNavigation: "主导航"
   profile: "连接配置"
   project: "项目切换"

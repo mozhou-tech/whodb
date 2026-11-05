@@ -17,6 +17,35 @@ en_US:
   tabBehavior: Behavior
   tabIntegrations: Integrations
   tabPrivacy: Privacy
+  tabUserInfo: User Info
+  userInfoDescription: View your platform account, active database session, and manage sign-out options.
+  platformAccountSection: Platform Account (Ops Control Plane)
+  accountStatus: Status
+  statusAuthenticated: Signed In
+  statusUnauthenticated: Not Signed In
+  usernameLabel: Username
+  roleLabel: Role
+  endpointLabel: Server Endpoint
+  projectCountLabel: Synced Projects
+  instanceCountLabel: Synced Database Instances
+  syncedAtLabel: Last Synced At
+  syncProfilesButton: Sync Projects & Databases
+  syncingProfilesButton: Syncing...
+  syncSuccess: Synced platform profiles successfully
+  logoutPlatformButton: Sign Out of Platform
+  currentSessionSection: Current Database Connection
+  projectLabel: Project
+  localProject: Local Connection
+  databaseTypeLabel: Database Type
+  hostLabel: Host / Instance
+  dbUsernameLabel: Database User
+  databaseNameLabel: Active Database
+  sessionActionsSection: Account Actions
+  disconnectCurrentDb: Disconnect Current Database
+  disconnectCurrentDbDesc: Close the current database session and switch or reconnect.
+  logoutAllButton: Log Out
+  logoutAllDesc: Sign out of the current session and return to the login screen.
+  logoutSuccess: Logged out successfully
   telemetryTitle: Telemetry and Performance Metrics
   telemetryDescription: We use this information solely to enhance the performance of {appName}.
   dataCollectionDetails: For details on what data we collect, how it's collected, stored, and used, please refer to our {privacyPolicyLink}.
@@ -1755,6 +1784,35 @@ zh_CN:
   tabBehavior: "行为"
   tabIntegrations: "集成"
   tabPrivacy: "隐私"
+  tabUserInfo: "用户信息"
+  userInfoDescription: "查看当前登录的平台账号信息、数据库连接会话及退出登录操作。"
+  platformAccountSection: "平台账号信息 (Ops Control Plane)"
+  accountStatus: "登录状态"
+  statusAuthenticated: "已登录"
+  statusUnauthenticated: "未登录"
+  usernameLabel: "用户名"
+  roleLabel: "角色权限"
+  endpointLabel: "服务端地址"
+  projectCountLabel: "已同步项目数"
+  instanceCountLabel: "已同步数据库实例数"
+  syncedAtLabel: "最近同步时间"
+  syncProfilesButton: "同步项目与数据库配置"
+  syncingProfilesButton: "正在同步..."
+  syncSuccess: "平台配置同步成功"
+  logoutPlatformButton: "退出平台账号"
+  currentSessionSection: "当前数据库连接信息"
+  projectLabel: "所属项目"
+  localProject: "本地连接"
+  databaseTypeLabel: "数据库类型"
+  hostLabel: "连接地址 / 实例"
+  dbUsernameLabel: "数据库用户"
+  databaseNameLabel: "当前数据库"
+  sessionActionsSection: "会话操作"
+  disconnectCurrentDb: "断开当前数据库连接"
+  disconnectCurrentDbDesc: "关闭当前数据库连接会话。"
+  logoutAllButton: "退出登录"
+  logoutAllDesc: "退出平台账号并断开所有数据库连接，返回登录页。"
+  logoutSuccess: "已退出登录"
   dataDisplayTitle: "数据显示"
   formatDates: "按语言环境设置日期格式（2025-01-15T10:30:00Z → 1/15/2025, 10:30 AM）"
   formatBooleans: "标准化布尔值（t/1 → true，f/0 → false）"

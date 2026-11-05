@@ -22,11 +22,8 @@ import { authReducers } from './auth';
 import type { IAuthState } from './auth';
 import { databaseReducers } from './database';
 import { settingsReducers } from "./settings";
-import { houdiniReducers } from './chat';
-import { aiModelsReducers } from './ai-models';
 import type { IScratchpadState } from './scratchpad';
 import { scratchpadReducers } from './scratchpad';
-import type { IChatState } from './chat';
 import { tourReducers } from './tour';
 import { healthReducers } from './health';
 import { exploreConditionsReducers } from './explore-conditions';
@@ -116,45 +113,6 @@ const scratchpadTransform = createTransform(
   { whitelist: ['scratchpad'] }
 );
 
-// Transform function to handle date serialization/deserialization for chat sessions
-const chatTransform = createTransform(
-  // Transform state on its way to being serialized and persisted
-  (inboundState: IChatState) => {
-    return inboundState;
-  },
-  // Transform state being rehydrated
-  (outboundState: any) => {
-    if (!outboundState?.sessions) {
-      return outboundState;
-    }
-
-    // Convert date strings back to Date objects in chat sessions
-    const transformedSessions = outboundState.sessions.map((session: any) => {
-      let createdAt = session.createdAt;
-      // Handle various date formats
-      if (typeof createdAt === 'string') {
-        createdAt = new Date(createdAt);
-      } else if (!(createdAt instanceof Date)) {
-        createdAt = new Date();
-      }
-      // Ensure the date is valid
-      if (isNaN(createdAt.getTime())) {
-        createdAt = new Date();
-      }
-      return {
-        ...session,
-        createdAt
-      };
-    });
-
-    return {
-      ...outboundState,
-      sessions: transformedSessions
-    };
-  },
-  { whitelist: ['houdini'] }
-);
-
 const authPersistTransform = createTransform(
   (inboundState: any, key) => {
     if (key === 'current') {
@@ -188,8 +146,6 @@ const ceReducerMap = {
   auth: authReducer,
   database: persistReducer({ key: "database", storage }, databaseReducers),
   settings: persistReducer({ key: "settings", storage, blacklist: ['os', 'newUIEnabled', 'language'], migrate: migrateSettings }, settingsReducers),
-  houdini: persistReducer({ key: "houdini", storage, transforms: [chatTransform], throttle: PERSIST_THROTTLE }, houdiniReducers),
-  aiModels: persistReducer({ key: "aiModels", storage }, aiModelsReducers),
   scratchpad: persistReducer({ key: "scratchpad", storage, transforms: [scratchpadTransform], throttle: PERSIST_THROTTLE }, scratchpadReducers),
   tour: persistReducer({ key: "tour", storage }, tourReducers),
   health: healthReducers,

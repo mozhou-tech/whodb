@@ -359,9 +359,14 @@ func mergeRowsColumns(rowsResult *source.RowsResult, columns []source.Column) *m
 	mappedColumns := make([]*model.Column, 0, len(rowsResult.Columns))
 	for _, column := range rowsResult.Columns {
 		info := columnInfo[column.Name]
+		comment := info.Comment
+		if comment == nil {
+			comment = column.Comment
+		}
 		mappedColumns = append(mappedColumns, &model.Column{
 			Type:             column.Type,
 			Name:             column.Name,
+			Comment:          comment,
 			IsPrimary:        info.IsPrimary,
 			IsForeignKey:     info.IsForeignKey,
 			ReferencedTable:  info.ReferencedTable,

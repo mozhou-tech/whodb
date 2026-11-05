@@ -32,13 +32,6 @@ export const sampleDatabaseTour = (t: (key: string) => string): TourConfig => ({
             path: InternalRoutes.Dashboard.StorageUnit.path,
         },
         {
-            target: `[href="${withBasePath(InternalRoutes.Chat.path)}"]`,
-            title: t('chatTitle'),
-            description: t('chatDescription'),
-            position: 'right',
-            path: InternalRoutes.Dashboard.StorageUnit.path,
-        },
-        {
             target: `[href="${withBasePath(InternalRoutes.Graph.path)}"]`,
             title: t('graphTitle'),
             description: t('graphDescription'),

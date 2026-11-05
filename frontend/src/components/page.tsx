@@ -37,8 +37,8 @@ type IPageProps = {
 }
 
 export const Page: FC<IPageProps> = (props) => {
-    return <div className={twMerge("flex grow min-w-0 px-8 py-6 flex-col h-full w-full", props.wrapperClassName)}>
-        <div className={twMerge("flex flex-row grow flex-wrap gap-sm w-full h-full overflow-y-auto", props.className)}
+    return <div className={twMerge("flex grow min-w-0 px-8 py-6 flex-col h-full w-full overflow-hidden", props.wrapperClassName)}>
+        <div className={twMerge("flex flex-row grow flex-wrap gap-sm w-full h-full overflow-y-auto overscroll-none", props.className)}
             data-testid="page-scroll-container">
                 {props.children}
         </div>
@@ -123,7 +123,7 @@ export const InternalPage: FC<IInternalPageProps> = (props) => {
     const sidebarOpen = useAppSelector(state => state.settings.sidebarOpen);
     const isTablesPage = props.routes?.at(-1)?.path === InternalRoutes.Dashboard.StorageUnit.path;
     const isExplorePage = props.routes?.at(-1)?.path === InternalRoutes.Dashboard.ExploreStorageUnit.path;
-    const isWorkspacePage = [InternalRoutes.RawExecute.path, InternalRoutes.Chat.path, InternalRoutes.Settings?.path, InternalRoutes.ContactUs?.path].includes(props.routes?.at(-1)?.path);
+    const isWorkspacePage = [InternalRoutes.RawExecute.path, InternalRoutes.Settings?.path, InternalRoutes.ContactUs?.path].includes(props.routes?.at(-1)?.path);
     const dispatch = useAppDispatch();
 
     // Fetch source session metadata when logged in so Apollo state is ready
@@ -132,7 +132,7 @@ export const InternalPage: FC<IInternalPageProps> = (props) => {
 
     return (
         <Container>
-            <div className="flex flex-row grow">
+            <div className="flex flex-row grow h-full overflow-hidden">
                 <SidebarProvider open={sidebarOpen} onOpenChange={(open) => dispatch(SettingsActions.setSidebarOpen(open))}>
                     <Sidebar />
                 </SidebarProvider>
@@ -191,7 +191,7 @@ type IContainerProps = {
 }
 
 export const Container: FC<IContainerProps> = ({ className, children }) => {
-    return  <div className={classNames(className, "flex grow h-full w-full")}>
+    return  <div className={classNames(className, "flex grow h-full w-full overflow-hidden")}>
         {children}
     </div>
 }

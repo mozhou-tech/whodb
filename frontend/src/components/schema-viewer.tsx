@@ -14,11 +14,24 @@
  * limitations under the License.
  */
 
-import { skipToken, useLazyQuery, useQuery } from "@apollo/client/react";
+import { skipToken, useApolloClient, useLazyQuery, useMutation, useQuery } from "@apollo/client/react";
 import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
     Badge,
     Button,
     cn,
+    ContextMenu,
+    ContextMenuContent,
+    ContextMenuItem,
+    ContextMenuSeparator,
+    ContextMenuTrigger,
     SearchInput,
     Sheet,
     SheetContent,
@@ -28,14 +41,21 @@ import {
     SidebarGroup,
     StackList,
     StackListItem,
+    toast,
+    IconClipboard as ClipboardDocumentIcon,
+    IconCopy as DocumentDuplicateIcon,
+    IconEye as EyeIcon,
     IconRefresh as ArrowPathRoundedSquareIcon,
     IconInfo as InformationCircleIcon,
     IconPlusCircle as PlusCircleIcon,
     IconTable as TableCellsIcon,
+    IconTrash as TrashIcon,
 } from "@clidey/ux";
 import type { GetColumnsBatchQuery, GetStorageUnitsQuery, SourceObjectRefInput} from "@graphql";
 import {
+    ClearSourceObjectDataDocument,
     DataShape,
+    DropSourceObjectDocument,
     GetColumnsBatchDocument,
     GetStorageUnitRowsDocument,
     GetStorageUnitsDocument,
@@ -78,30 +98,104 @@ type SchemaViewerProps = {
     trail?: SourceBrowserObject[];
 };
 
-const SchemaViewerUnit: FC<{unit: SourceBrowserObject; selected: boolean; onSelect: (name: string) => void}> = ({unit, selected, onSelect}) => {
+type SchemaViewerUnitProps = {
+    unit: SourceBrowserObject;
+    selected: boolean;
+    onSelect: (name: string) => void;
+    onDescribe: (unit: SourceBrowserObject) => void;
+    onCopyName: (name: string) => void;
+    onDataCopy: () => void;
+    onTruncate: (unit: SourceBrowserObject) => void;
+    onDrop: (unit: SourceBrowserObject) => void;
+    labels: {
+        viewData: string;
+        describeTable: string;
+        copyTableName: string;
+        copyTableData: string;
+        truncateTable: string;
+        dropTable: string;
+    };
+};
+
+const SchemaViewerUnit: FC<SchemaViewerUnitProps> = ({
+    unit,
+    selected,
+    onSelect,
+    onDescribe,
+    onCopyName,
+    onDataCopy,
+    onTruncate,
+    onDrop,
+    labels,
+}) => {
     const metadataCount = unit.Attributes.find(attribute => attribute.Key === 'Count')?.Value;
     const knownCount = metadataCount != null && metadataCount !== 'unknown' ? metadataCount : undefined;
     const {data} = useQuery(GetStorageUnitRowsDocument, knownCount == null && unit.Actions.includes(SourceAction.ViewRows)
         ? {variables: {ref: unit.Ref, pageSize: 1, pageOffset: 0}}
         : skipToken);
     const count = knownCount ?? data?.Row.TotalCount;
+    const canTruncate = unit.Actions.includes(SourceAction.DeleteData);
 
-    return <button
-        type="button"
-        className={selected ? 'is-selected' : ''}
-        onClick={() => { onSelect(unit.Name); }}
-        aria-current={selected ? 'page' : undefined}
-    >
-        <WhoDBChatIcon name="table" />
-        <span>{unit.Name}</span>
-        {count != null && <span className="ce-schema-row-count">{count}</span>}
-    </button>;
+    return (
+        <ContextMenu>
+            <ContextMenuTrigger className="contents">
+                <button
+                    type="button"
+                    className={selected ? 'is-selected' : ''}
+                    onClick={() => { onSelect(unit.Name); }}
+                    aria-current={selected ? 'page' : undefined}
+                >
+                    <WhoDBChatIcon name="table" />
+                    <span>{unit.Name}</span>
+                    {count != null && <span className="ce-schema-row-count">{count}</span>}
+                </button>
+            </ContextMenuTrigger>
+            <ContextMenuContent className="w-52">
+                <ContextMenuItem onSelect={() => { onSelect(unit.Name); }}>
+                    <EyeIcon className="w-4 h-4" />
+                    {labels.viewData}
+                </ContextMenuItem>
+                <ContextMenuItem onSelect={() => { onDescribe(unit); }}>
+                    <InformationCircleIcon className="w-4 h-4" />
+                    {labels.describeTable}
+                </ContextMenuItem>
+                <ContextMenuItem onSelect={() => { onCopyName(unit.Name); }}>
+                    <ClipboardDocumentIcon className="w-4 h-4" />
+                    {labels.copyTableName}
+                </ContextMenuItem>
+                <ContextMenuItem onSelect={() => { onDataCopy(); }}>
+                    <DocumentDuplicateIcon className="w-4 h-4" />
+                    {labels.copyTableData}
+                </ContextMenuItem>
+                <ContextMenuSeparator />
+                {canTruncate && (
+                    <ContextMenuItem
+                        variant="destructive"
+                        onSelect={() => { onTruncate(unit); }}
+                        className="text-amber-500 [&>svg]:text-amber-500"
+                    >
+                        <TrashIcon className="w-4 h-4" />
+                        {labels.truncateTable}
+                    </ContextMenuItem>
+                )}
+                <ContextMenuItem
+                    variant="destructive"
+                    onSelect={() => { onDrop(unit); }}
+                    className="text-red-500 [&>svg]:text-red-500"
+                >
+                    <TrashIcon className="w-4 h-4" />
+                    {labels.dropTable}
+                </ContextMenuItem>
+            </ContextMenuContent>
+        </ContextMenu>
+    );
 };
 
 export const SchemaViewer: FC<SchemaViewerProps> = ({ parentRef: explicitParentRef, selectedName, trail = [] }) => {
     const { t } = useTranslation('components/schema-viewer');
     const { t: tStorageUnit } = useTranslation('pages/storage-unit');
     const { t: tCommon } = useTranslation('common');
+    const apolloClient = useApolloClient();
     const current = useAppSelector(state => state.auth.current);
     const currentType = current?.Type;
     const currentDatabase = current?.Database;
@@ -121,9 +215,14 @@ export const SchemaViewer: FC<SchemaViewerProps> = ({ parentRef: explicitParentR
     const [createOpen, setCreateOpen] = useState(searchParams.get("create") === "true");
     const [createError, setCreateError] = useState<string>();
     const [describeOpen, setDescribeOpen] = useState(false);
+    const [describeTargetUnit, setDescribeTargetUnit] = useState<SourceBrowserObject | null>(null);
+    const [truncateTargetUnit, setTruncateTargetUnit] = useState<SourceBrowserObject | null>(null);
+    const [dropTargetUnit, setDropTargetUnit] = useState<SourceBrowserObject | null>(null);
     const [storageUnitColumnsByName, setStorageUnitColumnsByName] = useState<Record<string, SourceColumn[]>>({});
     const [describeColumnsLoading, setDescribeColumnsLoading] = useState(false);
     const [fetchColumnsBatch] = useLazyQuery(GetColumnsBatchDocument);
+    const [clearSourceObjectData, { loading: truncating }] = useMutation(ClearSourceObjectDataDocument);
+    const [dropSourceObject, { loading: dropping }] = useMutation(DropSourceObjectDocument);
 
     const parentRef = explicitParentRef ?? buildSourceParentRef(item, current, selectedSchema);
     const parentRefKey = parentRef ? sourceObjectRefKey(parentRef) : "";
@@ -229,22 +328,24 @@ export const SchemaViewer: FC<SchemaViewerProps> = ({ parentRef: explicitParentR
         });
     }, [createOpen, fetchColumnsBatch, referenceStorageUnits, storageUnitColumnsByName]);
 
+    const describeUnit = describeTargetUnit ?? activeUnit;
+
     // Load columns for Describe (structure details) sheet when opened
     useEffect(() => {
-        if (!describeOpen || !activeUnit) {
+        if (!describeOpen || !describeUnit) {
             return;
         }
-        if (storageUnitColumnsByName[activeUnit.Name] != null) {
+        if (storageUnitColumnsByName[describeUnit.Name] != null) {
             return;
         }
-        if (!isTabularSourceObject(item, activeUnit)) {
-            setStorageUnitColumnsByName(prev => ({ ...prev, [activeUnit.Name]: [] }));
+        if (!isTabularSourceObject(item, describeUnit)) {
+            setStorageUnitColumnsByName(prev => ({ ...prev, [describeUnit.Name]: [] }));
             return;
         }
-        const unitName = activeUnit.Name;
+        const unitName = describeUnit.Name;
         setDescribeColumnsLoading(true);
         fetchColumnsBatch({
-            variables: { refs: [activeUnit.Ref] },
+            variables: { refs: [describeUnit.Ref] },
         }).then(result => {
             const loadedColumns = result.data?.ColumnsBatch?.[0]?.Columns ?? [];
             setStorageUnitColumnsByName(prev => ({ ...prev, [unitName]: loadedColumns }));
@@ -253,7 +354,7 @@ export const SchemaViewer: FC<SchemaViewerProps> = ({ parentRef: explicitParentR
         }).finally(() => {
             setDescribeColumnsLoading(false);
         });
-    }, [activeUnit, describeOpen, fetchColumnsBatch, item, storageUnitColumnsByName]);
+    }, [describeOpen, describeUnit, fetchColumnsBatch, item, storageUnitColumnsByName]);
 
     // Auto-select the first available storage unit when entering ExploreStorageUnit
     // directly or after switching database / schema / profile.
@@ -329,11 +430,111 @@ export const SchemaViewer: FC<SchemaViewerProps> = ({ parentRef: explicitParentR
         });
     }, [activeUnitName, navigate, parentRef, storageUnits, trail]);
 
+    const handleDescribeUnit = useCallback((unit: SourceBrowserObject) => {
+        setDescribeTargetUnit(unit);
+        setDescribeOpen(true);
+    }, []);
+
+    const handleCopyTableName = useCallback((name: string) => {
+        void navigator.clipboard.writeText(name).then(() => {
+            toast.success(t('tableNameCopied'));
+        });
+    }, [t]);
+
+    const handleDataCopy = useCallback(() => {
+        void navigate(InternalRoutes.DataCopy.path);
+    }, [navigate]);
+
+    const handleConfirmTruncate = useCallback(async () => {
+        if (!truncateTargetUnit) {
+            return;
+        }
+        const target = truncateTargetUnit;
+        try {
+            const res = await clearSourceObjectData({
+                variables: {
+                    ref: {
+                        Kind: target.Ref.Kind,
+                        Locator: target.Ref.Locator,
+                        Path: target.Ref.Path,
+                    },
+                },
+            });
+            if (res.data?.ClearSourceObjectData.Status) {
+                toast.success(t('truncateSuccess', { table: target.Name }));
+                setTruncateTargetUnit(null);
+                await refetch();
+                await apolloClient.refetchQueries({
+                    include: [GetStorageUnitRowsDocument, GetStorageUnitsDocument],
+                });
+            } else {
+                toast.error(t('truncateFailed', { error: '' }));
+            }
+        } catch (err) {
+            const message = err instanceof Error ? err.message : String(err);
+            toast.error(t('truncateFailed', { error: message }));
+        }
+    }, [apolloClient, clearSourceObjectData, refetch, t, truncateTargetUnit]);
+
+    const handleConfirmDrop = useCallback(async () => {
+        if (!dropTargetUnit) {
+            return;
+        }
+        const target = dropTargetUnit;
+        try {
+            const res = await dropSourceObject({
+                variables: {
+                    ref: {
+                        Kind: target.Ref.Kind,
+                        Locator: target.Ref.Locator,
+                        Path: target.Ref.Path,
+                    },
+                },
+            });
+            if (res.data?.DropSourceObject.Status) {
+                toast.success(t('dropSuccess', { table: target.Name }));
+                setDropTargetUnit(null);
+                const result = await refetch();
+                await apolloClient.refetchQueries({
+                    include: [GetStorageUnitRowsDocument, GetStorageUnitsDocument],
+                });
+                if (activeUnitName === target.Name) {
+                    const remaining = (result.data?.StorageUnit ?? []).filter(u => u.Name !== target.Name);
+                    const nextUnit = remaining[0];
+                    if (nextUnit) {
+                        void navigate(InternalRoutes.Dashboard.ExploreStorageUnit.path, {
+                            replace: true,
+                            state: {
+                                unit: nextUnit,
+                                parentRef,
+                                trail,
+                            },
+                        });
+                    }
+                }
+            } else {
+                toast.error(t('dropFailed', { error: '' }));
+            }
+        } catch (err) {
+            const message = err instanceof Error ? err.message : String(err);
+            toast.error(t('dropFailed', { error: message }));
+        }
+    }, [activeUnitName, apolloClient, dropSourceObject, dropTargetUnit, navigate, parentRef, refetch, t, trail]);
+
+    const unitMenuLabels = useMemo(() => ({
+        viewData: t('viewData'),
+        describeTable: t('describeTable'),
+        copyTableName: t('copyTableName'),
+        copyTableData: t('copyTableData'),
+        truncateTable: t('truncateTable'),
+        dropTable: t('dropTable'),
+    }), [t]);
+
     if (!current) {
         return null;
     }
 
-    const activeUnitColumns = activeUnit ? storageUnitColumnsByName[activeUnit.Name] : undefined;
+    const describeUnitColumns = describeUnit ? storageUnitColumnsByName[describeUnit.Name] : undefined;
 
     return (
         <div className="flex h-full ce-schema-viewer" data-testid="schema-viewer">
@@ -363,7 +564,10 @@ export const SchemaViewer: FC<SchemaViewerProps> = ({ parentRef: explicitParentR
                                 variant="outline"
                                 size="sm"
                                 className="h-7 text-xs gap-1 px-2 shrink-0"
-                                onClick={() => { setDescribeOpen(true); }}
+                                onClick={() => {
+                                    setDescribeTargetUnit(activeUnit);
+                                    setDescribeOpen(true);
+                                }}
                                 data-testid="describe-storage-unit-button"
                             >
                                 <InformationCircleIcon className="w-3.5 h-3.5 shrink-0" />
@@ -402,6 +606,12 @@ export const SchemaViewer: FC<SchemaViewerProps> = ({ parentRef: explicitParentR
                                             unit={unit}
                                             selected={unit.Name === activeUnitName}
                                             onSelect={handleSelect}
+                                            onDescribe={handleDescribeUnit}
+                                            onCopyName={handleCopyTableName}
+                                            onDataCopy={handleDataCopy}
+                                            onTruncate={setTruncateTargetUnit}
+                                            onDrop={setDropTargetUnit}
+                                            labels={unitMenuLabels}
                                         />)}
                                     </div>)}
                                 </div>
@@ -430,14 +640,14 @@ export const SchemaViewer: FC<SchemaViewerProps> = ({ parentRef: explicitParentR
                     </SheetContent>
                 </Sheet>
             )}
-            {activeUnit != null && (
+            {describeUnit != null && (
                 <Sheet open={describeOpen} onOpenChange={setDescribeOpen}>
-                    <SheetContent side="right" className="p-0">
+                    <SheetContent side="right" className="w-[min(768px,100vw)] sm:max-w-[min(768px,100vw)] p-0">
                         <div className="flex flex-col grow gap-lg justify-between p-8 h-full overflow-y-auto">
                             <div className="w-full" data-testid="explore-fields">
                                 <SheetTitle className={cn("flex items-center gap-2 mb-4", ph.mask)}>
                                     <TableCellsIcon className="w-5 h-5" />
-                                    {activeUnit.Name}
+                                    {describeUnit.Name}
                                 </SheetTitle>
                                 {schemaFidelity === SourceSchemaFidelity.Sampled && (
                                     <div className="mb-2" data-testid="sampled-schema-warning">
@@ -449,12 +659,12 @@ export const SchemaViewer: FC<SchemaViewerProps> = ({ parentRef: explicitParentR
                                 )}
                                 <div className="flex flex-col gap-xs2">
                                     <StackList>
-                                        {activeUnit.Attributes.map(attribute => {
+                                        {describeUnit.Attributes.map(attribute => {
                                             const rawDisplay = formatAttributeValue(attribute.Key, attribute.Value);
                                             const display = formatAttributeValue(attribute.Key, attribute.Value, tCommon);
                                             return (
                                                 <div key={attribute.Key} data-field-key={attribute.Key} data-field-value={rawDisplay}>
-                                                    <StackListItem item={formatAttributeKey(attribute.Key, tCommon)}>
+                                                    <StackListItem rowClassName="text-base" item={formatAttributeKey(attribute.Key, tCommon)}>
                                                         {display}
                                                     </StackListItem>
                                                 </div>
@@ -466,18 +676,32 @@ export const SchemaViewer: FC<SchemaViewerProps> = ({ parentRef: explicitParentR
                                             <Loading hideText={true} />
                                         </div>
                                     )}
-                                    {!describeColumnsLoading && activeUnitColumns && activeUnitColumns.length > 0 && (
+                                    {!describeColumnsLoading && describeUnitColumns && describeUnitColumns.length > 0 && (
                                         <div className="mt-8">
-                                            <h3 className="text-xs font-semibold uppercase text-muted-foreground mb-2">{tCommon('columns')}</h3>
+                                            <div className="grid grid-cols-3 gap-4 mb-2 text-xs font-semibold uppercase text-muted-foreground">
+                                                <span>{tCommon('columns')}</span>
+                                                <span>{tCommon('comment')}</span>
+                                                <span>{tCommon('attrType')}</span>
+                                            </div>
                                             <StackList>
-                                                {activeUnitColumns.map(col => {
+                                                {describeUnitColumns.map(col => {
                                                     const isForeignKey = col.IsForeignKey;
                                                     return (
                                                         <div key={col.Name} className={ph.mask} data-field-key={col.Name} data-field-value={col.Type?.toLowerCase()} data-is-foreign-key={isForeignKey || undefined}>
-                                                            <StackListItem item={isForeignKey ?
-                                                                <Badge className="text-lg" data-testid="foreign-key-attribute" variant="secondary">{col.Name}</Badge> : col.Name}>
-                                                                {col.Type?.toLowerCase()}
-                                                            </StackListItem>
+                                                            <div data-slot="stack-list-item" className="flex flex-col">
+                                                                <p className="grid grid-cols-3 items-center text-base py-3 min-w-0 gap-4">
+                                                                    <span className="font-semibold truncate" title={col.Name}>
+                                                                        {isForeignKey ?
+                                                                            <Badge className="text-base" data-testid="foreign-key-attribute" variant="secondary">{col.Name}</Badge> : col.Name}
+                                                                    </span>
+                                                                    <span className="text-muted-foreground truncate min-w-0" title={col.Comment ?? undefined}>
+                                                                        {col.Comment ?? '-'}
+                                                                    </span>
+                                                                    <span className="truncate min-w-0" title={col.Type?.toLowerCase()}>
+                                                                        {col.Type?.toLowerCase()}
+                                                                    </span>
+                                                                </p>
+                                                            </div>
                                                         </div>
                                                     );
                                                 })}
@@ -490,6 +714,50 @@ export const SchemaViewer: FC<SchemaViewerProps> = ({ parentRef: explicitParentR
                     </SheetContent>
                 </Sheet>
             )}
+            <AlertDialog open={truncateTargetUnit != null} onOpenChange={(open) => { if (!open) setTruncateTargetUnit(null); }}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>{t('truncateConfirmTitle')}</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            {t('truncateConfirmDescription', { table: truncateTargetUnit?.Name ?? '' })}
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel disabled={truncating}>{t('cancel')}</AlertDialogCancel>
+                        <AlertDialogAction asChild>
+                            <Button
+                                variant="destructive"
+                                disabled={truncating}
+                                onClick={() => { void handleConfirmTruncate(); }}
+                            >
+                                {t('confirm')}
+                            </Button>
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
+            <AlertDialog open={dropTargetUnit != null} onOpenChange={(open) => { if (!open) setDropTargetUnit(null); }}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>{t('dropConfirmTitle')}</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            {t('dropConfirmDescription', { table: dropTargetUnit?.Name ?? '' })}
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel disabled={dropping}>{t('cancel')}</AlertDialogCancel>
+                        <AlertDialogAction asChild>
+                            <Button
+                                variant="destructive"
+                                disabled={dropping}
+                                onClick={() => { void handleConfirmDrop(); }}
+                            >
+                                {t('confirm')}
+                            </Button>
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
         </div>
     );
 };

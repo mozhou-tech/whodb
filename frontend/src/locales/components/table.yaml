@@ -46,6 +46,11 @@ en_US:
   copyRow: Copy Row
   deselectRow: Deselect Row
   selectRow: Select Row
+  viewRowData: View Data
+  fieldColumn: Field
+  typeColumn: Type
+  valueColumn: Value
+  close: Close
   editRow: Edit Row
   exportAllAsCsv: Export All as CSV
   exportAllAsExcel: Export All as Excel
@@ -2301,6 +2306,11 @@ zh_CN:
   copyRow: "复制行"
   deselectRow: "取消选择行"
   selectRow: "选择行"
+  viewRowData: "查看数据"
+  fieldColumn: "字段"
+  typeColumn: "类型"
+  valueColumn: "值"
+  close: "关闭"
   editRow: "编辑行"
   exportAllAsCsv: "全部导出为 CSV"
   exportAllAsExcel: "全部导出为 Excel"

@@ -26,7 +26,6 @@ import {
  * Catalog-backed source contract flags resolved for the current UI.
  */
 export interface SourceContractFlags {
-    supportsChat: boolean;
     supportsGraph: boolean;
     supportsScratchpad: boolean;
     supportsScripts: boolean;
@@ -53,7 +52,6 @@ export function resolveSourceContractFlags(
     item: SourceTypeItem | undefined
 ): SourceContractFlags {
     return {
-        supportsChat: sourceSupportsSurface(item, SourceSurface.Chat),
         supportsGraph: sourceSupportsSurface(item, SourceSurface.Graph),
         supportsScratchpad: sourceSupportsSurface(item, SourceSurface.Query),
         supportsScripts: item?.traits?.query.supportsScripts ?? false,

@@ -3,6 +3,7 @@ query GetStorageUnitRows($ref: SourceObjectRefInput!, $where: WhereCondition, $s
     Columns {
       Type
       Name
+      Comment
       MetadataFidelity
       IsPrimary
       IsForeignKey

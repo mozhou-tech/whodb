@@ -422,6 +422,22 @@ func (p *MongoDBPlugin) ClearTableData(config *engine.PluginConfig, schema strin
 	return true, nil
 }
 
+// DropStorageUnit drops a collection from MongoDB.
+func (p *MongoDBPlugin) DropStorageUnit(config *engine.PluginConfig, schema string, storageUnit string) (bool, error) {
+	client, err := DB(config)
+	if err != nil {
+		return false, err
+	}
+	ctx, cancel := opCtx(config)
+	defer cancel()
+	defer disconnectClient(client)
+
+	if err := client.Database(schema).Collection(storageUnit).Drop(ctx); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
 func init() {
 	engine.RegisterPlugin(NewMongoDBPlugin())
 }

@@ -78,7 +78,6 @@ import {
 import { useLocation } from "react-router-dom";
 import { createPortal } from "react-dom";
 import { v4 as uuidv4 } from 'uuid';
-import { useAI } from "../../components/ai";
 import { CodeEditor } from "../../components/editor";
 import { ErrorState } from "../../components/error-state";
 import { Loading, Spinner } from "../../components/loading";
@@ -309,7 +308,6 @@ const RawExecuteCell: FC<IRawExecuteCellProps> = ({ cellId, onAdd, onDelete, sho
     const requestController = useRef<AbortController | null>(null);
     const [pendingExecuteCode, setPendingExecuteCode] = useState<string | null>(null);
     const [rows, setRows] = useState<RowsResult | null>(null);
-    const { modelType } = useAI();    
     const [editorHeight, setEditorHeight] = useState(150);
     const [userResizedHeight, setUserResizedHeight] = useState<number | null>(null);
     const [isResizing, setIsResizing] = useState(false);
@@ -571,8 +569,8 @@ const RawExecuteCell: FC<IRawExecuteCellProps> = ({ cellId, onAdd, onDelete, sho
                     }}
                 >
                     <Suspense fallback={<Loading />}>
-                        <Component code={submittedCode} handleExecuteRef={handleExecute} modelType={modelType?.modelType ?? ''}
-                                   schema={currentDatabase ?? ''} token={modelType?.token} providerId={currentId}
+                        <Component code={submittedCode} handleExecuteRef={handleExecute}
+                                   schema={currentDatabase ?? ''} providerId={currentId}
                                    containerWidth={containerWidth} rowsResult={rows} />
                     </Suspense>
                 </div>
@@ -583,7 +581,6 @@ const RawExecuteCell: FC<IRawExecuteCellProps> = ({ cellId, onAdd, onDelete, sho
 	allActionOptions,
 	allPlugins,
 	submittedCode,
-	modelType,
 	userResizedHeight,
 	isResizingResults,
 	handleResultsResize,

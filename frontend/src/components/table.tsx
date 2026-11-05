@@ -72,6 +72,7 @@ import {
     IconCopy as DocumentDuplicateIcon,
     IconFile as DocumentIcon,
     IconFileText as DocumentTextIcon,
+    IconEye as EyeIcon,
     IconMoreV as EllipsisVerticalIcon,
     IconSearch as MagnifyingGlassIcon,
     IconEdit as PencilSquareIcon,
@@ -297,6 +298,7 @@ function formatCellDisplay(value: string, columnType: string | undefined, option
 interface TableProps {
     columns: string[];
     columnTypes?: string[];
+    columnComments?: (string | undefined)[];
     columnIsPrimary?: boolean[];
     columnIsForeignKey?: boolean[];
     rows: string[][];
@@ -344,6 +346,7 @@ interface TableProps {
 export const StorageUnitTable: FC<TableProps> = ({
     columns,
     columnTypes,
+    columnComments,
     columnIsPrimary,
     columnIsForeignKey,
     rows,
@@ -386,6 +389,7 @@ export const StorageUnitTable: FC<TableProps> = ({
     formatBooleansReadable = false,
 }) => {
     const { t, language } = useTranslation('components/table');
+    const [viewRowIndex, setViewRowIndex] = useState<number | null>(null);
     const [editIndex, setEditIndex] = useState<number | null>(null);
     const [editRow, setEditRow] = useState<string[] | null>(null);
     const [editRowInitialLengths, setEditRowInitialLengths] = useState<number[]>([]);
@@ -1411,6 +1415,13 @@ export const StorageUnitTable: FC<TableProps> = ({
             collisionPadding={{ top: 20, right: 20, bottom: 20, left: 20 }}
         >
             <ContextMenuItem
+                onSelect={() => { setViewRowIndex(index); }}
+                data-testid="context-menu-view-row"
+            >
+                <EyeIcon className="w-4 h-4" />
+                {t('viewRowData')}
+            </ContextMenuItem>
+            <ContextMenuItem
                 onSelect={() => {
                     if (contextMenuCellIdx == null) return;
                     const cell = paginatedRows[index]?.[contextMenuCellIdx];
@@ -1817,6 +1828,76 @@ export const StorageUnitTable: FC<TableProps> = ({
                         </Button>
                     </div>, document.body
                 )}
+                <Sheet open={viewRowIndex !== null} onOpenChange={open => {
+                    if (!open) {
+                        setViewRowIndex(null);
+                    }
+                }}>
+                    <SheetContent side="right" className="w-[min(768px,100vw)] sm:max-w-[min(768px,100vw)] p-6 flex flex-col" data-testid="view-row-dialog" footer={
+                        <SheetFooter className="flex gap-sm px-0">
+                            <Button
+                                className="flex-1"
+                                variant="secondary"
+                                onClick={() => { setViewRowIndex(null); }}
+                                data-testid="close-view-row"
+                            >
+                                {t('close')}
+                            </Button>
+                        </SheetFooter>
+                    }>
+                        <SheetTitle>{t('viewRowData')}</SheetTitle>
+                        <div className="mt-4 flex-1 overflow-auto border rounded-lg">
+                            <table className="w-full border-collapse text-xs">
+                                <thead>
+                                    <tr className="border-b bg-muted/60 text-left">
+                                        <th className="py-2 px-3 font-semibold w-52 border-r">{t('fieldColumn')}</th>
+                                        <th className="py-2 px-3 font-semibold w-32 border-r">{t('typeColumn')}</th>
+                                        <th className="py-2 px-3 font-semibold">{t('valueColumn')}</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {viewRowIndex !== null && paginatedRows[viewRowIndex] && columns.map((col, idx) => {
+                                        const rawValue = paginatedRows[viewRowIndex]?.[idx] ?? "";
+                                        const displayValue = (formatDatesLocale || formatBooleansReadable)
+                                            ? formatCellDisplay(rawValue, columnTypes?.[idx], { dates: formatDatesLocale, booleans: formatBooleansReadable })
+                                            : rawValue;
+                                        return (
+                                            <tr key={col} className="border-b last:border-b-0 hover:bg-muted/30">
+                                                <td className="py-2 px-3 border-r align-top bg-muted/20">
+                                                    <div className="flex items-center gap-1 font-medium break-all">
+                                                        <span>{col}</span>
+                                                        {columnIsPrimary?.[idx] && <span className="ce-column-key">{t('primaryKeyShort')}</span>}
+                                                        {columnIsForeignKey?.[idx] && !columnIsPrimary?.[idx] && <span className="ce-column-key">{t('foreignKeyShort')}</span>}
+                                                    </div>
+                                                    {columnComments?.[idx] && (
+                                                        <div className="text-[11px] text-muted-foreground mt-0.5 break-all">
+                                                            {columnComments[idx]}
+                                                        </div>
+                                                    )}
+                                                </td>
+                                                <td className="py-2 px-3 border-r align-top bg-muted/10 text-muted-foreground font-mono break-all">
+                                                    {columnTypes?.[idx]?.toLowerCase() ?? ""}
+                                                </td>
+                                                <td
+                                                    className={cn("py-2 px-3 align-top font-mono whitespace-pre-wrap break-all cursor-pointer", ph.noCapture)}
+                                                    title={t('copyCell')}
+                                                    onClick={() => {
+                                                        void copyToClipboard(String(rawValue)).then(success => {
+                                                            if (success) toast.success(t('copiedCellToClipboard'));
+                                                        });
+                                                    }}
+                                                    data-testid={`view-row-field-${idx}`}
+                                                >
+                                                    {displayValue}
+                                                </td>
+                                            </tr>
+                                        );
+                                    })}
+                                </tbody>
+                            </table>
+                        </div>
+                    </SheetContent>
+                </Sheet>
                 <Sheet open={editIndex !== null} onOpenChange={open => {
                     if (!open) {
                         setEditIndex(null);
@@ -1824,7 +1905,7 @@ export const StorageUnitTable: FC<TableProps> = ({
                         setEditRowInitialLengths([]);
                     }
                 }}>
-                    <SheetContent side="right" className="w-[400px] max-w-full p-8 flex flex-col" data-testid="edit-row-dialog" footer={
+                    <SheetContent side="right" className="w-[min(768px,100vw)] sm:max-w-[min(768px,100vw)] p-8 flex flex-col" data-testid="edit-row-dialog" footer={
                         <SheetFooter className="flex gap-sm px-0">
                             <Button
                                 className="flex-1"
@@ -1850,6 +1931,11 @@ export const StorageUnitTable: FC<TableProps> = ({
                                         <div key={col} className={cn("flex flex-col gap-2", ph.noCapture)}>
                                             <div className="flex flex-col gap-0.5">
                                                 <Label htmlFor={`edit-row-field-${idx}`}>{col}</Label>
+                                                {columnComments?.[idx] && (
+                                                    <span className="text-xs text-muted-foreground">
+                                                        {columnComments[idx]}
+                                                    </span>
+                                                )}
                                                 {columnTypes?.[idx] && (
                                                     <span className="text-xs text-muted-foreground">
                                                         {t('typeHint', { type: columnTypes[idx] })}

@@ -83,12 +83,16 @@ func TestBuildEnvironmentProfilesAndProxyRouting(t *testing.T) {
 		"CLICKHOUSE_PASSWORD":    "chpass",
 		"ELASTICSEARCH_HTTP_URL": "http://100.64.0.24:31768",
 		"ELASTICSEARCH_PASSWORD": "espass",
+		"OPENOBSERVE_ENDPOINT":   "http://100.64.0.24:5080/logs",
+		"OPENOBSERVE_USERNAME":   "admin@mozyun.com",
+		"OPENOBSERVE_PASSWORD":   "oopass",
+		"ROOT_CONTEXT_PATH":      "/i",
 	}
 	proxy := parseProxyConfig(env.ProxyRaw)
 	profiles := buildEnvironmentProfiles(env, proxy, envVars, nil)
 
-	if len(profiles) != 6 {
-		t.Fatalf("expected 6 profiles (Postgres, MySQL, Redis, TDengine, ClickHouse, ElasticSearch), got %d", len(profiles))
+	if len(profiles) != 7 {
+		t.Fatalf("expected 7 profiles (Postgres, MySQL, Redis, TDengine, ClickHouse, ElasticSearch, OpenObserve), got %d", len(profiles))
 	}
 
 	for _, profile := range profiles {
@@ -228,7 +232,7 @@ func TestLiveOpsControlPlaneDiscovery(t *testing.T) {
 		}
 	}
 
-	for _, wantType := range []string{"Postgres", "MySQL", "Redis", "TDengine", "ClickHouse", "ElasticSearch"} {
+	for _, wantType := range []string{"Postgres", "MySQL", "Redis", "TDengine", "ClickHouse", "ElasticSearch", "OpenObserve"} {
 		if typesSeen[wantType] == 0 {
 			t.Errorf("expected at least one %s profile, got %v", wantType, typesSeen)
 		}

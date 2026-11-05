@@ -66,15 +66,24 @@ type dbMiddlewareJSON struct {
 	Database any    `json:"database"`
 }
 
+type openObserveMiddlewareJSON struct {
+	Enabled  bool   `json:"enabled"`
+	BaseURL  string `json:"base_url"`
+	Org      string `json:"org"`
+	Username string `json:"username"`
+	Password string `json:"password"`
+}
+
 type environmentRow struct {
-	Slug      string
-	Name      string
-	GroupName string
-	ProxyRaw  []byte
-	Postgres  []byte
-	MySQL     []byte
-	Redis     []byte
-	TDengine  []byte
+	Slug        string
+	Name        string
+	GroupName   string
+	ProxyRaw    []byte
+	Postgres    []byte
+	MySQL       []byte
+	Redis       []byte
+	TDengine    []byte
+	OpenObserve []byte
 }
 
 // RetrieveProfiles discovers all environments and database credentials managed by ops-control-plane
@@ -286,16 +295,18 @@ func queryCustomerEnvironmentsViaHTTP(ctx context.Context, baseURL string, token
 	}
 
 	type apiEnvItem struct {
-		Slug       string          `json:"slug"`
-		Name       string          `json:"name"`
-		Proxy      json.RawMessage `json:"proxy"`
-		PostgreSQL json.RawMessage `json:"postgresql"`
-		PostgresDB json.RawMessage `json:"postgre_sql"`
-		MySQL      json.RawMessage `json:"mysql"`
-		MySQLDB    json.RawMessage `json:"my_sql"`
-		Redis      json.RawMessage `json:"redis"`
-		TDengine   json.RawMessage `json:"tdengine"`
-		TDengineDB json.RawMessage `json:"td_engine"`
+		Slug          string          `json:"slug"`
+		Name          string          `json:"name"`
+		Proxy         json.RawMessage `json:"proxy"`
+		PostgreSQL    json.RawMessage `json:"postgresql"`
+		PostgresDB    json.RawMessage `json:"postgre_sql"`
+		MySQL         json.RawMessage `json:"mysql"`
+		MySQLDB       json.RawMessage `json:"my_sql"`
+		Redis         json.RawMessage `json:"redis"`
+		TDengine      json.RawMessage `json:"tdengine"`
+		TDengineDB    json.RawMessage `json:"td_engine"`
+		OpenObserve   json.RawMessage `json:"openobserve"`
+		OpenObserveDB json.RawMessage `json:"open_observe"`
 	}
 
 	var items []apiEnvItem
@@ -326,14 +337,19 @@ func queryCustomerEnvironmentsViaHTTP(ctx context.Context, baseURL string, token
 		if len(tdRaw) == 0 || string(tdRaw) == "null" {
 			tdRaw = item.TDengineDB
 		}
+		ooRaw := item.OpenObserve
+		if len(ooRaw) == 0 || string(ooRaw) == "null" {
+			ooRaw = item.OpenObserveDB
+		}
 		out = append(out, environmentRow{
-			Slug:     item.Slug,
-			Name:     item.Name,
-			ProxyRaw: item.Proxy,
-			Postgres: pgRaw,
-			MySQL:    myRaw,
-			Redis:    item.Redis,
-			TDengine: tdRaw,
+			Slug:        item.Slug,
+			Name:        item.Name,
+			ProxyRaw:    item.Proxy,
+			Postgres:    pgRaw,
+			MySQL:       myRaw,
+			Redis:       item.Redis,
+			TDengine:    tdRaw,
+			OpenObserve: ooRaw,
 		})
 	}
 	return out, nil
@@ -495,7 +511,8 @@ func queryCustomerEnvironments(ctx context.Context, db *sql.DB) ([]environmentRo
 			ce.postgre_sql,
 			ce.my_sql,
 			ce.redis,
-			ce.td_engine
+			ce.td_engine,
+			COALESCE(ce.open_observe, '')
 		FROM customer_environments ce
 		ORDER BY ce.created_at ASC, ce.slug ASC
 	`
@@ -508,7 +525,7 @@ func queryCustomerEnvironments(ctx context.Context, db *sql.DB) ([]environmentRo
 	result := make([]environmentRow, 0)
 	for rows.Next() {
 		var r environmentRow
-		if err := rows.Scan(&r.Slug, &r.Name, &r.GroupName, &r.ProxyRaw, &r.Postgres, &r.MySQL, &r.Redis, &r.TDengine); err != nil {
+		if err := rows.Scan(&r.Slug, &r.Name, &r.GroupName, &r.ProxyRaw, &r.Postgres, &r.MySQL, &r.Redis, &r.TDengine, &r.OpenObserve); err != nil {
 			return nil, err
 		}
 		result = append(result, r)
@@ -731,7 +748,108 @@ func buildEnvironmentProfiles(
 		addProfile(engine.DatabaseType_ElasticSearch, esHost, esPort, esUser, esPass, "", nil)
 	}
 
+	// 7. OpenObserve (from customer_environments.open_observe or project/environment .env)
+	ooCfg := parseOpenObserveMiddleware(env.OpenObserve)
+	ooRawURL := firstNonEmpty(
+		enabledVal(ooCfg.Enabled, ooCfg.BaseURL),
+		envVars["OPENOBSERVE_ENDPOINT"],
+		envVars["OPENOBSERVE_BASE_URL"],
+		envVars["OPENOBSERVE_URL"],
+		ooCfg.BaseURL,
+	)
+	ooURLHost, ooURLPort, ooURLPath := parseJDBCOrHTTPEndpoint(ooRawURL)
+	ooHost := firstNonEmpty(ooURLHost, envVars["OPENOBSERVE_HOST"])
+	if ooCfg.Enabled || ooHost != "" {
+		ooPort := firstNonEmpty(ooURLPort, envVars["OPENOBSERVE_PORT"], "5080")
+		ooUser := firstNonEmpty(
+			enabledVal(ooCfg.Enabled, ooCfg.Username),
+			envVars["OPENOBSERVE_USERNAME"],
+			envVars["ZO_ROOT_USER_EMAIL"],
+			ooCfg.Username,
+		)
+		ooPass := firstNonEmpty(
+			enabledVal(ooCfg.Enabled, ooCfg.Password),
+			envVars["OPENOBSERVE_PASSWORD"],
+			envVars["ZO_ROOT_USER_PASSWORD"],
+			ooCfg.Password,
+		)
+		if ooPass == "" {
+			baseOOHost, _, _ := parseJDBCOrHTTPEndpoint(baselineVars["OPENOBSERVE_ENDPOINT"])
+			if ooHost == baseOOHost || ooHost == strings.TrimSpace(baselineVars["SERVER_IP_DB"]) {
+				ooPass = baselineVars["OPENOBSERVE_PASSWORD"]
+			}
+		}
+		ooOrg := firstNonEmpty(
+			enabledVal(ooCfg.Enabled, ooCfg.Org),
+			envVars["OPENOBSERVE_ORG"],
+			ooCfg.Org,
+			"default",
+		)
+		ooEndpointHost := resolveOpenObserveEndpointHost(ooRawURL, ooHost, ooPort, ooURLPath, envVars["ROOT_CONTEXT_PATH"])
+		if ooHost != "" {
+			RegisterTargetProxy(ooHost, ooPort, proxy)
+			endpoint := ooHost
+			if ooPort != "" {
+				endpoint = net.JoinHostPort(ooHost, ooPort)
+			}
+			displayName := fmt.Sprintf("[%s] %s (%s)", envLabel, engine.DatabaseType_OpenObserve, endpoint)
+			profiles = append(profiles, types.DatabaseCredentials{
+				ProjectID:   env.Slug,
+				ProjectName: envLabel,
+				Alias:       displayName,
+				CustomId:    displayName,
+				Type:        engine.DatabaseType_OpenObserve,
+				Hostname:    ooEndpointHost,
+				Port:        ooPort,
+				Username:    strings.TrimSpace(ooUser),
+				Password:    ooPass,
+				Database:    strings.TrimSpace(ooOrg),
+				Source:      "environment",
+				IsProfile:   true,
+			})
+		}
+	}
+
 	return profiles
+}
+
+func parseOpenObserveMiddleware(raw []byte) openObserveMiddlewareJSON {
+	var m openObserveMiddlewareJSON
+	if len(raw) == 0 {
+		return m
+	}
+	_ = json.Unmarshal(raw, &m)
+	m.Password = DecryptEnvironmentSecret(m.Password)
+	return m
+}
+
+func resolveOpenObserveEndpointHost(rawURL string, host string, port string, parsedPath string, rootContextPath string) string {
+	host = strings.TrimSpace(host)
+	if host == "" {
+		return ""
+	}
+	scheme := "http"
+	if trimmed := strings.TrimSpace(rawURL); strings.Contains(trimmed, "://") {
+		if u, err := url.Parse(trimmed); err == nil && (u.Scheme == "http" || u.Scheme == "https") {
+			scheme = u.Scheme
+		}
+	}
+	pathPart := strings.Trim(parsedPath, "/")
+	rootCtx := strings.Trim(rootContextPath, "/")
+	if pathPart == "logs" && rootCtx != "" {
+		pathPart = rootCtx + "/logs"
+	}
+	if pathPart == "" && scheme == "http" {
+		return host
+	}
+	hostPort := host
+	if strings.TrimSpace(port) != "" {
+		hostPort = net.JoinHostPort(host, strings.TrimSpace(port))
+	}
+	if pathPart == "" {
+		return fmt.Sprintf("%s://%s", scheme, hostPort)
+	}
+	return fmt.Sprintf("%s://%s/%s", scheme, hostPort, pathPart)
 }
 
 func parseDBMiddleware(raw []byte) dbMiddlewareJSON {
@@ -927,6 +1045,19 @@ func SaveEnvironmentDatabase(ctx context.Context, envSlug string, dbType string,
 		"username": username,
 		"password": password,
 	}
+	if fieldKey == "openobserve" {
+		baseURL := host
+		if !strings.Contains(baseURL, "://") {
+			baseURL = fmt.Sprintf("http://%s/i/logs", net.JoinHostPort(host, port))
+		}
+		middlewareCfg = map[string]any{
+			"enabled":  true,
+			"base_url": baseURL,
+			"org":      database,
+			"username": username,
+			"password": password,
+		}
+	}
 
 	var saveErr error
 	if session.Token != "" && session.Endpoint != "" {
@@ -979,6 +1110,8 @@ func resolveOpsMiddlewareField(dbType string) (fieldKey string, defaultPort stri
 		return "tdengine", "6041", "", true
 	case "redis":
 		return "redis", "6379", "0", true
+	case "openobserve", "open_observe":
+		return "openobserve", "5080", "default", true
 	default:
 		return "", "", "", false
 	}
@@ -1091,6 +1224,8 @@ func updateEnvironmentMiddlewareInDB(
 		query = `UPDATE customer_environments SET td_engine = $1, updated_at = NOW() WHERE slug = $2`
 	case "redis":
 		query = `UPDATE customer_environments SET redis = $1, updated_at = NOW() WHERE slug = $2`
+	case "openobserve":
+		query = `UPDATE customer_environments SET open_observe = $1, updated_at = NOW() WHERE slug = $2`
 	default:
 		return fmt.Errorf("unsupported middleware field %s", fieldKey)
 	}

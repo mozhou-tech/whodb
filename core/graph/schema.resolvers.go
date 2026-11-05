@@ -361,6 +361,49 @@ func (r *mutationResolver) DeleteSourceRow(ctx context.Context, ref model.Source
 	return &model.StatusResponse{Status: status}, nil
 }
 
+// ClearSourceObjectData is the resolver for the ClearSourceObjectData field.
+func (r *mutationResolver) ClearSourceObjectData(ctx context.Context, ref model.SourceObjectRefInput) (*model.StatusResponse, error) {
+	spec, session, err := getSourceSessionForContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	resolvedRef := sourceRefFromInput(&ref)
+	if err := validateSourceObjectAction(spec, resolvedRef, source.ActionDeleteData); err != nil {
+		return nil, err
+	}
+	manager, ok := source.AsObjectManager(sourceAuditScopeFromContext(ctx, spec), session)
+	if !ok {
+		return nil, errors.New("source object clearing is not supported")
+	}
+
+	status, err := manager.ClearObjectData(ctx, *resolvedRef)
+	if err != nil {
+		return nil, err
+	}
+
+	return &model.StatusResponse{Status: status}, nil
+}
+
+// DropSourceObject is the resolver for the DropSourceObject field.
+func (r *mutationResolver) DropSourceObject(ctx context.Context, ref model.SourceObjectRefInput) (*model.StatusResponse, error) {
+	spec, session, err := getSourceSessionForContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	resolvedRef := sourceRefFromInput(&ref)
+	manager, ok := source.AsObjectManager(sourceAuditScopeFromContext(ctx, spec), session)
+	if !ok {
+		return nil, errors.New("source object deletion is not supported")
+	}
+
+	status, err := manager.DropObject(ctx, *resolvedRef)
+	if err != nil {
+		return nil, err
+	}
+
+	return &model.StatusResponse{Status: status}, nil
+}
+
 // GenerateMockData is the resolver for the GenerateMockData field.
 func (r *mutationResolver) GenerateMockData(ctx context.Context, input model.MockDataGenerationInput) (*model.MockDataGenerationStatus, error) {
 	return generateMockDataForRef(ctx, input)
@@ -369,6 +412,16 @@ func (r *mutationResolver) GenerateMockData(ctx context.Context, input model.Moc
 // CopySourceObjects is the resolver for the CopySourceObjects field.
 func (r *mutationResolver) CopySourceObjects(ctx context.Context, input model.CopySourceObjectsInput) (*model.CopySourceObjectsResult, error) {
 	return copySourceObjects(ctx, input)
+}
+
+// InstallFlyway is the resolver for the InstallFlyway field.
+func (r *mutationResolver) InstallFlyway(ctx context.Context) (*model.FlywayInstallResult, error) {
+	return installFlyway(ctx)
+}
+
+// ExecuteFlyway is the resolver for the ExecuteFlyway field.
+func (r *mutationResolver) ExecuteFlyway(ctx context.Context, input model.ExecuteFlywayInput) (*model.FlywayExecutionResult, error) {
+	return executeFlyway(ctx, input)
 }
 
 // ImportSQL is the resolver for the ImportSQL field.
@@ -1071,6 +1124,16 @@ func (r *queryResolver) SourceTargetDatabases(ctx context.Context, target model.
 // SourceTargetSchemas is the resolver for the SourceTargetSchemas field.
 func (r *queryResolver) SourceTargetSchemas(ctx context.Context, target model.SourceTargetConnectionInput) ([]string, error) {
 	return sourceTargetSchemas(ctx, target)
+}
+
+// FlywayStatus is the resolver for the FlywayStatus field.
+func (r *queryResolver) FlywayStatus(ctx context.Context) (*model.FlywayStatus, error) {
+	return getFlywayStatus(ctx)
+}
+
+// InspectFlywayDirectory is the resolver for the InspectFlywayDirectory field.
+func (r *queryResolver) InspectFlywayDirectory(ctx context.Context, directory string) (*model.FlywayDirectoryPreview, error) {
+	return inspectFlywayDirectory(ctx, directory)
 }
 
 // Mutation returns MutationResolver implementation.

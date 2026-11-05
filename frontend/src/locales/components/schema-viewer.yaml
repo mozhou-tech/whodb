@@ -3,6 +3,23 @@ en_US:
   indexes: Indexes
   relationships: Relationships
   noResults: No tables found
+  viewData: View Data
+  describeTable: Structure Details
+  copyTableName: Copy Table Name
+  tableNameCopied: Table name copied to clipboard
+  copyTableData: Data Copy
+  truncateTable: Truncate Table
+  truncateConfirmTitle: Truncate Table?
+  truncateConfirmDescription: Are you sure you want to truncate all data in {table}? This action cannot be undone.
+  truncateSuccess: Truncated table {table}
+  truncateFailed: "Failed to truncate table: {error}"
+  dropTable: Drop Table
+  dropConfirmTitle: Drop Table?
+  dropConfirmDescription: Are you sure you want to permanently drop table {table} and all its data? This action cannot be undone.
+  dropSuccess: Dropped table {table}
+  dropFailed: "Failed to drop table: {error}"
+  cancel: Cancel
+  confirm: Confirm
 
 ar_AE:
   title: "مخطط"
@@ -117,6 +134,23 @@ zh_CN:
   indexes: "索引"
   relationships: "关联关系"
   noResults: "未找到数据表"
+  viewData: "查看数据"
+  describeTable: "结构详情"
+  copyTableName: "复制表名"
+  tableNameCopied: "表名已复制到剪贴板"
+  copyTableData: "数据复制"
+  truncateTable: "清空表数据 (Truncate)"
+  truncateConfirmTitle: "确认清空表数据？"
+  truncateConfirmDescription: "确定要清空表 {table} 中的所有数据吗？此操作不可撤销。"
+  truncateSuccess: "已清空表 {table} 的数据"
+  truncateFailed: "清空表数据失败：{error}"
+  dropTable: "删除表 (Drop)"
+  dropConfirmTitle: "确认删除表？"
+  dropConfirmDescription: "确定要永久删除表 {table} 及其所有数据吗？此操作不可撤销。"
+  dropSuccess: "已删除表 {table}"
+  dropFailed: "删除表失败：{error}"
+  cancel: "取消"
+  confirm: "确定"
 
 zh_TW:
   title: "模式"

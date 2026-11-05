@@ -8,6 +8,7 @@ query GetColumnsBatch($refs: [SourceObjectRefInput!]!) {
         Columns {
             Name
             Type
+            Comment
             MetadataFidelity
             IsPrimary
             IsForeignKey

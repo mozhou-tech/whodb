@@ -410,6 +410,25 @@ func (p *TDenginePlugin) ClearTableData(config *engine.PluginConfig, schema stri
 	return true, nil
 }
 
+// DropStorageUnit drops a table or supertable from TDengine.
+func (p *TDenginePlugin) DropStorageUnit(config *engine.PluginConfig, schema string, storageUnit string) (bool, error) {
+	client, err := newTDengineClient(config)
+	if err != nil {
+		return false, err
+	}
+	dbName := resolveDatabaseName(schema, config)
+	ctx := config.OperationContext()
+
+	stmt := fmt.Sprintf("DROP TABLE IF EXISTS %s", qualifyTable(dbName, storageUnit))
+	if _, err := client.query(ctx, dbName, stmt); err != nil {
+		stmt = fmt.Sprintf("DROP STABLE IF EXISTS %s", qualifyTable(dbName, storageUnit))
+		if _, err2 := client.query(ctx, dbName, stmt); err2 != nil {
+			return false, err
+		}
+	}
+	return true, nil
+}
+
 // GetGraph returns supertable-to-child-table relationships for the TDengine database.
 func (p *TDenginePlugin) GetGraph(config *engine.PluginConfig, schema string) ([]engine.GraphUnit, error) {
 	client, err := newTDengineClient(config)

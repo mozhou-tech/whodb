@@ -34,6 +34,7 @@ func MapColumnsToModel(columnsResult []source.Column) []*model.Column {
 		columns = append(columns, &model.Column{
 			Type:             column.Type,
 			Name:             column.Name,
+			Comment:          column.Comment,
 			MetadataFidelity: metadataFidelityToModel(column.MetadataFidelity),
 			IsPrimary:        column.IsPrimary,
 			IsForeignKey:     column.IsForeignKey,

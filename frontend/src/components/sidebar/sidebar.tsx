@@ -93,6 +93,7 @@ const DB_TYPE_DISPLAY_NAMES: Record<string, string> = {
     TDengine: 'TDengine',
     ClickHouse: 'ClickHouse',
     ElasticSearch: 'Elasticsearch',
+    OpenObserve: 'OpenObserve',
     MongoDB: 'MongoDB',
     Sqlite3: 'SQLite',
     DuckDB: 'DuckDB',
@@ -106,7 +107,8 @@ const DB_TYPE_SORT_ORDER: Record<string, number> = {
     TDengine: 4,
     ClickHouse: 5,
     ElasticSearch: 6,
-    MongoDB: 7,
+    OpenObserve: 7,
+    MongoDB: 8,
 };
 
 function resolveProfileProject(profile?: LocalLoginProfile): { id: string; name?: string; hasProject: boolean } {
@@ -144,8 +146,18 @@ function getProfileLabel(profile: LocalLoginProfile, item: SourceTypeItem | unde
     if (project.hasProject) {
         const port = profile.Values.find(value => value.Key === "Port")?.Value;
         const typeLabel = getFriendlyDbTypeName(profile.Type);
-        return profile.Hostname
-            ? `${typeLabel} (${profile.Hostname}${port ? `:${port}` : ""})`
+        const rawHost = profile.Hostname ?? "";
+        let displayHost = rawHost;
+        if (rawHost.includes("://")) {
+            try {
+                const parsed = new URL(rawHost);
+                displayHost = parsed.hostname || rawHost;
+            } catch {
+                displayHost = rawHost;
+            }
+        }
+        return displayHost
+            ? `${typeLabel} (${displayHost}${port ? `:${port}` : ""})`
             : typeLabel;
     }
     if (profile.Saved) return profile.Id;
@@ -272,7 +284,6 @@ export const Sidebar: FC = () => {
     const {
         item,
         storageUnitLabel,
-        supportsChat,
         supportsGraph,
         supportsScratchpad,
         supportsSchema,
@@ -537,7 +548,8 @@ export const Sidebar: FC = () => {
             });
         } else if (
             pathname !== InternalRoutes.Graph.path &&
-            pathname !== InternalRoutes.DataCopy.path
+            pathname !== InternalRoutes.DataCopy.path &&
+            pathname !== InternalRoutes.MigrationTool.path
         ) {
             void navigate(InternalRoutes.Dashboard.ExploreStorageUnit.path);
         }
@@ -554,13 +566,6 @@ export const Sidebar: FC = () => {
                 path: InternalRoutes.Dashboard.ExploreStorageUnit.path,
             },
         ];
-        if (supportsChat) {
-            routes.unshift({
-                title: t('chat'),
-                icon: <WhoDBChatIcon name="chat" className="size-4" />,
-                path: InternalRoutes.Chat.path,
-            });
-        }
         if (supportsGraph) {
             routes.push({
                 title: t('graph'),
@@ -580,8 +585,13 @@ export const Sidebar: FC = () => {
             icon: newUIEnabled ? <DocumentDuplicateIcon className="w-4 h-4" /> : <WhoDBChatIcon name="copy" className="size-4" />,
             path: InternalRoutes.DataCopy.path,
         });
+        routes.push({
+            title: t('migrationTool'),
+            icon: newUIEnabled ? <CogIcon className="w-4 h-4" /> : <WhoDBChatIcon name="code" className="size-4" />,
+            path: InternalRoutes.MigrationTool.path,
+        });
         return routes;
-    }, [current, newUIEnabled, storageUnitLabel, supportsChat, supportsGraph, supportsScratchpad, t]);
+    }, [current, newUIEnabled, storageUnitLabel, supportsGraph, supportsScratchpad, t]);
 
     // Profile switch dialog handlers
     const handleDialogProfileSwitch = useCallback(async (profile: LocalLoginProfile) => {

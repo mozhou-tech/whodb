@@ -1,0 +1,49 @@
+query FlywayStatus {
+  FlywayStatus {
+    Installed
+    Version
+    BinaryPath
+    InstallMethod
+  }
+}
+
+query InspectFlywayDirectory($directory: String!) {
+  InspectFlywayDirectory(directory: $directory) {
+    Directory
+    Exists
+    Error
+    Files {
+      Filename
+      RelativePath
+      Version
+      Description
+      Type
+      SizeBytes
+    }
+  }
+}
+
+mutation InstallFlyway {
+  InstallFlyway {
+    Success
+    Output
+    Error
+    Status {
+      Installed
+      Version
+      BinaryPath
+      InstallMethod
+    }
+  }
+}
+
+mutation ExecuteFlyway($input: ExecuteFlywayInput!) {
+  ExecuteFlyway(input: $input) {
+    Success
+    Action
+    Command
+    Output
+    Error
+    DurationMs
+  }
+}

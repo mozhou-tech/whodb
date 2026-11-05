@@ -44,6 +44,7 @@ export type ChatInput = {
 
 export type Column = {
   __typename?: 'Column';
+  Comment?: Maybe<Scalars['String']['output']>;
   IsForeignKey: Scalars['Boolean']['output'];
   IsPrimary: Scalars['Boolean']['output'];
   Length?: Maybe<Scalars['Int']['output']>;
@@ -157,6 +158,60 @@ export enum DataShape {
   Metadata = 'Metadata',
   Tabular = 'Tabular'
 }
+
+export type ExecuteFlywayInput = {
+  Action: Scalars['String']['input'];
+  BaselineOnMigrate?: InputMaybe<Scalars['Boolean']['input']>;
+  Directory: Scalars['String']['input'];
+  OutOfOrder?: InputMaybe<Scalars['Boolean']['input']>;
+  Target: SourceTargetConnectionInput;
+  TargetSchema?: InputMaybe<Scalars['String']['input']>;
+  ValidateOnMigrate?: InputMaybe<Scalars['Boolean']['input']>;
+};
+
+export type FlywayDirectoryPreview = {
+  __typename?: 'FlywayDirectoryPreview';
+  Directory: Scalars['String']['output'];
+  Error?: Maybe<Scalars['String']['output']>;
+  Exists: Scalars['Boolean']['output'];
+  Files: Array<FlywayMigrationFile>;
+};
+
+export type FlywayExecutionResult = {
+  __typename?: 'FlywayExecutionResult';
+  Action: Scalars['String']['output'];
+  Command: Scalars['String']['output'];
+  DurationMs: Scalars['Int']['output'];
+  Error?: Maybe<Scalars['String']['output']>;
+  Output: Scalars['String']['output'];
+  Success: Scalars['Boolean']['output'];
+};
+
+export type FlywayInstallResult = {
+  __typename?: 'FlywayInstallResult';
+  Error?: Maybe<Scalars['String']['output']>;
+  Output: Scalars['String']['output'];
+  Status: FlywayStatus;
+  Success: Scalars['Boolean']['output'];
+};
+
+export type FlywayMigrationFile = {
+  __typename?: 'FlywayMigrationFile';
+  Description: Scalars['String']['output'];
+  Filename: Scalars['String']['output'];
+  RelativePath: Scalars['String']['output'];
+  SizeBytes: Scalars['Int']['output'];
+  Type: Scalars['String']['output'];
+  Version: Scalars['String']['output'];
+};
+
+export type FlywayStatus = {
+  __typename?: 'FlywayStatus';
+  BinaryPath?: Maybe<Scalars['String']['output']>;
+  InstallMethod?: Maybe<Scalars['String']['output']>;
+  Installed: Scalars['Boolean']['output'];
+  Version?: Maybe<Scalars['String']['output']>;
+};
 
 export type ForeignKeyDefinition = {
   __typename?: 'ForeignKeyDefinition';
@@ -317,17 +372,21 @@ export type MockDataTableInfo = {
 export type Mutation = {
   __typename?: 'Mutation';
   AddSourceRow: StatusResponse;
+  ClearSourceObjectData: StatusResponse;
   CopySourceObjects: CopySourceObjectsResult;
   CreateSourceObject: StatusResponse;
   CreateSourceObjectFromDefinition: StatusResponse;
   DeleteSourceRow: StatusResponse;
+  DropSourceObject: StatusResponse;
   ExecuteConfirmedSQL: AiChatMessage;
+  ExecuteFlyway: FlywayExecutionResult;
   ExportSourceConnection: Array<Record>;
   GenerateChatTitle: GenerateChatTitleResponse;
   GenerateMockData: MockDataGenerationStatus;
   ImportPreview: ImportPreview;
   ImportSQL: ImportResult;
   ImportSourceObjectFile: ImportResult;
+  InstallFlyway: FlywayInstallResult;
   LoginOpsControlPlane: OpsControlPlaneStatus;
   LoginSource: StatusResponse;
   LoginWithSourceProfile: StatusResponse;
@@ -343,6 +402,11 @@ export type Mutation = {
 export type MutationAddSourceRowArgs = {
   ref: SourceObjectRefInput;
   values: Array<RecordInput>;
+};
+
+
+export type MutationClearSourceObjectDataArgs = {
+  ref: SourceObjectRefInput;
 };
 
 
@@ -370,9 +434,19 @@ export type MutationDeleteSourceRowArgs = {
 };
 
 
+export type MutationDropSourceObjectArgs = {
+  ref: SourceObjectRefInput;
+};
+
+
 export type MutationExecuteConfirmedSqlArgs = {
   operationType: Scalars['String']['input'];
   query: Scalars['String']['input'];
+};
+
+
+export type MutationExecuteFlywayArgs = {
+  input: ExecuteFlywayInput;
 };
 
 
@@ -479,7 +553,9 @@ export type Query = {
   AIModel: Array<Scalars['String']['output']>;
   AIProviders: Array<AiProvider>;
   AnalyzeMockDataDependencies: MockDataDependencyAnalysis;
+  FlywayStatus: FlywayStatus;
   Health: HealthStatus;
+  InspectFlywayDirectory: FlywayDirectoryPreview;
   MockDataMaxRowCount: Scalars['Int']['output'];
   OpsControlPlaneStatus: OpsControlPlaneStatus;
   RunSourceQuery: RowsResult;
@@ -519,6 +595,11 @@ export type QueryAnalyzeMockDataDependenciesArgs = {
   fkDensityRatio?: InputMaybe<Scalars['Int']['input']>;
   ref: SourceObjectRefInput;
   rowCount: Scalars['Int']['input'];
+};
+
+
+export type QueryInspectFlywayDirectoryArgs = {
+  directory: Scalars['String']['input'];
 };
 
 

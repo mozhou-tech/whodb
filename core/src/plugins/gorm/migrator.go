@@ -206,6 +206,10 @@ func (m *MigratorHelper) GetOrderedColumns(query *gorm.DB, schema, table string)
 			IsNullable:      isNullable,
 			IsAutoIncrement: isAutoIncr,
 		}
+		if comment, ok := col.Comment(); ok && strings.TrimSpace(comment) != "" {
+			trimmed := strings.TrimSpace(comment)
+			column.Comment = &trimmed
+		}
 
 		// Only extract length for types where it's user-specifiable
 		if typesWithLength[baseName] {

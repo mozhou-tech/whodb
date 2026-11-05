@@ -53,6 +53,7 @@ type PluginMock struct {
 	MarkGeneratedColumnsFunc func(*engine.PluginConfig, string, string, []engine.Column) error
 	GetColumnConstraintsFunc func(*engine.PluginConfig, string, string) (map[string]map[string]any, error)
 	ClearTableDataFunc       func(*engine.PluginConfig, string, string) (bool, error)
+	DropStorageUnitFunc      func(*engine.PluginConfig, string, string) (bool, error)
 	GetForeignKeysFunc       func(*engine.PluginConfig, string, string) (map[string]*engine.ForeignKeyRelationship, error)
 	WithTransactionFunc      func(*engine.PluginConfig, func(tx any) error) error
 	GetSSLStatusFunc         func(*engine.PluginConfig) (*engine.SSLStatus, error)
@@ -234,6 +235,13 @@ func (m *PluginMock) GetColumnConstraints(config *engine.PluginConfig, schema st
 func (m *PluginMock) ClearTableData(config *engine.PluginConfig, schema string, storageUnit string) (bool, error) {
 	if m.ClearTableDataFunc != nil {
 		return m.ClearTableDataFunc(config, schema, storageUnit)
+	}
+	return false, nil
+}
+
+func (m *PluginMock) DropStorageUnit(config *engine.PluginConfig, schema string, storageUnit string) (bool, error) {
+	if m.DropStorageUnitFunc != nil {
+		return m.DropStorageUnitFunc(config, schema, storageUnit)
 	}
 	return false, nil
 }

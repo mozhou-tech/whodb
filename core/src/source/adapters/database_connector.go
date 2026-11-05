@@ -783,6 +783,40 @@ func (s *DatabaseSession) DeleteRow(ctx context.Context, ref source.ObjectRef, v
 	return s.plugin.DeleteRow(config, namespace, name, values)
 }
 
+// ClearObjectData removes all rows/documents from a source object while keeping the object structure.
+func (s *DatabaseSession) ClearObjectData(ctx context.Context, ref source.ObjectRef) (bool, error) {
+	if err := s.ensureObjectAction(ref.Kind, source.ActionDeleteData); err != nil {
+		return false, err
+	}
+
+	config := s.pluginConfig(ctx, &ref)
+	namespace := s.namespaceForRef(&ref)
+	name := objectName(ref)
+	if err := s.validateObject(config, namespace, name); err != nil {
+		return false, err
+	}
+	ok, err := s.plugin.ClearTableData(config, namespace, name)
+	if err == nil && ok {
+		s.invalidatePersistentCache()
+	}
+	return ok, err
+}
+
+// DropObject drops/removes a source object from the database.
+func (s *DatabaseSession) DropObject(ctx context.Context, ref source.ObjectRef) (bool, error) {
+	config := s.pluginConfig(ctx, &ref)
+	namespace := s.namespaceForRef(&ref)
+	name := objectName(ref)
+	if err := s.validateObject(config, namespace, name); err != nil {
+		return false, err
+	}
+	ok, err := s.plugin.DropStorageUnit(config, namespace, name)
+	if err == nil && ok {
+		s.invalidatePersistentCache()
+	}
+	return ok, err
+}
+
 // IsAvailable verifies that the underlying database plugin can reach the
 // source with the current credentials.
 func (s *DatabaseSession) IsAvailable(ctx context.Context) bool {
@@ -1526,6 +1560,7 @@ func cloneSourceColumns(columns []source.Column) []source.Column {
 		cloned = append(cloned, source.Column{
 			Type:             column.Type,
 			Name:             column.Name,
+			Comment:          cloneStringPointer(column.Comment),
 			MetadataFidelity: column.MetadataFidelity,
 			IsNullable:       column.IsNullable,
 			IsPrimary:        column.IsPrimary,

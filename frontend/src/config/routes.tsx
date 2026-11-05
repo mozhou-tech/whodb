@@ -31,8 +31,8 @@ import { GraphPage } from "../pages/graph/graph";
 import { ExploreStorageUnit } from "../pages/storage-unit/explore-storage-unit";
 import { StorageUnitPage } from "../pages/storage-unit/storage-unit";
 import { RawExecutePage } from "../pages/raw-execute/raw-execute";
-import { ChatPage } from "../pages/chat/chat";
 import { DataCopyPage } from "../pages/data-copy/data-copy";
+import { MigrationToolPage } from "../pages/migration-tool/migration-tool";
 import { SettingsPage as CESettingsPage } from "../pages/settings/settings";
 import { ContactUsPage } from "../pages/contact-us/contact-us";
 
@@ -47,12 +47,14 @@ const LoginPage = () => {
 };
 
 const SettingsPage = __WHODB_EDITION__ === "ce" ? CESettingsPage : null;
-const ChatRouteComponent: FC = () => {
-    const Agent = getComponent('sql-agent');
-    if (Agent) {
-        return <Suspense fallback={<LoadingPage />}><Agent /></Suspense>;
+
+/** Redirects `/` to the registered default route or the storage unit browser. */
+export const NavigateToDefault: FC = () => {
+    const DefaultNavigateOverride = getComponent('default-navigate');
+    if (DefaultNavigateOverride) {
+        return <Suspense fallback={null}><DefaultNavigateOverride /></Suspense>;
     }
-    return <SourceSurfaceRoute surface="chat" component={<LazyRoute component={ChatPage} />} />;
+    return <Navigate to={getSurfaceFallbackPath()} replace />;
 };
 
 // Wrapper component for lazy loaded routes
@@ -63,21 +65,17 @@ const LazyRoute: FC<{ component: React.ComponentType<any> }> = ({ component: Com
 );
 
 const SourceSurfaceRoute: FC<{
-    surface: "chat" | "graph" | "scratchpad";
+    surface: "graph" | "scratchpad";
     component: ReactNode;
 }> = ({ surface, component }) => {
     const currentType = useAppSelector(state => state.auth.current?.Type);
-    const { item, loading, supportsChat, supportsGraph, supportsScratchpad } = useSourceContract(currentType);
+    const { item, loading, supportsGraph, supportsScratchpad } = useSourceContract(currentType);
 
     if (!currentType || (loading && !item)) {
         return <LoadingPage />;
     }
 
-    const isAllowed = surface === "chat"
-        ? supportsChat
-        : surface === "graph"
-            ? supportsGraph
-            : supportsScratchpad;
+    const isAllowed = surface === "graph" ? supportsGraph : supportsScratchpad;
 
     if (!isAllowed) {
         return <Navigate to={getSurfaceFallbackPath()} replace />;
@@ -124,15 +122,15 @@ export const InternalRoutes = {
         path: "/scratchpad",
         component: <SourceSurfaceRoute surface="scratchpad" component={<LazyRoute component={RawExecutePage} />} />,
     },
-    Chat: {
-        name: "智能问答",
-        path: "/chat",
-        component: <ChatRouteComponent />,
-    },
     DataCopy: {
         name: "数据复制",
         path: "/data-copy",
         component: <LazyRoute component={DataCopyPage} />,
+    },
+    MigrationTool: {
+        name: "迁移工具",
+        path: "/migration-tool",
+        component: <LazyRoute component={MigrationToolPage} />,
     },
     Logout: {
         name: "退出登录",

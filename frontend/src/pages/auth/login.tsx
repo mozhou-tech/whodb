@@ -16,7 +16,7 @@
 
 import { CombinedGraphQLErrors } from "@apollo/client/errors";
 import { useLazyQuery, useMutation, useQuery } from "@apollo/client/react";
-import { Alert, AlertDescription, AlertTitle, Badge, Button, Card, cn, Input, Label, ModeToggle, Separator, toast, useTheme, IconSliders as AdjustmentsHorizontalIcon, IconChat as ChatBubbleLeftRightIcon, IconCheckCircle as CheckCircleIcon, IconChevronDown as ChevronDownIcon, IconCode as CodeBracketIcon, IconInfo as InformationCircleIcon, IconShare as ShareIcon, IconAi as SparklesIcon, IconTable as TableCellsIcon, SearchSelect } from '@clidey/ux';
+import { Alert, AlertDescription, AlertTitle, Badge, Button, Card, cn, Input, Label, ModeToggle, Separator, toast, useTheme, IconSliders as AdjustmentsHorizontalIcon, IconCheckCircle as CheckCircleIcon, IconChevronDown as ChevronDownIcon, IconCode as CodeBracketIcon, IconInfo as InformationCircleIcon, IconShare as ShareIcon, IconAi as SparklesIcon, IconTable as TableCellsIcon, SearchSelect } from '@clidey/ux';
 import {
     SettingsConfigDocument,
     SourceFieldOptionsDocument,
@@ -1287,7 +1287,6 @@ export const LoginForm: FC<LoginFormProps> = ({
                         <div className="ce-connect-showcase-panel">
                             <div className="ce-connect-showcase-label"><span>02 / 02</span><span>{t('sample')}</span></div>
                             <div className="ce-connect-feature-list">
-                                <div><span className="ce-connect-feature-icon"><span className="ce-connect-icon ce-connect-icon--chat" /></span><span><strong>{t('sampleChat')}</strong><small>{t('sampleChatDescription')}</small></span></div>
                                 <div><span className="ce-connect-feature-icon"><span className="ce-connect-icon ce-connect-icon--relation" /></span><span><strong>{t('sampleGraph')}</strong><small>{t('sampleGraphDescription')}</small></span></div>
                                 <div><span className="ce-connect-feature-icon"><span className="ce-connect-icon ce-connect-icon--table" /></span><span><strong>{t('sampleGrid')}</strong><small>{t('sampleGridDescription')}</small></span></div>
                                 <div><span className="ce-connect-feature-icon"><span className="ce-connect-icon ce-connect-icon--code" /></span><span><strong>{t('sampleScratchpad')}</strong><small>{t('sampleScratchpadDescription')}</small></span></div>
@@ -1556,15 +1555,6 @@ export const LoginForm: FC<LoginFormProps> = ({
                                 {t('whatsIncluded')}
                             </h3>
                             <div className="flex flex-col gap-3">
-                                <div className="flex items-start gap-3" role="listitem">
-                                    <div className="h-6 w-6 rounded-lg flex justify-center items-center bg-brand/10 mt-0.5" aria-hidden="true">
-                                        <ChatBubbleLeftRightIcon className="w-3.5 h-3.5 stroke-brand" />
-                                    </div>
-                                    <div className="flex flex-col gap-1">
-                                        <p className="text-sm font-medium text-foreground">{t('aiChatAssistant')}</p>
-                                        <p className="text-xs text-muted-foreground">{t('aiChatDescription')}</p>
-                                    </div>
-                                </div>
                                 <div className="flex items-start gap-3" role="listitem">
                                     <div className="h-6 w-6 rounded-lg flex justify-center items-center bg-brand/10 mt-0.5" aria-hidden="true">
                                         <ShareIcon className="w-3.5 h-3.5 stroke-brand" />

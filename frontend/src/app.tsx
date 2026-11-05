@@ -21,9 +21,8 @@ import {Suspense, useEffect} from "react";
 import {createPortal} from "react-dom";
 import {Route, Routes} from "react-router-dom";
 import {getStoredConsentState, optInUser, optOutUser, resetAnalyticsIdentity} from "./config/posthog";
-import {getRoutes, PrivateRoute, PublicRoutes} from './config/routes';
+import {getRoutes, NavigateToDefault, PrivateRoute, PublicRoutes} from './config/routes';
 import {getRegisteredPublicRoutes, getRegisteredScopedRoutes, getScopedLayout} from './config/route-registry';
-import {NavigateToDefault} from "./pages/chat/default-chat-route";
 import {NotFoundPage} from "./pages/not-found/not-found-page";
 import {useAppDispatch, useAppSelector} from "./store/hooks";
 import {SettingsActions} from "./store/settings";
@@ -168,7 +167,7 @@ export const App = () => {
     <TourProvider>
       {createPortal(<Toaster position="bottom-right" richColors={false} toastOptions={{closeButtonAriaLabel: t('close')}} />, document.body)}
       <LanguageSwitchOverlay />
-      <div className="h-[100vh] w-[100vw]" id="whodb-app-container">
+      <div className="h-[100vh] w-[100vw] overflow-hidden overscroll-none" id="whodb-app-container">
         {KeyboardShortcutsHelpModal}
         {CommandPaletteModal}
         {featureFlags.healthMonitoring && (

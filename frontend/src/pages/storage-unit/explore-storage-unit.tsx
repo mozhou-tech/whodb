@@ -420,11 +420,12 @@ export const ExploreStorageUnit: FC = () => {
     const [code, setCode] = useState(initialScratchpadQuery);
 
     // Compute columns and types from rows data
-    const {columns, columnTypes, columnIsPrimary, columnIsForeignKey} = useMemo(() => {
+    const {columns, columnTypes, columnComments, columnIsPrimary, columnIsForeignKey} = useMemo(() => {
         const dataColumns = rows?.Columns.map(c => c.Name) ?? [];
         return {
             columns: dataColumns,
             columnTypes: rows?.Columns.map(column => column.Type),
+            columnComments: rows?.Columns.map(column => column.Comment ?? undefined),
             columnIsPrimary: rows?.Columns.map(column => column.IsPrimary),
             columnIsForeignKey: rows?.Columns.map(column => column.IsForeignKey)
         };
@@ -1230,6 +1231,7 @@ export const ExploreStorageUnit: FC = () => {
                         onRowUpdate={handleRowUpdate}
                         cellEditing
                         columnTypes={columnTypes}
+                        columnComments={columnComments}
                         columnIsPrimary={columnIsPrimary}
                         columnIsForeignKey={columnIsForeignKey}
                         schema={schema}

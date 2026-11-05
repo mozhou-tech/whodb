@@ -184,6 +184,10 @@ type ObjectManager interface {
 	AddRow(ctx context.Context, ref ObjectRef, values []Record) (bool, error)
 	// DeleteRow deletes a row/document from an object.
 	DeleteRow(ctx context.Context, ref ObjectRef, values map[string]string) (bool, error)
+	// ClearObjectData removes all rows/documents from an object while keeping its definition.
+	ClearObjectData(ctx context.Context, ref ObjectRef) (bool, error)
+	// DropObject permanently drops/removes an object from the source.
+	DropObject(ctx context.Context, ref ObjectRef) (bool, error)
 }
 
 // ConnectionFieldOptionsReader loads dynamic options for a connection field.

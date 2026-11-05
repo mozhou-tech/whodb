@@ -126,7 +126,7 @@ export const ExpandableCard: FC<IExpandableCardProps> = (props) => {
           {props.loading ? null : props.children[0]}
         </Card>
       </div>
-      <SheetContent side="right" className="p-0">
+      <SheetContent side="right" className="w-[min(768px,100vw)] sm:max-w-[min(768px,100vw)] p-0">
         <VisuallyHidden>
           <SheetTitle>{t('details')}</SheetTitle>
         </VisuallyHidden>

@@ -14,15 +14,19 @@
  * limitations under the License.
  */
 
+import { useMutation, useQuery } from "@apollo/client/react";
 import type {FC} from "react";
 import { Suspense, useCallback, useEffect, useMemo} from "react";
 import {InternalPage} from "../../components/page";
-import {InternalRoutes, type IInternalRoute} from "../../config/routes";
+import {InternalRoutes, PublicRoutes, type IInternalRoute} from "../../config/routes";
 import {useAppDispatch, useAppSelector} from "../../store/hooks";
+import {AuthActions} from "../../store/auth";
 import {SettingsActions} from "../../store/settings";
 import {changeLanguage} from "../../utils/change-language";
 import {useTranslation} from "@/hooks/use-translation";
 import {
+    Badge,
+    Button,
     Input,
     Label,
     Select,
@@ -35,22 +39,42 @@ import {
     TabsContent,
     TabsList,
     TabsTrigger,
+    toast,
+    IconUser as UserIcon,
+    IconRefresh as ArrowPathIcon,
 } from "@clidey/ux";
+import {
+    LogoutDocument,
+    LogoutOpsControlPlaneDocument,
+    OpsControlPlaneStatusDocument,
+    SyncOpsControlPlaneProfilesDocument,
+} from "@graphql";
+import { clearGraphqlStore } from "@/config/graphql-client";
 import {optInUser, optOutUser, trackFrontendEvent} from "@/config/posthog";
 import {type SupportedLanguage, SUPPORTED_LANGUAGES} from "@/utils/languages";
 import {ExternalLink} from "../../utils/external-links";
 import {usePageSize} from "../../hooks/use-page-size";
 import {getComponent} from "../../config/component-registry";
 import {trackOptionChanged} from "@/config/frontend-analytics";
-import {useSearchParams} from 'react-router-dom';
+import {useNavigate, useSearchParams} from 'react-router-dom';
 import {WhoDBChatIcon} from '../../components/whodb-chat-icon';
 
 export const SettingsPage: FC = () => {
     const {t} = useTranslation('pages/settings');
+    const navigate = useNavigate();
     const [searchParams, setSearchParams] = useSearchParams();
     const activeTab = searchParams.get('tab') ?? 'appearance';
     const dispatch = useAppDispatch();
+    const current = useAppSelector(state => state.auth.current);
     const metricsEnabled = useAppSelector(state => state.settings.metricsEnabled);
+
+    const { data: opsStatusData, refetch: refetchOpsStatus } = useQuery(OpsControlPlaneStatusDocument, {
+        fetchPolicy: "cache-and-network",
+    });
+    const [syncOpsProfiles, { loading: syncingOps }] = useMutation(SyncOpsControlPlaneProfilesDocument);
+    const [logoutOpsControlPlane, { loading: loggingOutOps }] = useMutation(LogoutOpsControlPlaneDocument);
+    const [logoutDb, { loading: loggingOutDb }] = useMutation(LogoutDocument);
+    const opsStatus = opsStatusData?.OpsControlPlaneStatus;
     const fontSize = useAppSelector(state => state.settings.fontSize);
     const borderRadius = useAppSelector(state => state.settings.borderRadius);
     const spacing = useAppSelector(state => state.settings.spacing);
@@ -147,6 +171,49 @@ export const SettingsPage: FC = () => {
         });
     }, [setSearchParams]);
 
+    const handleSyncOps = useCallback(async () => {
+        try {
+            await syncOpsProfiles();
+            await refetchOpsStatus();
+            toast.success(t('syncSuccess'));
+        } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            toast.error(msg);
+        }
+    }, [refetchOpsStatus, syncOpsProfiles, t]);
+
+    const handleDisconnectCurrentDb = useCallback(async () => {
+        try {
+            await logoutDb();
+            await clearGraphqlStore();
+            if (current) {
+                dispatch(AuthActions.remove({ id: current.Id }));
+            } else {
+                dispatch(AuthActions.logout());
+            }
+            toast.success(t('logoutSuccess'));
+            void navigate(PublicRoutes.Login.path);
+        } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            toast.error(msg);
+        }
+    }, [current, dispatch, logoutDb, navigate, t]);
+
+    const handleLogoutAll = useCallback(async () => {
+        try {
+            await logoutOpsControlPlane().catch(() => null);
+            await logoutDb().catch(() => null);
+            await clearGraphqlStore();
+            dispatch(AuthActions.clearEnvironmentProfiles());
+            dispatch(AuthActions.logout());
+            toast.success(t('logoutSuccess'));
+            void navigate(PublicRoutes.Login.path);
+        } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            toast.error(msg);
+        }
+    }, [dispatch, logoutDb, logoutOpsControlPlane, navigate, t]);
+
     const hasIntegrations = !!getComponent('bridge-driver-panel');
 
     return (
@@ -160,6 +227,7 @@ export const SettingsPage: FC = () => {
                             <TabsTrigger value="behavior"><WhoDBChatIcon name="sliders" />{t('tabBehavior')}</TabsTrigger>
                             {hasIntegrations && <TabsTrigger value="integrations">{t('tabIntegrations')}</TabsTrigger>}
                             <TabsTrigger value="privacy"><WhoDBChatIcon name="secret" />{t('tabPrivacy')}</TabsTrigger>
+                            <TabsTrigger value="user"><UserIcon className="w-4 h-4" />{t('tabUserInfo')}</TabsTrigger>
                         </TabsList>
                     </div>
 
@@ -330,6 +398,131 @@ export const SettingsPage: FC = () => {
                             <div className="flex justify-between">
                                 <div className="ce-settings-row-copy"><span className="ce-settings-row-title">{t('privacyPolicy')}</span><p>{t('privacyPolicyDescription')}</p></div>
                                 <ExternalLink href="https://whodb.com/privacy" className="ce-settings-link-button">{t('open')}<WhoDBChatIcon name="chevron-right" /></ExternalLink>
+                            </div>
+                        </div>
+                    </TabsContent>
+
+                    <TabsContent value="user" className="ce-settings-panel">
+                        <div className="ce-settings-panel-heading"><h2>{t('tabUserInfo')}</h2><p>{t('userInfoDescription')}</p></div>
+
+                        <p className="ce-settings-section-label">{t('platformAccountSection')}</p>
+                        <div className="ce-settings-privacy-card flex flex-col gap-3">
+                            <div className="flex items-center justify-between">
+                                <span className="text-sm text-muted-foreground">{t('accountStatus')}</span>
+                                <Badge variant={opsStatus?.Authenticated ? "default" : "secondary"}>
+                                    {opsStatus?.Authenticated ? t('statusAuthenticated') : t('statusUnauthenticated')}
+                                </Badge>
+                            </div>
+                            {opsStatus?.Authenticated && (
+                                <>
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-sm text-muted-foreground">{t('usernameLabel')}</span>
+                                        <span className="text-sm font-medium">{opsStatus.Username || "-"}</span>
+                                    </div>
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-sm text-muted-foreground">{t('roleLabel')}</span>
+                                        <Badge variant="outline">{opsStatus.Role || "-"}</Badge>
+                                    </div>
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-sm text-muted-foreground">{t('endpointLabel')}</span>
+                                        <span className="text-xs font-mono text-muted-foreground">{opsStatus.Endpoint || "-"}</span>
+                                    </div>
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-sm text-muted-foreground">{t('projectCountLabel')}</span>
+                                        <span className="text-sm font-mono">{opsStatus.EnvironmentCount}</span>
+                                    </div>
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-sm text-muted-foreground">{t('instanceCountLabel')}</span>
+                                        <span className="text-sm font-mono">{opsStatus.ProfileCount}</span>
+                                    </div>
+                                    {opsStatus.SyncedAt && (
+                                        <div className="flex items-center justify-between">
+                                            <span className="text-sm text-muted-foreground">{t('syncedAtLabel')}</span>
+                                            <span className="text-xs font-mono text-muted-foreground">{opsStatus.SyncedAt}</span>
+                                        </div>
+                                    )}
+                                    <div className="flex items-center justify-end gap-2 pt-2 border-t border-border/50">
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            className="gap-1.5"
+                                            disabled={syncingOps}
+                                            onClick={() => { void handleSyncOps(); }}
+                                        >
+                                            <ArrowPathIcon className="w-3.5 h-3.5" />
+                                            {syncingOps ? t('syncingProfilesButton') : t('syncProfilesButton')}
+                                        </Button>
+                                    </div>
+                                </>
+                            )}
+                        </div>
+
+                        {current && (
+                            <>
+                                <p className="ce-settings-section-label">{t('currentSessionSection')}</p>
+                                <div className="ce-settings-privacy-card flex flex-col gap-3">
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-sm text-muted-foreground">{t('projectLabel')}</span>
+                                        <span className="text-sm font-medium">{current.ProjectName || t('localProject')}</span>
+                                    </div>
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-sm text-muted-foreground">{t('databaseTypeLabel')}</span>
+                                        <Badge variant="secondary">{current.Type}</Badge>
+                                    </div>
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-sm text-muted-foreground">{t('hostLabel')}</span>
+                                        <span className="text-xs font-mono">{current.DisplayName || current.Hostname || "-"}</span>
+                                    </div>
+                                    {current.Username && (
+                                        <div className="flex items-center justify-between">
+                                            <span className="text-sm text-muted-foreground">{t('dbUsernameLabel')}</span>
+                                            <span className="text-sm font-mono">{current.Username}</span>
+                                        </div>
+                                    )}
+                                    {current.Database && (
+                                        <div className="flex items-center justify-between">
+                                            <span className="text-sm text-muted-foreground">{t('databaseNameLabel')}</span>
+                                            <span className="text-sm font-mono">{current.Database}</span>
+                                        </div>
+                                    )}
+                                </div>
+                            </>
+                        )}
+
+                        <p className="ce-settings-section-label">{t('sessionActionsSection')}</p>
+                        <div className="ce-settings-privacy-card flex flex-col gap-4">
+                            {current && (
+                                <div className="flex items-center justify-between gap-4">
+                                    <div className="ce-settings-row-copy">
+                                        <span className="ce-settings-row-title">{t('disconnectCurrentDb')}</span>
+                                        <p>{t('disconnectCurrentDbDesc')}</p>
+                                    </div>
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        disabled={loggingOutDb || loggingOutOps}
+                                        onClick={() => { void handleDisconnectCurrentDb(); }}
+                                    >
+                                        {t('disconnectCurrentDb')}
+                                    </Button>
+                                </div>
+                            )}
+                            <div className="flex items-center justify-between gap-4">
+                                <div className="ce-settings-row-copy">
+                                    <span className="ce-settings-row-title">{t('logoutAllButton')}</span>
+                                    <p>{t('logoutAllDesc')}</p>
+                                </div>
+                                <Button
+                                    variant="destructive"
+                                    size="sm"
+                                    className="gap-1.5"
+                                    disabled={loggingOutDb || loggingOutOps}
+                                    onClick={() => { void handleLogoutAll(); }}
+                                    data-testid="settings-logout-button"
+                                >
+                                    <WhoDBChatIcon name="signout" />
+                                    {t('logoutAllButton')}
+                                </Button>
                             </div>
                         </div>
                     </TabsContent>

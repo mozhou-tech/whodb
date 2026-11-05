@@ -18,7 +18,6 @@ export const usePageTitle = (pageTitle?: string): void => {
 
 const routeTitles: [RegExp, string][] = [
     [/\/login/, 'Login'],
-    [/\/chat/, 'Chat'],
     [/\/graph/, 'Graph'],
     [/\/scratchpad/, 'Scratchpad'],
     [/\/settings/, 'Settings'],

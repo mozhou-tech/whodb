@@ -31,6 +31,7 @@ import (
 
 	"github.com/clidey/whodb/core/src/dbcatalog"
 	"github.com/clidey/whodb/core/src/engine"
+	"github.com/clidey/whodb/core/src/sourcedial"
 )
 
 func request(ctx context.Context, config *engine.PluginConfig, method string, path []string, body any, target any) error {
@@ -72,6 +73,12 @@ func request(ctx context.Context, config *engine.PluginConfig, method string, pa
 	req.SetBasicAuth(config.Credentials.Username, config.Credentials.Password)
 	req.Header.Set("Content-Type", "application/json")
 	client := &http.Client{Timeout: 60 * time.Second}
+	if dial := sourcedial.Dialer(); dial != nil {
+		transport := http.DefaultTransport.(*http.Transport).Clone()
+		transport.DialContext = dial
+		transport.Proxy = nil
+		client.Transport = transport
+	}
 	res, err := client.Do(req)
 	if err != nil {
 		return err

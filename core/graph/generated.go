@@ -54,6 +54,7 @@ type ComplexityRoot struct {
 	}
 
 	Column struct {
+		Comment          func(childComplexity int) int
 		IsForeignKey     func(childComplexity int) int
 		IsPrimary        func(childComplexity int) int
 		Length           func(childComplexity int) int
@@ -113,6 +114,45 @@ type ComplexityRoot struct {
 		Label    func(childComplexity int) int
 		Required func(childComplexity int) int
 		Values   func(childComplexity int) int
+	}
+
+	FlywayDirectoryPreview struct {
+		Directory func(childComplexity int) int
+		Error     func(childComplexity int) int
+		Exists    func(childComplexity int) int
+		Files     func(childComplexity int) int
+	}
+
+	FlywayExecutionResult struct {
+		Action     func(childComplexity int) int
+		Command    func(childComplexity int) int
+		DurationMs func(childComplexity int) int
+		Error      func(childComplexity int) int
+		Output     func(childComplexity int) int
+		Success    func(childComplexity int) int
+	}
+
+	FlywayInstallResult struct {
+		Error   func(childComplexity int) int
+		Output  func(childComplexity int) int
+		Status  func(childComplexity int) int
+		Success func(childComplexity int) int
+	}
+
+	FlywayMigrationFile struct {
+		Description  func(childComplexity int) int
+		Filename     func(childComplexity int) int
+		RelativePath func(childComplexity int) int
+		SizeBytes    func(childComplexity int) int
+		Type         func(childComplexity int) int
+		Version      func(childComplexity int) int
+	}
+
+	FlywayStatus struct {
+		BinaryPath    func(childComplexity int) int
+		InstallMethod func(childComplexity int) int
+		Installed     func(childComplexity int) int
+		Version       func(childComplexity int) int
 	}
 
 	ForeignKeyDefinition struct {
@@ -192,17 +232,21 @@ type ComplexityRoot struct {
 
 	Mutation struct {
 		AddSourceRow                     func(childComplexity int, ref model.SourceObjectRefInput, values []*model.RecordInput) int
+		ClearSourceObjectData            func(childComplexity int, ref model.SourceObjectRefInput) int
 		CopySourceObjects                func(childComplexity int, input model.CopySourceObjectsInput) int
 		CreateSourceObject               func(childComplexity int, parent *model.SourceObjectRefInput, name string, fields []*model.RecordInput) int
 		CreateSourceObjectFromDefinition func(childComplexity int, parent *model.SourceObjectRefInput, definition model.SourceObjectDefinitionInput) int
 		DeleteSourceRow                  func(childComplexity int, ref model.SourceObjectRefInput, values []*model.RecordInput) int
+		DropSourceObject                 func(childComplexity int, ref model.SourceObjectRefInput) int
 		ExecuteConfirmedSQL              func(childComplexity int, query string, operationType string) int
+		ExecuteFlyway                    func(childComplexity int, input model.ExecuteFlywayInput) int
 		ExportSourceConnection           func(childComplexity int, id string, includeSecrets bool) int
 		GenerateChatTitle                func(childComplexity int, input model.GenerateChatTitleInput) int
 		GenerateMockData                 func(childComplexity int, input model.MockDataGenerationInput) int
 		ImportPreview                    func(childComplexity int, file graphql.Upload, options model.ImportFileOptions, ref *model.SourceObjectRefInput, useHeaderMapping *bool) int
 		ImportSQL                        func(childComplexity int, input model.ImportSQLInput) int
 		ImportSourceObjectFile           func(childComplexity int, input model.ImportFileInput) int
+		InstallFlyway                    func(childComplexity int) int
 		LoginOpsControlPlane             func(childComplexity int, input model.OpsControlPlaneLoginInput) int
 		LoginSource                      func(childComplexity int, credentials model.SourceLoginInput) int
 		LoginWithSourceProfile           func(childComplexity int, profile model.SourceProfileLoginInput) int
@@ -239,7 +283,9 @@ type ComplexityRoot struct {
 		AIModel                      func(childComplexity int, providerID *string, modelType string, token *string, endpoint *string) int
 		AIProviders                  func(childComplexity int) int
 		AnalyzeMockDataDependencies  func(childComplexity int, ref model.SourceObjectRefInput, rowCount int, fkDensityRatio *int) int
+		FlywayStatus                 func(childComplexity int) int
 		Health                       func(childComplexity int) int
+		InspectFlywayDirectory       func(childComplexity int, directory string) int
 		MockDataMaxRowCount          func(childComplexity int) int
 		OpsControlPlaneStatus        func(childComplexity int) int
 		RunSourceQuery               func(childComplexity int, query string) int
@@ -533,8 +579,12 @@ type MutationResolver interface {
 	UpdateSourceObject(ctx context.Context, ref model.SourceObjectRefInput, values []*model.RecordInput, updatedColumns []string) (*model.StatusResponse, error)
 	AddSourceRow(ctx context.Context, ref model.SourceObjectRefInput, values []*model.RecordInput) (*model.StatusResponse, error)
 	DeleteSourceRow(ctx context.Context, ref model.SourceObjectRefInput, values []*model.RecordInput) (*model.StatusResponse, error)
+	ClearSourceObjectData(ctx context.Context, ref model.SourceObjectRefInput) (*model.StatusResponse, error)
+	DropSourceObject(ctx context.Context, ref model.SourceObjectRefInput) (*model.StatusResponse, error)
 	GenerateMockData(ctx context.Context, input model.MockDataGenerationInput) (*model.MockDataGenerationStatus, error)
 	CopySourceObjects(ctx context.Context, input model.CopySourceObjectsInput) (*model.CopySourceObjectsResult, error)
+	InstallFlyway(ctx context.Context) (*model.FlywayInstallResult, error)
+	ExecuteFlyway(ctx context.Context, input model.ExecuteFlywayInput) (*model.FlywayExecutionResult, error)
 	ImportSQL(ctx context.Context, input model.ImportSQLInput) (*model.ImportResult, error)
 	ImportPreview(ctx context.Context, file graphql.Upload, options model.ImportFileOptions, ref *model.SourceObjectRefInput, useHeaderMapping *bool) (*model.ImportPreview, error)
 	ImportSourceObjectFile(ctx context.Context, input model.ImportFileInput) (*model.ImportResult, error)
@@ -570,6 +620,8 @@ type QueryResolver interface {
 	SourceQuerySuggestions(ctx context.Context, ref *model.SourceObjectRefInput) ([]*model.SourceQuerySuggestion, error)
 	SourceTargetDatabases(ctx context.Context, target model.SourceTargetConnectionInput) ([]string, error)
 	SourceTargetSchemas(ctx context.Context, target model.SourceTargetConnectionInput) ([]string, error)
+	FlywayStatus(ctx context.Context) (*model.FlywayStatus, error)
+	InspectFlywayDirectory(ctx context.Context, directory string) (*model.FlywayDirectoryPreview, error)
 }
 
 // endregion ************************** generated!.gotpl **************************
@@ -652,6 +704,12 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 
 		return e.ComplexityRoot.AIProvider.Type(childComplexity), true
 
+	case "Column.Comment":
+		if e.ComplexityRoot.Column.Comment == nil {
+			break
+		}
+
+		return e.ComplexityRoot.Column.Comment(childComplexity), true
 	case "Column.IsForeignKey":
 		if e.ComplexityRoot.Column.IsForeignKey == nil {
 			break
@@ -922,6 +980,155 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 
 		return e.ComplexityRoot.CreationOptionDefinition.Values(childComplexity), true
 
+	case "FlywayDirectoryPreview.Directory":
+		if e.ComplexityRoot.FlywayDirectoryPreview.Directory == nil {
+			break
+		}
+
+		return e.ComplexityRoot.FlywayDirectoryPreview.Directory(childComplexity), true
+	case "FlywayDirectoryPreview.Error":
+		if e.ComplexityRoot.FlywayDirectoryPreview.Error == nil {
+			break
+		}
+
+		return e.ComplexityRoot.FlywayDirectoryPreview.Error(childComplexity), true
+	case "FlywayDirectoryPreview.Exists":
+		if e.ComplexityRoot.FlywayDirectoryPreview.Exists == nil {
+			break
+		}
+
+		return e.ComplexityRoot.FlywayDirectoryPreview.Exists(childComplexity), true
+	case "FlywayDirectoryPreview.Files":
+		if e.ComplexityRoot.FlywayDirectoryPreview.Files == nil {
+			break
+		}
+
+		return e.ComplexityRoot.FlywayDirectoryPreview.Files(childComplexity), true
+
+	case "FlywayExecutionResult.Action":
+		if e.ComplexityRoot.FlywayExecutionResult.Action == nil {
+			break
+		}
+
+		return e.ComplexityRoot.FlywayExecutionResult.Action(childComplexity), true
+	case "FlywayExecutionResult.Command":
+		if e.ComplexityRoot.FlywayExecutionResult.Command == nil {
+			break
+		}
+
+		return e.ComplexityRoot.FlywayExecutionResult.Command(childComplexity), true
+	case "FlywayExecutionResult.DurationMs":
+		if e.ComplexityRoot.FlywayExecutionResult.DurationMs == nil {
+			break
+		}
+
+		return e.ComplexityRoot.FlywayExecutionResult.DurationMs(childComplexity), true
+	case "FlywayExecutionResult.Error":
+		if e.ComplexityRoot.FlywayExecutionResult.Error == nil {
+			break
+		}
+
+		return e.ComplexityRoot.FlywayExecutionResult.Error(childComplexity), true
+	case "FlywayExecutionResult.Output":
+		if e.ComplexityRoot.FlywayExecutionResult.Output == nil {
+			break
+		}
+
+		return e.ComplexityRoot.FlywayExecutionResult.Output(childComplexity), true
+	case "FlywayExecutionResult.Success":
+		if e.ComplexityRoot.FlywayExecutionResult.Success == nil {
+			break
+		}
+
+		return e.ComplexityRoot.FlywayExecutionResult.Success(childComplexity), true
+
+	case "FlywayInstallResult.Error":
+		if e.ComplexityRoot.FlywayInstallResult.Error == nil {
+			break
+		}
+
+		return e.ComplexityRoot.FlywayInstallResult.Error(childComplexity), true
+	case "FlywayInstallResult.Output":
+		if e.ComplexityRoot.FlywayInstallResult.Output == nil {
+			break
+		}
+
+		return e.ComplexityRoot.FlywayInstallResult.Output(childComplexity), true
+	case "FlywayInstallResult.Status":
+		if e.ComplexityRoot.FlywayInstallResult.Status == nil {
+			break
+		}
+
+		return e.ComplexityRoot.FlywayInstallResult.Status(childComplexity), true
+	case "FlywayInstallResult.Success":
+		if e.ComplexityRoot.FlywayInstallResult.Success == nil {
+			break
+		}
+
+		return e.ComplexityRoot.FlywayInstallResult.Success(childComplexity), true
+
+	case "FlywayMigrationFile.Description":
+		if e.ComplexityRoot.FlywayMigrationFile.Description == nil {
+			break
+		}
+
+		return e.ComplexityRoot.FlywayMigrationFile.Description(childComplexity), true
+	case "FlywayMigrationFile.Filename":
+		if e.ComplexityRoot.FlywayMigrationFile.Filename == nil {
+			break
+		}
+
+		return e.ComplexityRoot.FlywayMigrationFile.Filename(childComplexity), true
+	case "FlywayMigrationFile.RelativePath":
+		if e.ComplexityRoot.FlywayMigrationFile.RelativePath == nil {
+			break
+		}
+
+		return e.ComplexityRoot.FlywayMigrationFile.RelativePath(childComplexity), true
+	case "FlywayMigrationFile.SizeBytes":
+		if e.ComplexityRoot.FlywayMigrationFile.SizeBytes == nil {
+			break
+		}
+
+		return e.ComplexityRoot.FlywayMigrationFile.SizeBytes(childComplexity), true
+	case "FlywayMigrationFile.Type":
+		if e.ComplexityRoot.FlywayMigrationFile.Type == nil {
+			break
+		}
+
+		return e.ComplexityRoot.FlywayMigrationFile.Type(childComplexity), true
+	case "FlywayMigrationFile.Version":
+		if e.ComplexityRoot.FlywayMigrationFile.Version == nil {
+			break
+		}
+
+		return e.ComplexityRoot.FlywayMigrationFile.Version(childComplexity), true
+
+	case "FlywayStatus.BinaryPath":
+		if e.ComplexityRoot.FlywayStatus.BinaryPath == nil {
+			break
+		}
+
+		return e.ComplexityRoot.FlywayStatus.BinaryPath(childComplexity), true
+	case "FlywayStatus.InstallMethod":
+		if e.ComplexityRoot.FlywayStatus.InstallMethod == nil {
+			break
+		}
+
+		return e.ComplexityRoot.FlywayStatus.InstallMethod(childComplexity), true
+	case "FlywayStatus.Installed":
+		if e.ComplexityRoot.FlywayStatus.Installed == nil {
+			break
+		}
+
+		return e.ComplexityRoot.FlywayStatus.Installed(childComplexity), true
+	case "FlywayStatus.Version":
+		if e.ComplexityRoot.FlywayStatus.Version == nil {
+			break
+		}
+
+		return e.ComplexityRoot.FlywayStatus.Version(childComplexity), true
+
 	case "ForeignKeyDefinition.Column":
 		if e.ComplexityRoot.ForeignKeyDefinition.Column == nil {
 			break
@@ -1179,6 +1386,17 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.Mutation.AddSourceRow(childComplexity, args["ref"].(model.SourceObjectRefInput), args["values"].([]*model.RecordInput)), true
+	case "Mutation.ClearSourceObjectData":
+		if e.ComplexityRoot.Mutation.ClearSourceObjectData == nil {
+			break
+		}
+
+		args, err := ec.field_Mutation_ClearSourceObjectData_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.ComplexityRoot.Mutation.ClearSourceObjectData(childComplexity, args["ref"].(model.SourceObjectRefInput)), true
 	case "Mutation.CopySourceObjects":
 		if e.ComplexityRoot.Mutation.CopySourceObjects == nil {
 			break
@@ -1223,6 +1441,17 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.Mutation.DeleteSourceRow(childComplexity, args["ref"].(model.SourceObjectRefInput), args["values"].([]*model.RecordInput)), true
+	case "Mutation.DropSourceObject":
+		if e.ComplexityRoot.Mutation.DropSourceObject == nil {
+			break
+		}
+
+		args, err := ec.field_Mutation_DropSourceObject_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.ComplexityRoot.Mutation.DropSourceObject(childComplexity, args["ref"].(model.SourceObjectRefInput)), true
 	case "Mutation.ExecuteConfirmedSQL":
 		if e.ComplexityRoot.Mutation.ExecuteConfirmedSQL == nil {
 			break
@@ -1234,6 +1463,17 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.Mutation.ExecuteConfirmedSQL(childComplexity, args["query"].(string), args["operationType"].(string)), true
+	case "Mutation.ExecuteFlyway":
+		if e.ComplexityRoot.Mutation.ExecuteFlyway == nil {
+			break
+		}
+
+		args, err := ec.field_Mutation_ExecuteFlyway_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.ComplexityRoot.Mutation.ExecuteFlyway(childComplexity, args["input"].(model.ExecuteFlywayInput)), true
 	case "Mutation.ExportSourceConnection":
 		if e.ComplexityRoot.Mutation.ExportSourceConnection == nil {
 			break
@@ -1300,6 +1540,12 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.Mutation.ImportSourceObjectFile(childComplexity, args["input"].(model.ImportFileInput)), true
+	case "Mutation.InstallFlyway":
+		if e.ComplexityRoot.Mutation.InstallFlyway == nil {
+			break
+		}
+
+		return e.ComplexityRoot.Mutation.InstallFlyway(childComplexity), true
 	case "Mutation.LoginOpsControlPlane":
 		if e.ComplexityRoot.Mutation.LoginOpsControlPlane == nil {
 			break
@@ -1505,12 +1751,29 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.Query.AnalyzeMockDataDependencies(childComplexity, args["ref"].(model.SourceObjectRefInput), args["rowCount"].(int), args["fkDensityRatio"].(*int)), true
+	case "Query.FlywayStatus":
+		if e.ComplexityRoot.Query.FlywayStatus == nil {
+			break
+		}
+
+		return e.ComplexityRoot.Query.FlywayStatus(childComplexity), true
 	case "Query.Health":
 		if e.ComplexityRoot.Query.Health == nil {
 			break
 		}
 
 		return e.ComplexityRoot.Query.Health(childComplexity), true
+	case "Query.InspectFlywayDirectory":
+		if e.ComplexityRoot.Query.InspectFlywayDirectory == nil {
+			break
+		}
+
+		args, err := ec.field_Query_InspectFlywayDirectory_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.ComplexityRoot.Query.InspectFlywayDirectory(childComplexity, args["directory"].(string)), true
 
 	case "Query.MockDataMaxRowCount":
 		if e.ComplexityRoot.Query.MockDataMaxRowCount == nil {
@@ -2678,6 +2941,7 @@ func (e *executableSchema) Exec(ctx context.Context) graphql.ResponseHandler {
 			graphql.NewInputUnmarshaler("ChatInput", ec.unmarshalInputChatInput),
 			graphql.NewInputUnmarshaler("ColumnDefinitionInput", ec.unmarshalInputColumnDefinitionInput),
 			graphql.NewInputUnmarshaler("CopySourceObjectsInput", ec.unmarshalInputCopySourceObjectsInput),
+			graphql.NewInputUnmarshaler("ExecuteFlywayInput", ec.unmarshalInputExecuteFlywayInput),
 			graphql.NewInputUnmarshaler("ForeignKeyDefinitionInput", ec.unmarshalInputForeignKeyDefinitionInput),
 			graphql.NewInputUnmarshaler("GenerateChatTitleInput", ec.unmarshalInputGenerateChatTitleInput),
 			graphql.NewInputUnmarshaler("ImportColumnMapping", ec.unmarshalInputImportColumnMapping),
@@ -2829,6 +3093,8 @@ func (ec *executionContext) childFields_Column(ctx context.Context, field graphq
 		return ec.fieldContext_Column_Type(ctx, field)
 	case "Name":
 		return ec.fieldContext_Column_Name(ctx, field)
+	case "Comment":
+		return ec.fieldContext_Column_Comment(ctx, field)
 	case "MetadataFidelity":
 		return ec.fieldContext_Column_MetadataFidelity(ctx, field)
 	case "IsPrimary":
@@ -2945,6 +3211,84 @@ func (ec *executionContext) childFields_CreationOptionDefinition(ctx context.Con
 		return ec.fieldContext_CreationOptionDefinition_Values(ctx, field)
 	}
 	return nil, fmt.Errorf("no field named %q was found under type CreationOptionDefinition", field.Name)
+}
+
+func (ec *executionContext) childFields_FlywayDirectoryPreview(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+	switch field.Name {
+	case "Directory":
+		return ec.fieldContext_FlywayDirectoryPreview_Directory(ctx, field)
+	case "Exists":
+		return ec.fieldContext_FlywayDirectoryPreview_Exists(ctx, field)
+	case "Files":
+		return ec.fieldContext_FlywayDirectoryPreview_Files(ctx, field)
+	case "Error":
+		return ec.fieldContext_FlywayDirectoryPreview_Error(ctx, field)
+	}
+	return nil, fmt.Errorf("no field named %q was found under type FlywayDirectoryPreview", field.Name)
+}
+
+func (ec *executionContext) childFields_FlywayExecutionResult(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+	switch field.Name {
+	case "Success":
+		return ec.fieldContext_FlywayExecutionResult_Success(ctx, field)
+	case "Action":
+		return ec.fieldContext_FlywayExecutionResult_Action(ctx, field)
+	case "Command":
+		return ec.fieldContext_FlywayExecutionResult_Command(ctx, field)
+	case "Output":
+		return ec.fieldContext_FlywayExecutionResult_Output(ctx, field)
+	case "Error":
+		return ec.fieldContext_FlywayExecutionResult_Error(ctx, field)
+	case "DurationMs":
+		return ec.fieldContext_FlywayExecutionResult_DurationMs(ctx, field)
+	}
+	return nil, fmt.Errorf("no field named %q was found under type FlywayExecutionResult", field.Name)
+}
+
+func (ec *executionContext) childFields_FlywayInstallResult(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+	switch field.Name {
+	case "Success":
+		return ec.fieldContext_FlywayInstallResult_Success(ctx, field)
+	case "Status":
+		return ec.fieldContext_FlywayInstallResult_Status(ctx, field)
+	case "Output":
+		return ec.fieldContext_FlywayInstallResult_Output(ctx, field)
+	case "Error":
+		return ec.fieldContext_FlywayInstallResult_Error(ctx, field)
+	}
+	return nil, fmt.Errorf("no field named %q was found under type FlywayInstallResult", field.Name)
+}
+
+func (ec *executionContext) childFields_FlywayMigrationFile(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+	switch field.Name {
+	case "Filename":
+		return ec.fieldContext_FlywayMigrationFile_Filename(ctx, field)
+	case "RelativePath":
+		return ec.fieldContext_FlywayMigrationFile_RelativePath(ctx, field)
+	case "Version":
+		return ec.fieldContext_FlywayMigrationFile_Version(ctx, field)
+	case "Description":
+		return ec.fieldContext_FlywayMigrationFile_Description(ctx, field)
+	case "Type":
+		return ec.fieldContext_FlywayMigrationFile_Type(ctx, field)
+	case "SizeBytes":
+		return ec.fieldContext_FlywayMigrationFile_SizeBytes(ctx, field)
+	}
+	return nil, fmt.Errorf("no field named %q was found under type FlywayMigrationFile", field.Name)
+}
+
+func (ec *executionContext) childFields_FlywayStatus(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+	switch field.Name {
+	case "Installed":
+		return ec.fieldContext_FlywayStatus_Installed(ctx, field)
+	case "Version":
+		return ec.fieldContext_FlywayStatus_Version(ctx, field)
+	case "BinaryPath":
+		return ec.fieldContext_FlywayStatus_BinaryPath(ctx, field)
+	case "InstallMethod":
+		return ec.fieldContext_FlywayStatus_InstallMethod(ctx, field)
+	}
+	return nil, fmt.Errorf("no field named %q was found under type FlywayStatus", field.Name)
 }
 
 func (ec *executionContext) childFields_ForeignKeyDefinition(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
@@ -3761,6 +4105,20 @@ func (ec *executionContext) field_Mutation_AddSourceRow_args(ctx context.Context
 	return args, nil
 }
 
+func (ec *executionContext) field_Mutation_ClearSourceObjectData_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "ref",
+		func(ctx context.Context, v any) (model.SourceObjectRefInput, error) {
+			return ec.unmarshalNSourceObjectRefInput2githubᚗcomᚋclideyᚋwhodbᚋcoreᚋgraphᚋmodelᚐSourceObjectRefInput(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["ref"] = arg0
+	return args, nil
+}
+
 func (ec *executionContext) field_Mutation_CopySourceObjects_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
 	var err error
 	args := map[string]any{}
@@ -3849,6 +4207,20 @@ func (ec *executionContext) field_Mutation_DeleteSourceRow_args(ctx context.Cont
 	return args, nil
 }
 
+func (ec *executionContext) field_Mutation_DropSourceObject_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "ref",
+		func(ctx context.Context, v any) (model.SourceObjectRefInput, error) {
+			return ec.unmarshalNSourceObjectRefInput2githubᚗcomᚋclideyᚋwhodbᚋcoreᚋgraphᚋmodelᚐSourceObjectRefInput(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["ref"] = arg0
+	return args, nil
+}
+
 func (ec *executionContext) field_Mutation_ExecuteConfirmedSQL_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
 	var err error
 	args := map[string]any{}
@@ -3868,6 +4240,20 @@ func (ec *executionContext) field_Mutation_ExecuteConfirmedSQL_args(ctx context.
 		return nil, err
 	}
 	args["operationType"] = arg1
+	return args, nil
+}
+
+func (ec *executionContext) field_Mutation_ExecuteFlyway_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "input",
+		func(ctx context.Context, v any) (model.ExecuteFlywayInput, error) {
+			return ec.unmarshalNExecuteFlywayInput2githubᚗcomᚋclideyᚋwhodbᚋcoreᚋgraphᚋmodelᚐExecuteFlywayInput(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["input"] = arg0
 	return args, nil
 }
 
@@ -4152,6 +4538,20 @@ func (ec *executionContext) field_Query_AnalyzeMockDataDependencies_args(ctx con
 		return nil, err
 	}
 	args["fkDensityRatio"] = arg2
+	return args, nil
+}
+
+func (ec *executionContext) field_Query_InspectFlywayDirectory_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "directory",
+		func(ctx context.Context, v any) (string, error) {
+			return ec.unmarshalNString2string(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["directory"] = arg0
 	return args, nil
 }
 
@@ -4763,6 +5163,29 @@ func (ec *executionContext) _Column_Name(ctx context.Context, field graphql.Coll
 	)
 }
 func (ec *executionContext) fieldContext_Column_Name(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("Column", field, false, false, "String")
+}
+
+func (ec *executionContext) _Column_Comment(ctx context.Context, field graphql.CollectedField, obj *model.Column) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Column_Comment(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Comment, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *string) graphql.Marshaler {
+			return ec.marshalOString2ᚖstring(ctx, selections, v)
+		},
+		true,
+		false,
+	)
+}
+func (ec *executionContext) fieldContext_Column_Comment(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
 	return graphql.NewScalarFieldContext("Column", field, false, false, "String")
 }
 
@@ -5739,6 +6162,576 @@ func (ec *executionContext) _CreationOptionDefinition_Values(ctx context.Context
 }
 func (ec *executionContext) fieldContext_CreationOptionDefinition_Values(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
 	return graphql.NewScalarFieldContext("CreationOptionDefinition", field, false, false, "String")
+}
+
+func (ec *executionContext) _FlywayDirectoryPreview_Directory(ctx context.Context, field graphql.CollectedField, obj *model.FlywayDirectoryPreview) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_FlywayDirectoryPreview_Directory(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Directory, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_FlywayDirectoryPreview_Directory(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("FlywayDirectoryPreview", field, false, false, "String")
+}
+
+func (ec *executionContext) _FlywayDirectoryPreview_Exists(ctx context.Context, field graphql.CollectedField, obj *model.FlywayDirectoryPreview) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_FlywayDirectoryPreview_Exists(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Exists, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v bool) graphql.Marshaler {
+			return ec.marshalNBoolean2bool(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_FlywayDirectoryPreview_Exists(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("FlywayDirectoryPreview", field, false, false, "Boolean")
+}
+
+func (ec *executionContext) _FlywayDirectoryPreview_Files(ctx context.Context, field graphql.CollectedField, obj *model.FlywayDirectoryPreview) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_FlywayDirectoryPreview_Files(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Files, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v []*model.FlywayMigrationFile) graphql.Marshaler {
+			return ec.marshalNFlywayMigrationFile2ᚕᚖgithubᚗcomᚋclideyᚋwhodbᚋcoreᚋgraphᚋmodelᚐFlywayMigrationFileᚄ(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_FlywayDirectoryPreview_Files(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "FlywayDirectoryPreview",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_FlywayMigrationFile(ctx, field)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _FlywayDirectoryPreview_Error(ctx context.Context, field graphql.CollectedField, obj *model.FlywayDirectoryPreview) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_FlywayDirectoryPreview_Error(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Error, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *string) graphql.Marshaler {
+			return ec.marshalOString2ᚖstring(ctx, selections, v)
+		},
+		true,
+		false,
+	)
+}
+func (ec *executionContext) fieldContext_FlywayDirectoryPreview_Error(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("FlywayDirectoryPreview", field, false, false, "String")
+}
+
+func (ec *executionContext) _FlywayExecutionResult_Success(ctx context.Context, field graphql.CollectedField, obj *model.FlywayExecutionResult) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_FlywayExecutionResult_Success(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Success, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v bool) graphql.Marshaler {
+			return ec.marshalNBoolean2bool(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_FlywayExecutionResult_Success(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("FlywayExecutionResult", field, false, false, "Boolean")
+}
+
+func (ec *executionContext) _FlywayExecutionResult_Action(ctx context.Context, field graphql.CollectedField, obj *model.FlywayExecutionResult) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_FlywayExecutionResult_Action(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Action, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_FlywayExecutionResult_Action(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("FlywayExecutionResult", field, false, false, "String")
+}
+
+func (ec *executionContext) _FlywayExecutionResult_Command(ctx context.Context, field graphql.CollectedField, obj *model.FlywayExecutionResult) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_FlywayExecutionResult_Command(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Command, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_FlywayExecutionResult_Command(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("FlywayExecutionResult", field, false, false, "String")
+}
+
+func (ec *executionContext) _FlywayExecutionResult_Output(ctx context.Context, field graphql.CollectedField, obj *model.FlywayExecutionResult) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_FlywayExecutionResult_Output(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Output, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_FlywayExecutionResult_Output(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("FlywayExecutionResult", field, false, false, "String")
+}
+
+func (ec *executionContext) _FlywayExecutionResult_Error(ctx context.Context, field graphql.CollectedField, obj *model.FlywayExecutionResult) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_FlywayExecutionResult_Error(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Error, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *string) graphql.Marshaler {
+			return ec.marshalOString2ᚖstring(ctx, selections, v)
+		},
+		true,
+		false,
+	)
+}
+func (ec *executionContext) fieldContext_FlywayExecutionResult_Error(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("FlywayExecutionResult", field, false, false, "String")
+}
+
+func (ec *executionContext) _FlywayExecutionResult_DurationMs(ctx context.Context, field graphql.CollectedField, obj *model.FlywayExecutionResult) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_FlywayExecutionResult_DurationMs(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.DurationMs, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v int) graphql.Marshaler {
+			return ec.marshalNInt2int(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_FlywayExecutionResult_DurationMs(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("FlywayExecutionResult", field, false, false, "Int")
+}
+
+func (ec *executionContext) _FlywayInstallResult_Success(ctx context.Context, field graphql.CollectedField, obj *model.FlywayInstallResult) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_FlywayInstallResult_Success(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Success, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v bool) graphql.Marshaler {
+			return ec.marshalNBoolean2bool(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_FlywayInstallResult_Success(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("FlywayInstallResult", field, false, false, "Boolean")
+}
+
+func (ec *executionContext) _FlywayInstallResult_Status(ctx context.Context, field graphql.CollectedField, obj *model.FlywayInstallResult) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_FlywayInstallResult_Status(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Status, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *model.FlywayStatus) graphql.Marshaler {
+			return ec.marshalNFlywayStatus2ᚖgithubᚗcomᚋclideyᚋwhodbᚋcoreᚋgraphᚋmodelᚐFlywayStatus(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_FlywayInstallResult_Status(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "FlywayInstallResult",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_FlywayStatus(ctx, field)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _FlywayInstallResult_Output(ctx context.Context, field graphql.CollectedField, obj *model.FlywayInstallResult) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_FlywayInstallResult_Output(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Output, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_FlywayInstallResult_Output(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("FlywayInstallResult", field, false, false, "String")
+}
+
+func (ec *executionContext) _FlywayInstallResult_Error(ctx context.Context, field graphql.CollectedField, obj *model.FlywayInstallResult) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_FlywayInstallResult_Error(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Error, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *string) graphql.Marshaler {
+			return ec.marshalOString2ᚖstring(ctx, selections, v)
+		},
+		true,
+		false,
+	)
+}
+func (ec *executionContext) fieldContext_FlywayInstallResult_Error(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("FlywayInstallResult", field, false, false, "String")
+}
+
+func (ec *executionContext) _FlywayMigrationFile_Filename(ctx context.Context, field graphql.CollectedField, obj *model.FlywayMigrationFile) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_FlywayMigrationFile_Filename(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Filename, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_FlywayMigrationFile_Filename(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("FlywayMigrationFile", field, false, false, "String")
+}
+
+func (ec *executionContext) _FlywayMigrationFile_RelativePath(ctx context.Context, field graphql.CollectedField, obj *model.FlywayMigrationFile) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_FlywayMigrationFile_RelativePath(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.RelativePath, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_FlywayMigrationFile_RelativePath(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("FlywayMigrationFile", field, false, false, "String")
+}
+
+func (ec *executionContext) _FlywayMigrationFile_Version(ctx context.Context, field graphql.CollectedField, obj *model.FlywayMigrationFile) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_FlywayMigrationFile_Version(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Version, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_FlywayMigrationFile_Version(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("FlywayMigrationFile", field, false, false, "String")
+}
+
+func (ec *executionContext) _FlywayMigrationFile_Description(ctx context.Context, field graphql.CollectedField, obj *model.FlywayMigrationFile) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_FlywayMigrationFile_Description(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Description, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_FlywayMigrationFile_Description(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("FlywayMigrationFile", field, false, false, "String")
+}
+
+func (ec *executionContext) _FlywayMigrationFile_Type(ctx context.Context, field graphql.CollectedField, obj *model.FlywayMigrationFile) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_FlywayMigrationFile_Type(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Type, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_FlywayMigrationFile_Type(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("FlywayMigrationFile", field, false, false, "String")
+}
+
+func (ec *executionContext) _FlywayMigrationFile_SizeBytes(ctx context.Context, field graphql.CollectedField, obj *model.FlywayMigrationFile) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_FlywayMigrationFile_SizeBytes(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.SizeBytes, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v int) graphql.Marshaler {
+			return ec.marshalNInt2int(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_FlywayMigrationFile_SizeBytes(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("FlywayMigrationFile", field, false, false, "Int")
+}
+
+func (ec *executionContext) _FlywayStatus_Installed(ctx context.Context, field graphql.CollectedField, obj *model.FlywayStatus) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_FlywayStatus_Installed(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Installed, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v bool) graphql.Marshaler {
+			return ec.marshalNBoolean2bool(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_FlywayStatus_Installed(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("FlywayStatus", field, false, false, "Boolean")
+}
+
+func (ec *executionContext) _FlywayStatus_Version(ctx context.Context, field graphql.CollectedField, obj *model.FlywayStatus) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_FlywayStatus_Version(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Version, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *string) graphql.Marshaler {
+			return ec.marshalOString2ᚖstring(ctx, selections, v)
+		},
+		true,
+		false,
+	)
+}
+func (ec *executionContext) fieldContext_FlywayStatus_Version(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("FlywayStatus", field, false, false, "String")
+}
+
+func (ec *executionContext) _FlywayStatus_BinaryPath(ctx context.Context, field graphql.CollectedField, obj *model.FlywayStatus) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_FlywayStatus_BinaryPath(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.BinaryPath, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *string) graphql.Marshaler {
+			return ec.marshalOString2ᚖstring(ctx, selections, v)
+		},
+		true,
+		false,
+	)
+}
+func (ec *executionContext) fieldContext_FlywayStatus_BinaryPath(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("FlywayStatus", field, false, false, "String")
+}
+
+func (ec *executionContext) _FlywayStatus_InstallMethod(ctx context.Context, field graphql.CollectedField, obj *model.FlywayStatus) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_FlywayStatus_InstallMethod(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.InstallMethod, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *string) graphql.Marshaler {
+			return ec.marshalOString2ᚖstring(ctx, selections, v)
+		},
+		true,
+		false,
+	)
+}
+func (ec *executionContext) fieldContext_FlywayStatus_InstallMethod(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("FlywayStatus", field, false, false, "String")
 }
 
 func (ec *executionContext) _ForeignKeyDefinition_Table(ctx context.Context, field graphql.CollectedField, obj *model.ForeignKeyDefinition) (ret graphql.Marshaler) {
@@ -7263,6 +8256,94 @@ func (ec *executionContext) fieldContext_Mutation_DeleteSourceRow(ctx context.Co
 	return fc, nil
 }
 
+func (ec *executionContext) _Mutation_ClearSourceObjectData(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Mutation_ClearSourceObjectData(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.Resolvers.Mutation().ClearSourceObjectData(ctx, fc.Args["ref"].(model.SourceObjectRefInput))
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *model.StatusResponse) graphql.Marshaler {
+			return ec.marshalNStatusResponse2ᚖgithubᚗcomᚋclideyᚋwhodbᚋcoreᚋgraphᚋmodelᚐStatusResponse(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Mutation_ClearSourceObjectData(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Mutation",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_StatusResponse(ctx, field)
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Mutation_ClearSourceObjectData_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Mutation_DropSourceObject(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Mutation_DropSourceObject(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.Resolvers.Mutation().DropSourceObject(ctx, fc.Args["ref"].(model.SourceObjectRefInput))
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *model.StatusResponse) graphql.Marshaler {
+			return ec.marshalNStatusResponse2ᚖgithubᚗcomᚋclideyᚋwhodbᚋcoreᚋgraphᚋmodelᚐStatusResponse(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Mutation_DropSourceObject(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Mutation",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_StatusResponse(ctx, field)
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Mutation_DropSourceObject_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
 func (ec *executionContext) _Mutation_GenerateMockData(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -7345,6 +8426,82 @@ func (ec *executionContext) fieldContext_Mutation_CopySourceObjects(ctx context.
 	}()
 	ctx = graphql.WithFieldContext(ctx, fc)
 	if fc.Args, err = ec.field_Mutation_CopySourceObjects_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Mutation_InstallFlyway(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Mutation_InstallFlyway(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return ec.Resolvers.Mutation().InstallFlyway(ctx)
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *model.FlywayInstallResult) graphql.Marshaler {
+			return ec.marshalNFlywayInstallResult2ᚖgithubᚗcomᚋclideyᚋwhodbᚋcoreᚋgraphᚋmodelᚐFlywayInstallResult(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Mutation_InstallFlyway(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Mutation",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_FlywayInstallResult(ctx, field)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Mutation_ExecuteFlyway(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Mutation_ExecuteFlyway(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.Resolvers.Mutation().ExecuteFlyway(ctx, fc.Args["input"].(model.ExecuteFlywayInput))
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *model.FlywayExecutionResult) graphql.Marshaler {
+			return ec.marshalNFlywayExecutionResult2ᚖgithubᚗcomᚋclideyᚋwhodbᚋcoreᚋgraphᚋmodelᚐFlywayExecutionResult(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Mutation_ExecuteFlyway(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Mutation",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_FlywayExecutionResult(ctx, field)
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Mutation_ExecuteFlyway_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
 		ec.Error(ctx, err)
 		return fc, err
 	}
@@ -9025,6 +10182,82 @@ func (ec *executionContext) fieldContext_Query_SourceTargetSchemas(ctx context.C
 	}()
 	ctx = graphql.WithFieldContext(ctx, fc)
 	if fc.Args, err = ec.field_Query_SourceTargetSchemas_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Query_FlywayStatus(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Query_FlywayStatus(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return ec.Resolvers.Query().FlywayStatus(ctx)
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *model.FlywayStatus) graphql.Marshaler {
+			return ec.marshalNFlywayStatus2ᚖgithubᚗcomᚋclideyᚋwhodbᚋcoreᚋgraphᚋmodelᚐFlywayStatus(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Query_FlywayStatus(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Query",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_FlywayStatus(ctx, field)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Query_InspectFlywayDirectory(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Query_InspectFlywayDirectory(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.Resolvers.Query().InspectFlywayDirectory(ctx, fc.Args["directory"].(string))
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *model.FlywayDirectoryPreview) graphql.Marshaler {
+			return ec.marshalNFlywayDirectoryPreview2ᚖgithubᚗcomᚋclideyᚋwhodbᚋcoreᚋgraphᚋmodelᚐFlywayDirectoryPreview(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Query_InspectFlywayDirectory(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Query",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_FlywayDirectoryPreview(ctx, field)
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Query_InspectFlywayDirectory_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
 		ec.Error(ctx, err)
 		return fc, err
 	}
@@ -14161,6 +15394,90 @@ func UnmarshalCopySourceObjectsInput(ctx context.Context, raw any) (model.CopySo
 	return out, err
 }
 
+func (ec *executionContext) unmarshalInputExecuteFlywayInput(ctx context.Context, obj any) (model.ExecuteFlywayInput, error) {
+	var it model.ExecuteFlywayInput
+	if obj == nil {
+		return it, nil
+	}
+
+	asMap := map[string]any{}
+	for k, v := range obj.(map[string]any) {
+		asMap[k] = v
+	}
+
+	fieldsInOrder := [...]string{"Target", "TargetSchema", "Directory", "Action", "BaselineOnMigrate", "OutOfOrder", "ValidateOnMigrate"}
+	for _, k := range fieldsInOrder {
+		v, ok := asMap[k]
+		if !ok {
+			continue
+		}
+		switch k {
+		case "Target":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("Target"))
+			data, err := ec.unmarshalNSourceTargetConnectionInput2ᚖgithubᚗcomᚋclideyᚋwhodbᚋcoreᚋgraphᚋmodelᚐSourceTargetConnectionInput(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.Target = data
+		case "TargetSchema":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("TargetSchema"))
+			data, err := ec.unmarshalOString2ᚖstring(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.TargetSchema = data
+		case "Directory":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("Directory"))
+			data, err := ec.unmarshalNString2string(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.Directory = data
+		case "Action":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("Action"))
+			data, err := ec.unmarshalNString2string(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.Action = data
+		case "BaselineOnMigrate":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("BaselineOnMigrate"))
+			data, err := ec.unmarshalOBoolean2ᚖbool(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.BaselineOnMigrate = data
+		case "OutOfOrder":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("OutOfOrder"))
+			data, err := ec.unmarshalOBoolean2ᚖbool(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.OutOfOrder = data
+		case "ValidateOnMigrate":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("ValidateOnMigrate"))
+			data, err := ec.unmarshalOBoolean2ᚖbool(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.ValidateOnMigrate = data
+		}
+	}
+	return it, nil
+}
+
+// UnmarshalExecuteFlywayInput unmarshals raw into the ExecuteFlywayInput input type, using the
+// unmarshaler bound to ctx's request. Call it from a resolver to decode an input
+// object that was not passed as a field argument.
+//
+// ctx must come from a gqlgen request; outside one there is no unmarshaler to use
+// and the returned error says so.
+func UnmarshalExecuteFlywayInput(ctx context.Context, raw any) (model.ExecuteFlywayInput, error) {
+	var out model.ExecuteFlywayInput
+	err := graphql.UnmarshalNamedInputFromContext(ctx, "ExecuteFlywayInput", raw, &out)
+	return out, err
+}
+
 func (ec *executionContext) unmarshalInputForeignKeyDefinitionInput(ctx context.Context, obj any) (model.ForeignKeyDefinitionInput, error) {
 	var it model.ForeignKeyDefinitionInput
 	if obj == nil {
@@ -15346,6 +16663,11 @@ func (ec *executionContext) _Column(ctx context.Context, sel ast.SelectionSet, o
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
 			}
+		case "Comment":
+			out.Values[i] = ec._Column_Comment(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
 		case "MetadataFidelity":
 			out.Values[i] = ec._Column_MetadataFidelity(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
@@ -15694,6 +17016,266 @@ func (ec *executionContext) _CreationOptionDefinition(ctx context.Context, sel a
 		case "Values":
 			out.Values[i] = ec._CreationOptionDefinition_Values(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	if n := len(deferred.Defers); n > 0 {
+		atomic.AddInt32(&ec.Deferred, int32(min(n, math.MaxInt32)))
+		ec.ProcessDeferredGroup(deferred)
+	}
+
+	return out
+}
+
+var flywayDirectoryPreviewImplementors = []string{"FlywayDirectoryPreview"}
+
+func (ec *executionContext) _FlywayDirectoryPreview(ctx context.Context, sel ast.SelectionSet, obj *model.FlywayDirectoryPreview) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, flywayDirectoryPreviewImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferred := graphql.NewDeferredGroup(ctx)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("FlywayDirectoryPreview")
+		case "Directory":
+			out.Values[i] = ec._FlywayDirectoryPreview_Directory(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "Exists":
+			out.Values[i] = ec._FlywayDirectoryPreview_Exists(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "Files":
+			out.Values[i] = ec._FlywayDirectoryPreview_Files(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "Error":
+			out.Values[i] = ec._FlywayDirectoryPreview_Error(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	if n := len(deferred.Defers); n > 0 {
+		atomic.AddInt32(&ec.Deferred, int32(min(n, math.MaxInt32)))
+		ec.ProcessDeferredGroup(deferred)
+	}
+
+	return out
+}
+
+var flywayExecutionResultImplementors = []string{"FlywayExecutionResult"}
+
+func (ec *executionContext) _FlywayExecutionResult(ctx context.Context, sel ast.SelectionSet, obj *model.FlywayExecutionResult) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, flywayExecutionResultImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferred := graphql.NewDeferredGroup(ctx)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("FlywayExecutionResult")
+		case "Success":
+			out.Values[i] = ec._FlywayExecutionResult_Success(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "Action":
+			out.Values[i] = ec._FlywayExecutionResult_Action(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "Command":
+			out.Values[i] = ec._FlywayExecutionResult_Command(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "Output":
+			out.Values[i] = ec._FlywayExecutionResult_Output(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "Error":
+			out.Values[i] = ec._FlywayExecutionResult_Error(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
+		case "DurationMs":
+			out.Values[i] = ec._FlywayExecutionResult_DurationMs(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	if n := len(deferred.Defers); n > 0 {
+		atomic.AddInt32(&ec.Deferred, int32(min(n, math.MaxInt32)))
+		ec.ProcessDeferredGroup(deferred)
+	}
+
+	return out
+}
+
+var flywayInstallResultImplementors = []string{"FlywayInstallResult"}
+
+func (ec *executionContext) _FlywayInstallResult(ctx context.Context, sel ast.SelectionSet, obj *model.FlywayInstallResult) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, flywayInstallResultImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferred := graphql.NewDeferredGroup(ctx)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("FlywayInstallResult")
+		case "Success":
+			out.Values[i] = ec._FlywayInstallResult_Success(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "Status":
+			out.Values[i] = ec._FlywayInstallResult_Status(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "Output":
+			out.Values[i] = ec._FlywayInstallResult_Output(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "Error":
+			out.Values[i] = ec._FlywayInstallResult_Error(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	if n := len(deferred.Defers); n > 0 {
+		atomic.AddInt32(&ec.Deferred, int32(min(n, math.MaxInt32)))
+		ec.ProcessDeferredGroup(deferred)
+	}
+
+	return out
+}
+
+var flywayMigrationFileImplementors = []string{"FlywayMigrationFile"}
+
+func (ec *executionContext) _FlywayMigrationFile(ctx context.Context, sel ast.SelectionSet, obj *model.FlywayMigrationFile) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, flywayMigrationFileImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferred := graphql.NewDeferredGroup(ctx)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("FlywayMigrationFile")
+		case "Filename":
+			out.Values[i] = ec._FlywayMigrationFile_Filename(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "RelativePath":
+			out.Values[i] = ec._FlywayMigrationFile_RelativePath(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "Version":
+			out.Values[i] = ec._FlywayMigrationFile_Version(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "Description":
+			out.Values[i] = ec._FlywayMigrationFile_Description(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "Type":
+			out.Values[i] = ec._FlywayMigrationFile_Type(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "SizeBytes":
+			out.Values[i] = ec._FlywayMigrationFile_SizeBytes(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	if n := len(deferred.Defers); n > 0 {
+		atomic.AddInt32(&ec.Deferred, int32(min(n, math.MaxInt32)))
+		ec.ProcessDeferredGroup(deferred)
+	}
+
+	return out
+}
+
+var flywayStatusImplementors = []string{"FlywayStatus"}
+
+func (ec *executionContext) _FlywayStatus(ctx context.Context, sel ast.SelectionSet, obj *model.FlywayStatus) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, flywayStatusImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferred := graphql.NewDeferredGroup(ctx)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("FlywayStatus")
+		case "Installed":
+			out.Values[i] = ec._FlywayStatus_Installed(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "Version":
+			out.Values[i] = ec._FlywayStatus_Version(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
+		case "BinaryPath":
+			out.Values[i] = ec._FlywayStatus_BinaryPath(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
+		case "InstallMethod":
+			out.Values[i] = ec._FlywayStatus_InstallMethod(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
 				out.Invalids++
 			}
 		default:
@@ -16361,6 +17943,20 @@ func (ec *executionContext) _Mutation(ctx context.Context, sel ast.SelectionSet)
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
 			}
+		case "ClearSourceObjectData":
+			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
+				return ec._Mutation_ClearSourceObjectData(ctx, field)
+			})
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "DropSourceObject":
+			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
+				return ec._Mutation_DropSourceObject(ctx, field)
+			})
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
 		case "GenerateMockData":
 			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
 				return ec._Mutation_GenerateMockData(ctx, field)
@@ -16371,6 +17967,20 @@ func (ec *executionContext) _Mutation(ctx context.Context, sel ast.SelectionSet)
 		case "CopySourceObjects":
 			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
 				return ec._Mutation_CopySourceObjects(ctx, field)
+			})
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "InstallFlyway":
+			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
+				return ec._Mutation_InstallFlyway(ctx, field)
+			})
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "ExecuteFlyway":
+			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
+				return ec._Mutation_ExecuteFlyway(ctx, field)
 			})
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
@@ -16744,6 +18354,18 @@ func (ec *executionContext) _Query(ctx context.Context, sel ast.SelectionSet) gr
 				true, true,
 				func(ctx context.Context) graphql.Marshaler {
 					return ec._Query_SourceTargetSchemas(ctx, field)
+				})
+		case "FlywayStatus":
+			out.ResolveRootConcurrently(innerCtx, ec.OperationContext, i,
+				true, true,
+				func(ctx context.Context) graphql.Marshaler {
+					return ec._Query_FlywayStatus(ctx, field)
+				})
+		case "InspectFlywayDirectory":
+			out.ResolveRootConcurrently(innerCtx, ec.OperationContext, i,
+				true, true,
+				func(ctx context.Context) graphql.Marshaler {
+					return ec._Query_InspectFlywayDirectory(ctx, field)
 				})
 		case "__type":
 			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
@@ -18993,6 +20615,67 @@ func (ec *executionContext) unmarshalNDataShape2githubᚗcomᚋclideyᚋwhodbᚋ
 
 func (ec *executionContext) marshalNDataShape2githubᚗcomᚋclideyᚋwhodbᚋcoreᚋgraphᚋmodelᚐDataShape(ctx context.Context, sel ast.SelectionSet, v model.DataShape) graphql.Marshaler {
 	return v
+}
+
+func (ec *executionContext) unmarshalNExecuteFlywayInput2githubᚗcomᚋclideyᚋwhodbᚋcoreᚋgraphᚋmodelᚐExecuteFlywayInput(ctx context.Context, v any) (model.ExecuteFlywayInput, error) {
+	res, err := ec.unmarshalInputExecuteFlywayInput(ctx, v)
+	return res, graphql.ErrorOnPath(ctx, err)
+}
+
+func (ec *executionContext) marshalNFlywayDirectoryPreview2ᚖgithubᚗcomᚋclideyᚋwhodbᚋcoreᚋgraphᚋmodelᚐFlywayDirectoryPreview(ctx context.Context, sel ast.SelectionSet, v *model.FlywayDirectoryPreview) graphql.Marshaler {
+	if v == nil {
+		graphql.AddInvalidNullError(ctx, "FlywayDirectoryPreview!")
+		return graphql.Null
+	}
+	return ec._FlywayDirectoryPreview(ctx, sel, v)
+}
+
+func (ec *executionContext) marshalNFlywayExecutionResult2ᚖgithubᚗcomᚋclideyᚋwhodbᚋcoreᚋgraphᚋmodelᚐFlywayExecutionResult(ctx context.Context, sel ast.SelectionSet, v *model.FlywayExecutionResult) graphql.Marshaler {
+	if v == nil {
+		graphql.AddInvalidNullError(ctx, "FlywayExecutionResult!")
+		return graphql.Null
+	}
+	return ec._FlywayExecutionResult(ctx, sel, v)
+}
+
+func (ec *executionContext) marshalNFlywayInstallResult2ᚖgithubᚗcomᚋclideyᚋwhodbᚋcoreᚋgraphᚋmodelᚐFlywayInstallResult(ctx context.Context, sel ast.SelectionSet, v *model.FlywayInstallResult) graphql.Marshaler {
+	if v == nil {
+		graphql.AddInvalidNullError(ctx, "FlywayInstallResult!")
+		return graphql.Null
+	}
+	return ec._FlywayInstallResult(ctx, sel, v)
+}
+
+func (ec *executionContext) marshalNFlywayMigrationFile2ᚕᚖgithubᚗcomᚋclideyᚋwhodbᚋcoreᚋgraphᚋmodelᚐFlywayMigrationFileᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.FlywayMigrationFile) graphql.Marshaler {
+	ret := graphql.MarshalSliceConcurrently(ctx, len(v), 0, false, func(ctx context.Context, i int) graphql.Marshaler {
+		fc := graphql.GetFieldContext(ctx)
+		fc.Result = &v[i]
+		return ec.marshalNFlywayMigrationFile2ᚖgithubᚗcomᚋclideyᚋwhodbᚋcoreᚋgraphᚋmodelᚐFlywayMigrationFile(ctx, sel, v[i])
+	})
+
+	for _, e := range ret {
+		if e == graphql.Null {
+			return graphql.Null
+		}
+	}
+
+	return ret
+}
+
+func (ec *executionContext) marshalNFlywayMigrationFile2ᚖgithubᚗcomᚋclideyᚋwhodbᚋcoreᚋgraphᚋmodelᚐFlywayMigrationFile(ctx context.Context, sel ast.SelectionSet, v *model.FlywayMigrationFile) graphql.Marshaler {
+	if v == nil {
+		graphql.AddInvalidNullError(ctx, "FlywayMigrationFile!")
+		return graphql.Null
+	}
+	return ec._FlywayMigrationFile(ctx, sel, v)
+}
+
+func (ec *executionContext) marshalNFlywayStatus2ᚖgithubᚗcomᚋclideyᚋwhodbᚋcoreᚋgraphᚋmodelᚐFlywayStatus(ctx context.Context, sel ast.SelectionSet, v *model.FlywayStatus) graphql.Marshaler {
+	if v == nil {
+		graphql.AddInvalidNullError(ctx, "FlywayStatus!")
+		return graphql.Null
+	}
+	return ec._FlywayStatus(ctx, sel, v)
 }
 
 func (ec *executionContext) unmarshalNGenerateChatTitleInput2githubᚗcomᚋclideyᚋwhodbᚋcoreᚋgraphᚋmodelᚐGenerateChatTitleInput(ctx context.Context, v any) (model.GenerateChatTitleInput, error) {

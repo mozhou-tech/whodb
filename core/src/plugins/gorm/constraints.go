@@ -127,7 +127,30 @@ func (p *GormPlugin) NullifyFKColumn(config *engine.PluginConfig, schema string,
 // ClearTableData clears all data from a table
 func (p *GormPlugin) ClearTableData(config *engine.PluginConfig, schema string, storageUnit string) (bool, error) {
 	return plugins.WithConnection(config, p.DB, func(db *gorm.DB) (bool, error) {
+		if config == nil || config.Transaction == nil {
+			builder := p.GormPluginFunctions.CreateSQLBuilder(db)
+			if tableName, err := builder.QualifiedTableName(schema, storageUnit); err == nil {
+				if err := db.Exec("TRUNCATE TABLE " + tableName).Error; err == nil {
+					return true, nil
+				}
+			}
+		}
 		err := p.clearTableDataWithDB(db, schema, storageUnit)
 		return err == nil, err
+	})
+}
+
+// DropStorageUnit drops a table from the database.
+func (p *GormPlugin) DropStorageUnit(config *engine.PluginConfig, schema string, storageUnit string) (bool, error) {
+	return plugins.WithConnection(config, p.DB, func(db *gorm.DB) (bool, error) {
+		builder := p.GormPluginFunctions.CreateSQLBuilder(db)
+		tableName, err := builder.QualifiedTableName(schema, storageUnit)
+		if err != nil {
+			return false, err
+		}
+		if err := db.Exec("DROP TABLE " + tableName).Error; err != nil {
+			return false, err
+		}
+		return true, nil
 	})
 }

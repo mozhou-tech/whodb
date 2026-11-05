@@ -296,8 +296,6 @@ export interface SourceTypeItem {
 	supportsModifiers?: boolean;
 	/** Whether this database supports scratchpad/raw query execution */
 	supportsScratchpad?: boolean;
-	/** Whether this database supports the chat surface. */
-	supportsChat?: boolean;
 	/** Whether this database supports the graph surface. */
 	supportsGraph?: boolean;
 	/** Whether this database supports schemas */
@@ -555,7 +553,6 @@ function decorateSourceType(item: BackendSourceType): SourceTypeItem {
 			database: databaseField?.Required ?? false,
 		},
 		supportsModifiers: item.contract.Model === SourceModel.Relational,
-		supportsChat: item.contract.Surfaces.includes(SourceSurface.Chat),
 		supportsGraph: item.contract.Surfaces.includes(SourceSurface.Graph),
 		supportsScratchpad: item.contract.Surfaces.includes(SourceSurface.Query),
 		supportsSchema: browsePath.includes(SourceObjectKind.Schema),

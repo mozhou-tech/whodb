@@ -44,6 +44,7 @@ type ChatInput struct {
 type Column struct {
 	Type             string                 `json:"Type"`
 	Name             string                 `json:"Name"`
+	Comment          *string                `json:"Comment,omitempty"`
 	MetadataFidelity SourceMetadataFidelity `json:"MetadataFidelity"`
 	IsPrimary        bool                   `json:"IsPrimary"`
 	IsForeignKey     bool                   `json:"IsForeignKey"`
@@ -124,6 +125,55 @@ type CreationOptionDefinition struct {
 	Label    string   `json:"Label"`
 	Required bool     `json:"Required"`
 	Values   []string `json:"Values"`
+}
+
+type ExecuteFlywayInput struct {
+	Target            *SourceTargetConnectionInput `json:"Target"`
+	TargetSchema      *string                      `json:"TargetSchema,omitempty"`
+	Directory         string                       `json:"Directory"`
+	Action            string                       `json:"Action"`
+	BaselineOnMigrate *bool                        `json:"BaselineOnMigrate,omitempty"`
+	OutOfOrder        *bool                        `json:"OutOfOrder,omitempty"`
+	ValidateOnMigrate *bool                        `json:"ValidateOnMigrate,omitempty"`
+}
+
+type FlywayDirectoryPreview struct {
+	Directory string                 `json:"Directory"`
+	Exists    bool                   `json:"Exists"`
+	Files     []*FlywayMigrationFile `json:"Files"`
+	Error     *string                `json:"Error,omitempty"`
+}
+
+type FlywayExecutionResult struct {
+	Success    bool    `json:"Success"`
+	Action     string  `json:"Action"`
+	Command    string  `json:"Command"`
+	Output     string  `json:"Output"`
+	Error      *string `json:"Error,omitempty"`
+	DurationMs int     `json:"DurationMs"`
+}
+
+type FlywayInstallResult struct {
+	Success bool          `json:"Success"`
+	Status  *FlywayStatus `json:"Status"`
+	Output  string        `json:"Output"`
+	Error   *string       `json:"Error,omitempty"`
+}
+
+type FlywayMigrationFile struct {
+	Filename     string `json:"Filename"`
+	RelativePath string `json:"RelativePath"`
+	Version      string `json:"Version"`
+	Description  string `json:"Description"`
+	Type         string `json:"Type"`
+	SizeBytes    int    `json:"SizeBytes"`
+}
+
+type FlywayStatus struct {
+	Installed     bool    `json:"Installed"`
+	Version       *string `json:"Version,omitempty"`
+	BinaryPath    *string `json:"BinaryPath,omitempty"`
+	InstallMethod *string `json:"InstallMethod,omitempty"`
 }
 
 type ForeignKeyDefinition struct {

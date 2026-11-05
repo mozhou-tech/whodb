@@ -1,0 +1,119 @@
+en_US:
+  title: Migration Tool
+  subtitle: Install Flyway CLI with one click, select a migration SQL directory, and run migrations against your target project and database.
+  flywaySectionTitle: Flyway CLI Environment
+  statusInstalled: Installed
+  statusNotInstalled: Not Installed
+  versionLabel: Version
+  binaryPathLabel: Binary Path
+  installMethodLabel: Install Source
+  installButton: One-Click Install Flyway CLI
+  installingButton: Installing Flyway CLI...
+  recheckButton: Recheck
+  installSuccess: Flyway CLI installed successfully
+  installFailed: "Failed to install Flyway CLI: {error}"
+  notInstalledDesc: Flyway CLI was not detected on your system. Click "One-Click Install Flyway CLI" to install via Homebrew or download the official Flyway CLI automatically.
+  directorySectionTitle: Migration Files Directory
+  directoryPlaceholder: /path/to/db/migration
+  browseDirectory: Browse Directory
+  scanDirectory: Scan Files
+  filesFound: "{count} migration files found"
+  noFilesFound: No .sql migration files found in this directory
+  directoryNotExist: "Directory does not exist or cannot be read: {error}"
+  colVersion: Version
+  colType: Type
+  colDescription: Description
+  colFilename: File Path
+  colSize: Size
+  typeVersioned: Versioned
+  typeRepeatable: Repeatable
+  typeUndo: Undo
+  typeSql: SQL
+  targetSectionTitle: Target Project & Database
+  localConnectionsGroup: Local Connections
+  targetProjectLabel: Target Project
+  selectProjectPlaceholder: Select project...
+  targetInstanceLabel: Target Database Instance
+  selectInstancePlaceholder: Select database instance...
+  targetDatabaseLabel: Target Database
+  selectDatabasePlaceholder: Select target database...
+  targetSchemaLabel: Target Schema
+  selectSchemaPlaceholder: Select target schema (optional)...
+  useCurrentTarget: Use Current Connection
+  optionsTitle: Migration Options
+  baselineOnMigrate: Baseline on Migrate (-baselineOnMigrate=true)
+  validateOnMigrate: Validate on Migrate (-validateOnMigrate=true)
+  outOfOrder: Allow Out-of-Order Migrations (-outOfOrder=true)
+  actionMigrate: Run Migrate (flyway migrate)
+  actionInfo: Check Status (flyway info)
+  actionValidate: Validate (flyway validate)
+  actionBaseline: Baseline (flyway baseline)
+  actionRepair: Repair (flyway repair)
+  runningAction: "Running flyway {action}..."
+  executionOutputTitle: Execution Output
+  durationLabel: "{ms} ms"
+  statusSuccess: Succeeded
+  statusFailed: Failed
+  migrateSuccess: "Flyway {action} completed successfully"
+  migrateFailed: "Flyway {action} failed: {error}"
+  unsupportedDbWarning: "Current database type ({type}) does not support Flyway JDBC migrations. Supported types: PostgreSQL, MySQL, MariaDB, ClickHouse, SQLite, DuckDB."
+
+zh_CN:
+  title: 迁移工具
+  subtitle: 支持一键安装 Flyway CLI，指定本地迁移 SQL 目录，在选定的项目和数据库中执行迁移与版本检查。
+  flywaySectionTitle: Flyway CLI 环境状态
+  statusInstalled: 已安装
+  statusNotInstalled: 未安装
+  versionLabel: 版本
+  binaryPathLabel: 可执行文件路径
+  installMethodLabel: 安装来源
+  installButton: 一键安装 Flyway CLI
+  installingButton: 正在安装 Flyway CLI...
+  recheckButton: 重新检测
+  installSuccess: Flyway CLI 安装成功
+  installFailed: "Flyway CLI 安装失败：{error}"
+  notInstalledDesc: 未检测到系统中的 Flyway CLI。点击右侧“一键安装 Flyway CLI”可通过 Homebrew 或自动下载官方命令行包完成安装。
+  directorySectionTitle: 迁移文件目录
+  directoryPlaceholder: 请选择或输入包含 V1__*.sql 的迁移文件目录路径...
+  browseDirectory: 选择目录
+  scanDirectory: 扫描文件
+  filesFound: "已发现 {count} 个 SQL 迁移文件"
+  noFilesFound: 该目录下未发现 .sql 迁移文件
+  directoryNotExist: "目录不存在或无法读取：{error}"
+  colVersion: 版本号
+  colType: 类型
+  colDescription: 描述
+  colFilename: 文件相对路径
+  colSize: 大小
+  typeVersioned: 版本迁移 (V)
+  typeRepeatable: 可重复 (R)
+  typeUndo: 回滚 (U)
+  typeSql: SQL 脚本
+  targetSectionTitle: 目标项目与数据库
+  localConnectionsGroup: 本地连接
+  targetProjectLabel: 目标项目
+  selectProjectPlaceholder: 选择目标项目...
+  targetInstanceLabel: 目标数据库实例
+  selectInstancePlaceholder: 选择数据库实例...
+  targetDatabaseLabel: 目标数据库
+  selectDatabasePlaceholder: 选择目标数据库...
+  targetSchemaLabel: 目标模式 (Schema)
+  selectSchemaPlaceholder: 选择或输入目标 Schema（可选）...
+  useCurrentTarget: 使用当前所在连接
+  optionsTitle: 迁移执行选项
+  baselineOnMigrate: 非空库自动基线化 (-baselineOnMigrate=true)
+  validateOnMigrate: 迁移前校验 (-validateOnMigrate=true)
+  outOfOrder: 允许乱序执行 (-outOfOrder=true)
+  actionMigrate: 执行迁移 (Migrate)
+  actionInfo: 查看状态 (Info)
+  actionValidate: 校验脚本 (Validate)
+  actionBaseline: 建立基线 (Baseline)
+  actionRepair: 修复记录 (Repair)
+  runningAction: "正在执行 flyway {action}..."
+  executionOutputTitle: 执行日志与结果
+  durationLabel: "耗时 {ms} ms"
+  statusSuccess: 执行成功
+  statusFailed: 执行失败
+  migrateSuccess: "Flyway {action} 执行成功"
+  migrateFailed: "Flyway {action} 执行失败：{error}"
+  unsupportedDbWarning: "数据库类型 ({type}) 暂不支持 Flyway JDBC 迁移。支持类型：PostgreSQL、MySQL、MariaDB、ClickHouse、SQLite、DuckDB。"
