@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+import type {SQLNamespace} from "@codemirror/lang-sql";
 import {
     AlertDialog,
     AlertDialogAction,
@@ -23,13 +24,14 @@ import {
     AlertDialogFooter,
     AlertDialogHeader,
     AlertDialogTitle,
+    AlertDialogTrigger,
     Badge,
     Button,
+    Card,
     cn,
-    Drawer,
-    DrawerContent,
-    DrawerHeader,
-    DrawerTitle,
+    CopyButton,
+    EmptyState,
+    formatDate,
     Input,
     Label,
     Select,
@@ -43,8 +45,12 @@ import {
     StackList,
     StackListItem,
     toast,
-    IconCheckCircle as CheckCircleIcon,
+    IconRefresh as ArrowPathIcon,
+    IconClock as ClockIcon,
     IconTerminal as CommandLineIcon,
+    IconEdit as PencilIcon,
+    IconPlay as PlayIcon,
+    IconTrash as TrashIcon,
     IconClose as XMarkIcon,
 } from '@clidey/ux';
 import {skipToken, useLazyQuery, useMutation, useQuery} from "@apollo/client/react";
@@ -90,7 +96,6 @@ import {ExploreStorageUnitWhereCondition} from "./explore-storage-unit-where-con
 import {useTranslation} from "../../hooks/use-translation";
 import {whereConditionToSql} from "../../utils/where-condition-to-sql";
 import {isDestructiveQuery} from "../../utils/query-utils";
-import {useContainerWidth} from "../../hooks/use-container-width";
 import {getComponent} from "../../config/component-registry";
 import { findSourceObjectType } from "../../config/source-types";
 import {buildSourceObjectRef, buildSourceParentRef} from "../../utils/source-refs";
@@ -270,12 +275,21 @@ export const ExploreStorageUnit: FC = () => {
     const savedConditions = useAppSelector(state =>
         conditionKey ? state.exploreConditions.conditions[conditionKey] : undefined
     );
+    const savedLastSql = useAppSelector(state =>
+        conditionKey ? state.exploreConditions.lastSqlByKey?.[conditionKey] : undefined
+    );
+    const sqlHistory = useAppSelector(state => state.exploreConditions.sqlHistory ?? []);
 
     const [currentPage, setCurrentPage] = useState(1);
     const [whereCondition, setWhereCondition] = useState<WhereCondition | undefined>(savedConditions?.whereCondition);
     const [sortConditions, setSortConditions] = useState<SortCondition[]>(savedConditions?.sortConditions ?? []);
-    const [isScratchpadOpen, setIsScratchpadOpen] = useState(false);
+    const [isScratchpadOpen, setIsScratchpadOpen] = useState(true);
+    const [isSqlHistoryOpen, setIsSqlHistoryOpen] = useState(false);
+    const [activeSqlQuery, setActiveSqlQuery] = useState<string | null>(null);
+    const [sqlError, setSqlError] = useState<string | null>(null);
     const [tableActionsTarget, setTableActionsTarget] = useState<HTMLDivElement | null>(null);
+    const baseTableColumnsRef = useRef<RowsResult['Columns']>([]);
+    const [baseTableColumns, setBaseTableColumns] = useState<RowsResult['Columns']>([]);
 
     // Check if this is a view/materialized view - mock data generation not allowed for these
     const isMockDataGenerationAllowed = useMemo(() => {
@@ -320,8 +334,6 @@ export const ExploreStorageUnit: FC = () => {
 
     // Track table container height for responsive sizing
     const tableContainerRef = useRef<HTMLDivElement>(null);
-    const scratchpadResultsRef = useRef<HTMLDivElement>(null);
-    const scratchpadContainerWidth = useContainerWidth(scratchpadResultsRef);
     const pageSizeInitialRef = useRef(true);
     const [tableHeight, setTableHeight] = useState<number>(500);
 
@@ -355,7 +367,9 @@ export const ExploreStorageUnit: FC = () => {
         fetchPolicy: "network-only",
     });
     const [addRow, { loading: adding }] = useMutation(AddRowDocument);
-    const [rawExecute, { data: rawExecuteData, error: rawExecuteError }] = useLazyQuery(RawExecuteDocument);
+    const [rawExecute, { loading: rawExecuteLoading }] = useLazyQuery(RawExecuteDocument, {
+        fetchPolicy: "no-cache",
+    });
 
     const unitName = useMemo(() => {
         return unit?.Name;
@@ -394,8 +408,8 @@ export const ExploreStorageUnit: FC = () => {
             return buildRedisScratchpadQuery(scratchpadUnitName);
         }
         const qualified = schema ? `${schema}.${scratchpadUnitName}` : scratchpadUnitName;
-        return `SELECT * FROM ${qualified} LIMIT 5`;
-    }, [currentTableName, currentType, schema, unitName]);
+        return `SELECT * FROM ${qualified} LIMIT ${pageSize}`;
+    }, [currentTableName, currentType, pageSize, schema, unitName]);
 
     const scratchpadQueryWithConditions = useMemo(() => {
         if (currentType === "MongoDB" || currentType === "Redis") {
@@ -417,7 +431,43 @@ export const ExploreStorageUnit: FC = () => {
         return `${initialScratchpadQuery} WHERE ${whereClause}`;
     }, [currentType, initialScratchpadQuery, whereCondition]);
 
-    const [code, setCode] = useState(initialScratchpadQuery);
+    const [code, setCode] = useState((savedLastSql?.trim() ? savedLastSql : undefined) ?? initialScratchpadQuery);
+
+    const handleCodeChange = useCallback((nextCode: string) => {
+        setCode(nextCode);
+        if (conditionKey) {
+            dispatch(ExploreConditionsActions.setLastSql({
+                key: conditionKey,
+                sql: nextCode,
+            }));
+        }
+    }, [conditionKey, dispatch]);
+
+    const sqlSchema = useMemo<SQLNamespace>(() => {
+        const tableDetail = t('completionTable');
+        const columnDetail = t('completionColumn');
+        const entries: SQLNamespace = {};
+        for (const u of storageUnits) {
+            entries[u.Name] = {
+                self: { label: u.Name, type: 'type', detail: tableDetail },
+                children: u.Name === unitName
+                    ? baseTableColumns.map(col => ({ label: col.Name, type: 'property', detail: columnDetail }))
+                    : [],
+            };
+        }
+        return entries;
+    }, [baseTableColumns, storageUnits, t, unitName]);
+
+    const displayedRows = useMemo(() => {
+        if (!rows) {
+            return [];
+        }
+        if (activeSqlQuery != null && rows.Rows.length > pageSize) {
+            const start = (currentPage - 1) * pageSize;
+            return rows.Rows.slice(start, start + pageSize);
+        }
+        return rows.Rows;
+    }, [activeSqlQuery, currentPage, pageSize, rows]);
 
     // Compute columns and types from rows data
     const {columns, columnTypes, columnComments, columnIsPrimary, columnIsForeignKey} = useMemo(() => {
@@ -488,6 +538,10 @@ export const ExploreStorageUnit: FC = () => {
         }).then(result => {
             const isLatest = thisRequestId === latestRequestIdRef.current;
             if (isLatest && result.data) {
+                setActiveSqlQuery(null);
+                setSqlError(null);
+                baseTableColumnsRef.current = result.data.Row.Columns;
+                setBaseTableColumns(result.data.Row.Columns);
                 setRows(result.data.Row);
                 if (conditionKey) {
                     lastRowsByConditionKey.set(conditionKey, result.data.Row);
@@ -497,14 +551,19 @@ export const ExploreStorageUnit: FC = () => {
     }, [conditionKey, current, currentPage, currentTableName, currentUnitRef, getStorageUnitRows, isTabularObject, item, pageSize, schema, searchCondition, sortConditions, unitName]);
 
     const handleQuery = useCallback(() => {
+        setActiveSqlQuery(null);
+        setSqlError(null);
         setCurrentPage(1);
         handleSubmitRequest(0);
     }, [handleSubmitRequest]);
 
     const handlePageChange = useCallback((page: number) => {
         setCurrentPage(page);
+        if (activeSqlQuery != null) {
+            return;
+        }
         handleSubmitRequest((page - 1) * pageSize);
-    }, [handleSubmitRequest]);
+    }, [activeSqlQuery, handleSubmitRequest, pageSize]);
 
     const handleColumnSort = useCallback((columnName: string) => {
         const existingSort = sortConditions.find(s => s.Column === columnName);
@@ -581,6 +640,9 @@ export const ExploreStorageUnit: FC = () => {
     );
 
     const totalCount = useMemo(() => {
+        if (activeSqlQuery != null) {
+            return (rows?.Rows.length ?? 0).toString();
+        }
         if (rows?.TotalCount != null && rows.TotalCount > 0) {
             return rows.TotalCount.toString();
         }
@@ -589,12 +651,19 @@ export const ExploreStorageUnit: FC = () => {
             return count;
         }
         return rows?.Rows.length?.toString() ?? "unknown";
-    }, [unit, rows?.TotalCount, rows?.Rows.length]);
+    }, [activeSqlQuery, unit, rows?.TotalCount, rows?.Rows.length]);
 
     useEffect(() => {
         // Reset non-condition state when switching to a new table; preserve cached rows if available
         setCurrentPage(1);
-        setRows(conditionKey ? lastRowsByConditionKey.get(conditionKey) : undefined);
+        setActiveSqlQuery(null);
+        setSqlError(null);
+        const cachedRows = conditionKey ? lastRowsByConditionKey.get(conditionKey) : undefined;
+        setRows(cachedRows);
+        if (cachedRows?.Columns) {
+            baseTableColumnsRef.current = cachedRows.Columns;
+            setBaseTableColumns(cachedRows.Columns);
+        }
         setShowAdd(false);
         setAddRowData({});
         setAddRowError(null);
@@ -616,7 +685,7 @@ export const ExploreStorageUnit: FC = () => {
         if (isTabularObject) {
             handleSubmitRequest();
         }
-        setCode(initialScratchpadQuery);
+        setCode((savedLastSql?.trim() ? savedLastSql : undefined) ?? initialScratchpadQuery);
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [isTabularObject, unit?.Name, conditionKey]);
 
@@ -830,14 +899,98 @@ export const ExploreStorageUnit: FC = () => {
     const [pendingScratchpadQuery, setPendingScratchpadQuery] = useState<string | null>(null);
 
     const doScratchpadExecute = useCallback((query: string) => {
-        void rawExecute({ variables: { query } });
-    }, [rawExecute]);
+        const trimmed = query.trim();
+        if (!trimmed) {
+            return;
+        }
+        setSqlError(null);
+        latestRequestIdRef.current += 1;
+        const thisRequestId = latestRequestIdRef.current;
+        void rawExecute({
+            variables: { query: trimmed },
+        }).then(result => {
+            if (thisRequestId !== latestRequestIdRef.current) {
+                return;
+            }
+            if (result.error) {
+                setSqlError(result.error.message);
+                dispatch(ExploreConditionsActions.addSqlHistory({
+                    sql: trimmed,
+                    table: unitName,
+                    database: current?.Database ?? schema,
+                    status: false,
+                }));
+                return;
+            }
+            const rawResult = result.data?.RawExecute;
+            if (!rawResult) {
+                return;
+            }
+            dispatch(ExploreConditionsActions.addSqlHistory({
+                sql: trimmed,
+                table: unitName,
+                database: current?.Database ?? schema,
+                status: true,
+                rowCount: rawResult.Rows.length,
+            }));
+            if (conditionKey) {
+                dispatch(ExploreConditionsActions.setLastSql({
+                    key: conditionKey,
+                    sql: trimmed,
+                }));
+            }
+            if (rawResult.Columns.length === 0 && isDestructiveQuery(trimmed, current?.Type)) {
+                toast.success(t('sqlExecutedSuccess'));
+                setActiveSqlQuery(null);
+                handleSubmitRequest(0);
+                return;
+            }
+            const knownColumnsByName = new Map(
+                baseTableColumnsRef.current.map(col => [col.Name, col])
+            );
+            const enrichedColumns = rawResult.Columns.map(col => {
+                const known = knownColumnsByName.get(col.Name);
+                if (!known) {
+                    return col;
+                }
+                return {
+                    ...col,
+                    Comment: col.Comment ?? known.Comment,
+                    IsPrimary: col.IsPrimary || known.IsPrimary,
+                    IsForeignKey: col.IsForeignKey || known.IsForeignKey,
+                    ReferencedTable: col.ReferencedTable ?? known.ReferencedTable,
+                    ReferencedColumn: col.ReferencedColumn ?? known.ReferencedColumn,
+                    Length: col.Length ?? known.Length,
+                    Precision: col.Precision ?? known.Precision,
+                    Scale: col.Scale ?? known.Scale,
+                };
+            });
+            setCurrentPage(1);
+            setActiveSqlQuery(trimmed);
+            setRows({
+                ...rawResult,
+                Columns: enrichedColumns,
+            });
+        }).catch((err: unknown) => {
+            const message = err instanceof Error ? err.message : String(err);
+            setSqlError(message);
+            dispatch(ExploreConditionsActions.addSqlHistory({
+                sql: trimmed,
+                table: unitName,
+                database: current?.Database ?? schema,
+                status: false,
+            }));
+        });
+    }, [conditionKey, current?.Database, current?.Type, dispatch, handleSubmitRequest, rawExecute, schema, t, unitName]);
 
     const handleScratchpad = useCallback((specificCode?: string) => {
         if (current == null) {
             return;
         }
-        const query = specificCode ?? code;
+        const query = (specificCode ?? code).trim();
+        if (!query) {
+            return;
+        }
         if (isDestructiveQuery(query, current.Type)) {
             setPendingScratchpadQuery(query);
         } else {
@@ -846,14 +999,29 @@ export const ExploreStorageUnit: FC = () => {
     }, [code, current, doScratchpadExecute]);
 
     const handleOpenScratchpad = useCallback(() => {
-        setIsScratchpadOpen(true);
-        setCode(scratchpadQueryWithConditions);
-        handleScratchpad(scratchpadQueryWithConditions);
-    }, [handleScratchpad, scratchpadQueryWithConditions]);
+        setIsScratchpadOpen(prev => {
+            const next = !prev;
+            if (next && !code.trim()) {
+                setCode(scratchpadQueryWithConditions);
+            }
+            return next;
+        });
+    }, [code, scratchpadQueryWithConditions]);
 
-    const handleCloseScratchpad = useCallback(() => {
-        setIsScratchpadOpen(false);
-    }, []);
+    const handleResetSqlResult = useCallback(() => {
+        setActiveSqlQuery(null);
+        setSqlError(null);
+        setCurrentPage(1);
+        handleSubmitRequest(0);
+    }, [handleSubmitRequest]);
+
+    const handleTableRefresh = useCallback(() => {
+        if (activeSqlQuery != null) {
+            doScratchpadExecute(activeSqlQuery);
+            return;
+        }
+        handleSubmitRequest();
+    }, [activeSqlQuery, doScratchpadExecute, handleSubmitRequest]);
 
 
     // Foreign key detection using actual column metadata
@@ -1107,7 +1275,7 @@ export const ExploreStorageUnit: FC = () => {
                             <WhoDBChatIcon name="play" /> {t('run')}
                         </Button>
                     </div>
-                    <Button onClick={handleOpenScratchpad} data-testid="embedded-scratchpad-button" variant="secondary"
+                    <Button onClick={handleOpenScratchpad} data-testid="embedded-scratchpad-button" variant={isScratchpadOpen ? "default" : "secondary"}
                         className={cn({
                             "hidden": !supportsScratchpad,
                         })}>
@@ -1208,8 +1376,82 @@ export const ExploreStorageUnit: FC = () => {
                 </Sheet>
 
             </div>
+            {supportsScratchpad && isScratchpadOpen && (
+                <div className="flex flex-col gap-2 w-full" data-testid="inline-sql-console">
+                    <div className="ce-inline-sql-bar flex items-center gap-2 w-full rounded-lg border border-border bg-card/60 px-3 py-1.5">
+                        <CommandLineIcon className="w-4 h-4 text-muted-foreground shrink-0" />
+                        <div className={`ce-inline-sql-editor flex-1 min-w-0 ${ph.noCapture}`}>
+                            <CodeEditor
+                                language="sql"
+                                value={code}
+                                setValue={handleCodeChange}
+                                onRun={handleScratchpad}
+                                sqlSchema={sqlSchema}
+                            />
+                        </div>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                            {activeSqlQuery != null && (
+                                <>
+                                    <Badge variant="secondary" className="text-[11px] px-2 py-0.5 whitespace-nowrap">
+                                        {t('sqlResultBadge')}
+                                    </Badge>
+                                    <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        className="h-7 px-2 text-xs gap-1"
+                                        onClick={handleResetSqlResult}
+                                        data-testid="reset-sql-result-button"
+                                    >
+                                        <ArrowPathIcon className="w-3.5 h-3.5" />
+                                        {t('resetTableData')}
+                                    </Button>
+                                </>
+                            )}
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-7 px-2.5 text-xs gap-1.5"
+                                onClick={() => { setIsSqlHistoryOpen(true); }}
+                                data-testid="sql-history-button"
+                            >
+                                <ClockIcon className="w-3.5 h-3.5" />
+                                {t('sqlHistory')}
+                                {sqlHistory.length > 0 && (
+                                    <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4 min-w-4 flex items-center justify-center">
+                                        {sqlHistory.length}
+                                    </Badge>
+                                )}
+                            </Button>
+                            <Button
+                                size="sm"
+                                className="h-7 px-3 text-xs gap-1.5"
+                                onClick={() => { handleScratchpad(); }}
+                                disabled={!code.trim() || rawExecuteLoading}
+                                data-testid="run-submit-button"
+                            >
+                                {rawExecuteLoading ? <Spinner className="size-3.5" /> : <WhoDBChatIcon name="play" />}
+                                {t('executeSql')}
+                            </Button>
+                        </div>
+                    </div>
+                    {sqlError != null && (
+                        <div className="relative">
+                            <ErrorState error={sqlError} />
+                            <Button
+                                variant="ghost"
+                                size="icon"
+                                className="absolute top-2 right-2 h-6 w-6"
+                                onClick={() => { setSqlError(null); }}
+                                aria-label={t('close')}
+                            >
+                                <XMarkIcon className="w-3.5 h-3.5" />
+                            </Button>
+                        </div>
+                    )}
+                </div>
+            )}
             <div className="grow" ref={tableContainerRef}>
-                {loading && rows == null ? (
+                {(loading || rawExecuteLoading) && rows == null ? (
                     <div className="ce-explore-loading-grid" data-testid="explore-rows-loading">
                         <div className="ce-explore-loading-row ce-explore-loading-header">
                             <span className="ce-explore-loading-check" />
@@ -1227,7 +1469,7 @@ export const ExploreStorageUnit: FC = () => {
                 ) : rows != null ? (
                     <StorageUnitTable
                         columns={columns}
-                        rows={rows.Rows}
+                        rows={displayedRows}
                         onRowUpdate={handleRowUpdate}
                         cellEditing
                         columnTypes={columnTypes}
@@ -1238,7 +1480,8 @@ export const ExploreStorageUnit: FC = () => {
                         storageUnit={unitName}
                         sourceLabel={current?.Database}
                         objectRef={currentUnitRef}
-                        onRefresh={handleSubmitRequest}
+                        rawQuery={activeSqlQuery ?? undefined}
+                        onRefresh={handleTableRefresh}
                         onColumnSort={handleColumnSort}
                         sortedColumns={sortedColumnsMap}
                         searchRef={searchRef}
@@ -1254,8 +1497,8 @@ export const ExploreStorageUnit: FC = () => {
                         isValidForeignKey={isValidForeignKey}
                         onEntitySearch={handleEntitySearch}
                         databaseType={current?.Type}
-                        allowRowUpdate={allowsUpdateData}
-                        allowRowDelete={allowsDeleteData}
+                        allowRowUpdate={allowsUpdateData && activeSqlQuery == null && !rows.DisableUpdate}
+                        allowRowDelete={allowsDeleteData && activeSqlQuery == null && !rows.DisableUpdate}
                         // Mock data control - disabled for views/materialized views
                         isMockDataGenerationAllowed={isMockDataGenerationAllowed}
                         // Import control - enabled for explore view
@@ -1273,81 +1516,187 @@ export const ExploreStorageUnit: FC = () => {
                 ) : null}
             </div>
         </div>
-        <Drawer open={isScratchpadOpen} onOpenChange={setIsScratchpadOpen} modal>
-            <DrawerContent className="px-8 min-h-[65vh] max-h-[80vh] overflow-hidden flex flex-col" data-testid="scratchpad-drawer">
-                <Tip className="w-fit absolute top-0 right-0">
-                    <Button variant="ghost" onClick={handleCloseScratchpad} data-testid="icon-button" aria-label={t('close')}>
-                        <XMarkIcon className="w-4 h-4" />
-                    </Button>
-                    <p>{t('close')}</p>
-                </Tip>
-                <DrawerHeader className="px-0">
-                    <DrawerTitle className="flex justify-between items-center">
-                        <h2 className="text-lg font-semibold">{t('scratchpad')}</h2>
-                        <div className="flex gap-sm items-center">
-                            <Button onClick={() =>{  handleScratchpad(); }} data-testid="run-submit-button">
-                                <WhoDBChatIcon name="play" />
-                                {t('run')}
-                            </Button>
-                        </div>
-                    </DrawerTitle>
-                </DrawerHeader>
-                <div className={`flex flex-col gap-sm h-[150px] mb-4 ${ph.noCapture}`} data-vaul-no-drag>
-                    <CodeEditor language="sql" value={code} setValue={setCode} onRun={handleScratchpad} />
+        <Sheet open={isSqlHistoryOpen} onOpenChange={setIsSqlHistoryOpen}>
+            <SheetContent side="right" className="w-[min(640px,100vw)] sm:max-w-[min(640px,100vw)] p-0 flex flex-col" data-testid="sql-history-sheet">
+                <div className="flex items-center justify-between px-6 py-4 border-b border-border">
+                    <SheetTitle className="flex items-center gap-2 text-base font-semibold">
+                        <ClockIcon className="w-5 h-5" />
+                        {t('sqlHistoryTitle')}
+                    </SheetTitle>
                 </div>
-                <div className="overflow-y-auto" data-vaul-no-drag ref={scratchpadResultsRef}>
-                    {rawExecuteError != null && (
-                        <div className="flex items-center justify-between mt-4">
-                            <ErrorState error={rawExecuteError} />
+                <div className="flex-1 px-6 py-4 overflow-y-auto">
+                    {sqlHistory.length === 0 ? (
+                        <EmptyState
+                            title={t('noSqlHistoryTitle')}
+                            description={t('noSqlHistoryDescription')}
+                            icon={<ClockIcon className="w-10 h-10" />}
+                        />
+                    ) : (
+                        <div className="flex flex-col gap-3">
+                            {sqlHistory.map(historyItem => {
+                                const parsedDate = new Date(historyItem.timestamp);
+                                const formattedTime = Number.isNaN(parsedDate.getTime())
+                                    ? historyItem.timestamp
+                                    : formatDate(parsedDate);
+                                return (
+                                    <Card className="w-full p-4 relative" key={historyItem.id}>
+                                        <div className="flex flex-col gap-2">
+                                            <div className="flex items-center justify-between gap-2 flex-wrap">
+                                                <div className="flex items-center gap-1.5 flex-wrap">
+                                                    <Badge
+                                                        variant={historyItem.status ? "default" : "destructive"}
+                                                        className={cn("text-[11px] px-2 py-0", {
+                                                            "!bg-green-600 !text-white": historyItem.status,
+                                                            "!bg-red-600 !text-white": !historyItem.status,
+                                                        })}
+                                                    >
+                                                        {historyItem.status ? t('sqlStatusSuccess') : t('sqlStatusError')}
+                                                    </Badge>
+                                                    {historyItem.table && (
+                                                        <Badge variant="outline" className="text-[11px] px-2 py-0">
+                                                            {historyItem.table}
+                                                        </Badge>
+                                                    )}
+                                                    {historyItem.rowCount != null && (
+                                                        <Badge variant="secondary" className="text-[11px] px-2 py-0">
+                                                            {historyItem.rowCount} {t('rows')}
+                                                        </Badge>
+                                                    )}
+                                                </div>
+                                                <span className="text-xs text-muted-foreground">
+                                                    {formattedTime}
+                                                </span>
+                                            </div>
+                                            <div
+                                                className="rounded-md overflow-hidden bg-muted/60 dark:bg-muted/30 cursor-pointer hover:bg-muted transition-colors"
+                                                onClick={() => {
+                                                    handleCodeChange(historyItem.sql);
+                                                    setIsSqlHistoryOpen(false);
+                                                }}
+                                                title={t('fillToEditor')}
+                                            >
+                                                <pre className="text-xs font-mono p-3 whitespace-pre-wrap break-all">
+                                                    <code>{historyItem.sql}</code>
+                                                </pre>
+                                            </div>
+                                            <div className="flex justify-end items-center gap-1.5 mt-1">
+                                                <CopyButton text={historyItem.sql} />
+                                                <Tip className="w-fit">
+                                                    <Button
+                                                        size="icon"
+                                                        variant="secondary"
+                                                        className="h-7 w-7 border border-input"
+                                                        onClick={() => {
+                                                            handleCodeChange(historyItem.sql);
+                                                            setIsSqlHistoryOpen(false);
+                                                        }}
+                                                        aria-label={t('fillToEditor')}
+                                                        data-testid="fill-sql-history-button"
+                                                    >
+                                                        <PencilIcon className="w-3.5 h-3.5" />
+                                                    </Button>
+                                                    <p>{t('fillToEditor')}</p>
+                                                </Tip>
+                                                <Tip className="w-fit">
+                                                    <Button
+                                                        size="icon"
+                                                        variant="secondary"
+                                                        className="h-7 w-7 border border-input"
+                                                        onClick={() => {
+                                                            handleCodeChange(historyItem.sql);
+                                                            setIsSqlHistoryOpen(false);
+                                                            handleScratchpad(historyItem.sql);
+                                                        }}
+                                                        aria-label={t('runImmediately')}
+                                                        data-testid="run-sql-history-button"
+                                                    >
+                                                        <PlayIcon className="w-3.5 h-3.5" />
+                                                    </Button>
+                                                    <p>{t('runImmediately')}</p>
+                                                </Tip>
+                                                <Tip className="w-fit">
+                                                    <Button
+                                                        size="icon"
+                                                        variant="ghost"
+                                                        className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                                                        onClick={() => {
+                                                            dispatch(ExploreConditionsActions.removeSqlHistoryItem({ id: historyItem.id }));
+                                                        }}
+                                                        aria-label={t('deleteHistoryItem')}
+                                                        data-testid="delete-sql-history-button"
+                                                    >
+                                                        <TrashIcon className="w-3.5 h-3.5" />
+                                                    </Button>
+                                                    <p>{t('deleteHistoryItem')}</p>
+                                                </Tip>
+                                            </div>
+                                        </div>
+                                    </Card>
+                                );
+                            })}
                         </div>
                     )}
-                    {rawExecuteData != null && (
-                        !isDestructiveQuery(code, current?.Type) || rawExecuteData.RawExecute.Rows.length > 0 ? (
-                            <StorageUnitTable
-                                key={scratchpadContainerWidth}
-                                columns={rawExecuteData.RawExecute.Columns.map(c => c.Name)}
-                                columnTypes={rawExecuteData.RawExecute.Columns.map(c => c.Type)}
-                                rows={rawExecuteData.RawExecute.Rows}
-                                disableEdit={true}
-                                limitContextMenu={true}
-                                schema={schema}
-                                storageUnit={unitName}
-                                onRefresh={handleSubmitRequest}
-                                showPagination={false}
-                                databaseType={current?.Type}
-                                totalCount={Number.parseInt(totalCount, 10)}
-                            />
-                        ) : (
-                            <div className="bg-white/10 text-neutral-800 dark:text-neutral-300 rounded-lg p-2 flex gap-sm self-start items-center my-4">
-                                Action Executed
-                                <CheckCircleIcon className="w-4 h-4" />
-                            </div>
-                        )
-                    )}
                 </div>
-                <AlertDialog open={pendingScratchpadQuery != null} onOpenChange={(open) => { if (!open) setPendingScratchpadQuery(null); }}>
-                    <AlertDialogContent>
-                        <AlertDialogHeader>
-                            <AlertDialogTitle>{t('confirmOperationTitle')}</AlertDialogTitle>
-                            <AlertDialogDescription>{t('confirmOperationDescription')}</AlertDialogDescription>
-                        </AlertDialogHeader>
-                        <AlertDialogFooter>
-                            <AlertDialogCancel data-testid="execute-query-cancel" onClick={() =>{  setPendingScratchpadQuery(null); }}>{t('cancel')}</AlertDialogCancel>
-                            <AlertDialogAction asChild>
-                                <Button variant="destructive" data-testid="execute-query-confirm" onClick={() => {
-                                    if (pendingScratchpadQuery != null) {
-                                        doScratchpadExecute(pendingScratchpadQuery);
-                                        setPendingScratchpadQuery(null);
-                                    }
-                                }}>
-                                    {t('run')}
+                {sqlHistory.length > 0 && (
+                    <SheetFooter className="px-6 py-3 border-t border-border">
+                        <AlertDialog>
+                            <AlertDialogTrigger>
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    data-testid="clear-sql-history-button"
+                                    className="gap-1.5"
+                                >
+                                    <TrashIcon className="w-3.5 h-3.5" />
+                                    {t('clearSqlHistory')}
                                 </Button>
-                            </AlertDialogAction>
-                        </AlertDialogFooter>
-                    </AlertDialogContent>
-                </AlertDialog>
-            </DrawerContent>
-        </Drawer>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                                <AlertDialogHeader>
+                                    <AlertDialogTitle>{t('clearSqlHistoryTitle')}</AlertDialogTitle>
+                                    <AlertDialogDescription>{t('clearSqlHistoryDescription')}</AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                    <AlertDialogCancel>{t('cancel')}</AlertDialogCancel>
+                                    <AlertDialogAction asChild>
+                                        <Button
+                                            variant="destructive"
+                                            onClick={() => {
+                                                dispatch(ExploreConditionsActions.clearSqlHistory());
+                                            }}
+                                            data-testid="clear-sql-history-confirm"
+                                        >
+                                            {t('clearSqlHistory')}
+                                        </Button>
+                                    </AlertDialogAction>
+                                </AlertDialogFooter>
+                            </AlertDialogContent>
+                        </AlertDialog>
+                    </SheetFooter>
+                )}
+            </SheetContent>
+        </Sheet>
+        <AlertDialog open={pendingScratchpadQuery != null} onOpenChange={(open) => { if (!open) setPendingScratchpadQuery(null); }}>
+            <AlertDialogContent>
+                <AlertDialogHeader>
+                    <AlertDialogTitle>{t('confirmOperationTitle')}</AlertDialogTitle>
+                    <AlertDialogDescription>{t('confirmOperationDescription')}</AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                    <AlertDialogCancel data-testid="execute-query-cancel" onClick={() => { setPendingScratchpadQuery(null); }}>{t('cancel')}</AlertDialogCancel>
+                    <AlertDialogAction asChild>
+                        <Button variant="destructive" data-testid="execute-query-confirm" onClick={() => {
+                            if (pendingScratchpadQuery != null) {
+                                doScratchpadExecute(pendingScratchpadQuery);
+                                setPendingScratchpadQuery(null);
+                            }
+                        }}>
+                            {t('run')}
+                        </Button>
+                    </AlertDialogAction>
+                </AlertDialogFooter>
+            </AlertDialogContent>
+        </AlertDialog>
         <Sheet open={showEntitySearchSheet} onOpenChange={setShowEntitySearchSheet}>
             <SheetContent side="right" className="flex flex-col p-8 min-w-[600px]" footer={
                 <SheetFooter>

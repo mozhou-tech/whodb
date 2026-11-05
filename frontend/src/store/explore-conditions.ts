@@ -23,12 +23,29 @@ type ExploreConditionEntry = {
     sortConditions: SortCondition[];
 };
 
+/** Persisted history entry for SQL queries executed from the explore storage unit SQL console. */
+export type ExploreSqlHistoryItem = {
+    id: string;
+    sql: string;
+    table?: string;
+    database?: string;
+    status: boolean;
+    rowCount?: number;
+    timestamp: string;
+};
+
 type IExploreConditionsState = {
     conditions: Record<string, ExploreConditionEntry>;
+    sqlHistory?: ExploreSqlHistoryItem[];
+    lastSqlByKey?: Record<string, string>;
 };
+
+const MAX_SQL_HISTORY_ITEMS = 100;
 
 const initialState: IExploreConditionsState = {
     conditions: {},
+    sqlHistory: [],
+    lastSqlByKey: {},
 };
 
 export const exploreConditionsSlice = createSlice({
@@ -38,6 +55,53 @@ export const exploreConditionsSlice = createSlice({
         setExploreConditions: (state, action: PayloadAction<{ key: string } & ExploreConditionEntry>) => {
             const { key, whereCondition, sortConditions } = action.payload;
             state.conditions[key] = { whereCondition, sortConditions };
+        },
+        setLastSql: (state, action: PayloadAction<{ key: string; sql: string }>) => {
+            state.lastSqlByKey ??= {};
+            state.lastSqlByKey[action.payload.key] = action.payload.sql;
+        },
+        addSqlHistory: (
+            state,
+            action: PayloadAction<{
+                sql: string;
+                table?: string;
+                database?: string;
+                status: boolean;
+                rowCount?: number;
+            }>
+        ) => {
+            const trimmedSql = action.payload.sql.trim();
+            if (!trimmedSql) {
+                return;
+            }
+            if (!Array.isArray(state.sqlHistory)) {
+                state.sqlHistory = [];
+            }
+            // Deduplicate identical SQL for the same database so re-running moves it to the top
+            state.sqlHistory = state.sqlHistory.filter(
+                item => !(item.sql.trim() === trimmedSql && (item.database ?? '') === (action.payload.database ?? ''))
+            );
+            state.sqlHistory.unshift({
+                id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+                sql: trimmedSql,
+                table: action.payload.table,
+                database: action.payload.database,
+                status: action.payload.status,
+                rowCount: action.payload.rowCount,
+                timestamp: new Date().toISOString(),
+            });
+            if (state.sqlHistory.length > MAX_SQL_HISTORY_ITEMS) {
+                state.sqlHistory = state.sqlHistory.slice(0, MAX_SQL_HISTORY_ITEMS);
+            }
+        },
+        removeSqlHistoryItem: (state, action: PayloadAction<{ id: string }>) => {
+            if (!Array.isArray(state.sqlHistory)) {
+                return;
+            }
+            state.sqlHistory = state.sqlHistory.filter(item => item.id !== action.payload.id);
+        },
+        clearSqlHistory: (state) => {
+            state.sqlHistory = [];
         },
     },
 });

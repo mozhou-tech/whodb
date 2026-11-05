@@ -170,6 +170,11 @@
 .ce-scratchpad-editor .cm-activeLine, .ce-scratchpad-editor .cm-activeLineGutter { background: transparent !important; }
 .ce-scratchpad-editor .cm-gutters { border-right: 0; background: transparent; color: var(--muted-foreground); }
 .ce-scratchpad-editor .cm-play-gutter { display: none; }
+.ce-inline-sql-editor [data-testid="code-editor"] > .cm-editor { padding: 2px 4px !important; background: transparent !important; font-family: 'JetBrains Mono', monospace; font-size: 13px; min-height: 28px; max-height: 96px; }
+.ce-inline-sql-editor .cm-scroller { overflow-y: auto; }
+.ce-inline-sql-editor .cm-content { padding: 2px 0; }
+.ce-inline-sql-editor .cm-activeLine, .ce-inline-sql-editor .cm-activeLineGutter { background: transparent !important; }
+.ce-inline-sql-editor .cm-gutters { display: none !important; }
 .ce-scratchpad-cell-tools { opacity: 0 !important; }
 .ce-scratchpad-cell:hover .ce-scratchpad-cell-tools, .ce-scratchpad-cell-tools:focus-within { opacity: 1 !important; }
 .ce-scratchpad-running { display: flex; align-items: center; justify-content: space-between; min-height: 58px; margin-top: 10px; padding: 9px 12px; border: 1px solid var(--border); border-radius: 7px; background: var(--card); }

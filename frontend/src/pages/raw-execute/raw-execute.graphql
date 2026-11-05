@@ -3,9 +3,18 @@ query RawExecute($query: String!) {
       Columns {
           Type
           Name
+          Comment
           MetadataFidelity
+          IsPrimary
+          IsForeignKey
+          ReferencedTable
+          ReferencedColumn
+          Length
+          Precision
+          Scale
       }
       Rows
+      DisableUpdate
       TotalCount
 	}
 }
