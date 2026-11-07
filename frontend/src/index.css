@@ -454,7 +454,12 @@
 .ce-explore-shell [data-testid="table-container"] { gap: 8px; }
 .ce-explore-shell [data-testid="table-container"] > div:last-of-type { margin: 0; }
 .ce-explore-shell [data-testid="total-count-bottom"] { color: var(--muted-foreground); font-size: 11px; }
-.ce-schema-viewer > [data-slot="sidebar"] { width: 256px; border-right: 1px solid var(--border); background: var(--card); color: var(--foreground); }
+.ce-schema-viewer > [data-slot="sidebar"] { width: var(--sidebar-width, 256px); border-right: 1px solid var(--border); background: var(--card); color: var(--foreground); }
+[data-resizing="true"] [data-slot="sidebar-gap"],
+[data-resizing="true"] [data-slot="sidebar-container"],
+[data-resizing="true"] [data-slot="sidebar"] {
+    transition: none !important;
+}
 .ce-schema-viewer [data-slot="sidebar-header"] h1 { padding: 14px 16px 8px; font-size: 16px; }
 .ce-schema-viewer [data-slot="sidebar-content"] { background: var(--card); color: var(--foreground); }
 .ce-schema-viewer [data-slot="sidebar-group"] { padding: 8px; }

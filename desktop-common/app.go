@@ -183,6 +183,10 @@ func (a *App) SaveBinaryFile(data []byte, defaultName string) (string, error) {
 
 // SelectDirectory shows native directory selection dialog
 func (a *App) SelectDirectory() (string, error) {
+	if goruntime.GOOS == "darwin" {
+		return a.selectDirectoryDarwin()
+	}
+
 	options := runtime.OpenDialogOptions{
 		Title: "Select Directory",
 	}

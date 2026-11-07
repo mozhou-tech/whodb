@@ -40,7 +40,10 @@ type IExploreConditionsState = {
     lastSqlByKey?: Record<string, string>;
 };
 
-const MAX_SQL_HISTORY_ITEMS = 100;
+const MAX_SQL_HISTORY_ITEMS = 200;
+
+const normalizeSqlForDedup = (sql: string): string =>
+    sql.trim().replace(/;+\s*$/, '').replace(/\s+/g, ' ');
 
 const initialState: IExploreConditionsState = {
     conditions: {},
@@ -77,9 +80,14 @@ export const exploreConditionsSlice = createSlice({
             if (!Array.isArray(state.sqlHistory)) {
                 state.sqlHistory = [];
             }
-            // Deduplicate identical SQL for the same database so re-running moves it to the top
+            // Deduplicate identical SQL for the same table and database so re-running moves it to the top
+            const normalizedNew = normalizeSqlForDedup(trimmedSql);
             state.sqlHistory = state.sqlHistory.filter(
-                item => !(item.sql.trim() === trimmedSql && (item.database ?? '') === (action.payload.database ?? ''))
+                item => !(
+                    normalizeSqlForDedup(item.sql) === normalizedNew &&
+                    (item.table ?? '') === (action.payload.table ?? '') &&
+                    (item.database ?? '') === (action.payload.database ?? '')
+                )
             );
             state.sqlHistory.unshift({
                 id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -98,10 +106,34 @@ export const exploreConditionsSlice = createSlice({
             if (!Array.isArray(state.sqlHistory)) {
                 return;
             }
-            state.sqlHistory = state.sqlHistory.filter(item => item.id !== action.payload.id);
+            const target = state.sqlHistory.find(item => item.id === action.payload.id);
+            if (!target) {
+                return;
+            }
+            const targetSql = normalizeSqlForDedup(target.sql);
+            state.sqlHistory = state.sqlHistory.filter(
+                item => !(
+                    item.id === action.payload.id ||
+                    (normalizeSqlForDedup(item.sql) === targetSql &&
+                        (item.table ?? '') === (target.table ?? '') &&
+                        (item.database ?? '') === (target.database ?? ''))
+                )
+            );
         },
-        clearSqlHistory: (state) => {
-            state.sqlHistory = [];
+        clearSqlHistory: (state, action: PayloadAction<{ table?: string; database?: string } | undefined>) => {
+            if (!Array.isArray(state.sqlHistory)) {
+                state.sqlHistory = [];
+                return;
+            }
+            const targetTable = action.payload?.table;
+            const targetDb = action.payload?.database;
+            if (!targetTable) {
+                state.sqlHistory = [];
+                return;
+            }
+            state.sqlHistory = state.sqlHistory.filter(
+                item => !(item.table === targetTable && (!targetDb || !item.database || item.database === targetDb))
+            );
         },
     },
 });

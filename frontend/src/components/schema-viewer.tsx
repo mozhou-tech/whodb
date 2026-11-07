@@ -146,8 +146,8 @@ const SchemaViewerUnit: FC<SchemaViewerUnitProps> = ({
                     aria-current={selected ? 'page' : undefined}
                 >
                     <WhoDBChatIcon name="table" />
-                    <span>{unit.Name}</span>
-                    {count != null && <span className="ce-schema-row-count">{count}</span>}
+                    <span className="truncate">{unit.Name}</span>
+                    {count != null && <span className="ce-schema-row-count shrink-0">{count}</span>}
                 </button>
             </ContextMenuTrigger>
             <ContextMenuContent className="w-52">
@@ -538,7 +538,7 @@ export const SchemaViewer: FC<SchemaViewerProps> = ({ parentRef: explicitParentR
 
     return (
         <div className="flex h-full ce-schema-viewer" data-testid="schema-viewer">
-            <SidebarComponent variant="embed" className="w-64 h-full flex flex-col overflow-hidden">
+            <SidebarComponent variant="embed" className="w-(--sidebar-width) h-full flex flex-col overflow-hidden">
                 <div className="px-4 pt-3 pb-2.5 flex flex-col gap-2 shrink-0 border-b border-border/40">
                     <SearchInput
                         value={search}

@@ -40,6 +40,8 @@ type ISettingsState = {
     /** OS override for keyboard shortcuts. Undefined means use system detection. */
     os: 'linux' | 'macos' | 'windows' | undefined;
     sidebarOpen: boolean;
+    sidebarWidth: number;
+    subSidebarWidth: number;
 }
 
 const getInitialMetricsEnabled = (): boolean => {
@@ -75,6 +77,8 @@ const getInitialState = (): ISettingsState => {
         appTheme: 'default',
         os: undefined,
         sidebarOpen: true,
+        sidebarWidth: 256,
+        subSidebarWidth: 256,
     };
 };
 
@@ -135,6 +139,12 @@ export const settingsSlice = createSlice({
         },
         setSidebarOpen: (state, action: PayloadAction<boolean>) => {
             state.sidebarOpen = action.payload;
+        },
+        setSidebarWidth: (state, action: PayloadAction<number>) => {
+            state.sidebarWidth = action.payload;
+        },
+        setSubSidebarWidth: (state, action: PayloadAction<number>) => {
+            state.subSidebarWidth = action.payload;
         },
     },
 });

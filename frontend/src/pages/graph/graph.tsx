@@ -127,7 +127,7 @@ const GraphSidebar: FC<GraphSidebarProps> = ({
 
     return (
         <div className="dark flex grow">
-            <SidebarComponent variant="embed" className="w-64 h-full flex flex-col">
+            <SidebarComponent variant="embed" className="w-(--sidebar-width) h-full flex flex-col">
                 <SidebarContent data-testid="graph-sidebar-content">
                     <div className="px-4 pt-3">
                         <SearchInput

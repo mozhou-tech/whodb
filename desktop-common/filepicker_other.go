@@ -12,6 +12,11 @@ func (a *App) selectDatabaseFileDarwin(dbType string) (string, error) {
 	return "", fmt.Errorf("darwin-specific file picker called on non-darwin platform")
 }
 
+// selectDirectoryDarwin is a no-op on non-darwin platforms.
+func (a *App) selectDirectoryDarwin() (string, error) {
+	return "", fmt.Errorf("darwin-specific directory picker called on non-darwin platform")
+}
+
 // ResolveDatabaseBookmark is a no-op on non-darwin platforms.
 func (a *App) ResolveDatabaseBookmark(path string) (string, error) {
 	return "", fmt.Errorf("security-scoped bookmarks are only available on macOS")

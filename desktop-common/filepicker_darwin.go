@@ -108,6 +108,53 @@ static FilePickerResult openDatabaseFilePanel(const char *title, const char *fil
 	return result;
 }
 
+static FilePickerResult openDirectoryPanel(const char *title) {
+	__block FilePickerResult result = {NULL, NULL};
+
+	void (^block)(void) = ^{
+		[NSApp activateIgnoringOtherApps:YES];
+		NSOpenPanel *panel = [NSOpenPanel openPanel];
+		if (title != NULL) {
+			[panel setTitle:[NSString stringWithUTF8String:title]];
+		}
+		[panel setCanChooseFiles:NO];
+		[panel setCanChooseDirectories:YES];
+		[panel setCanCreateDirectories:YES];
+		[panel setAllowsMultipleSelection:NO];
+
+		NSModalResponse response = [panel runModal];
+		if (response != NSModalResponseOK) {
+			return;
+		}
+
+		NSURL *url = [[panel URLs] firstObject];
+		if (url == nil) {
+			return;
+		}
+
+		[url startAccessingSecurityScopedResource];
+
+		NSData *dirBookmark = [url bookmarkDataWithOptions:NSURLBookmarkCreationWithSecurityScope
+								includingResourceValuesForKeys:nil
+												 relativeToURL:nil
+														 error:nil];
+		if (dirBookmark != nil) {
+			NSString *dirKey = [NSString stringWithFormat:@"bookmark_dir_%@", [url path]];
+			[[NSUserDefaults standardUserDefaults] setObject:dirBookmark forKey:dirKey];
+		}
+
+		result.path = strdup([[url path] UTF8String]);
+	};
+
+	if ([NSThread isMainThread]) {
+		block();
+	} else {
+		dispatch_sync(dispatch_get_main_queue(), block);
+	}
+
+	return result;
+}
+
 // resolveBookmark resolves a stored security-scoped bookmark for a path.
 // Returns the resolved path if the bookmark is valid, NULL otherwise.
 static const char* resolveBookmark(const char *originalPath) {
@@ -209,19 +256,22 @@ typedef struct {
 
 static NSWindow* findPrimaryAppWindow(void) {
 	NSWindow *win = [NSApp mainWindow];
-	if (win != nil) {
+	if (win != nil && ![win isKindOfClass:[NSPanel class]]) {
 		return win;
 	}
 	win = [NSApp keyWindow];
-	if (win != nil) {
+	if (win != nil && ![win isKindOfClass:[NSPanel class]]) {
 		return win;
 	}
 	for (NSWindow *candidate in [NSApp windows]) {
+		if ([candidate isKindOfClass:[NSPanel class]]) {
+			continue;
+		}
 		if ([candidate canBecomeKeyWindow] || [candidate isVisible]) {
 			return candidate;
 		}
 	}
-	return [[NSApp windows] firstObject];
+	return nil;
 }
 
 static NativeWindowFrame getNativeWindowFrame(void) {
@@ -295,6 +345,26 @@ import (
 // bookmarks so previously opened database files remain accessible.
 func (a *App) RestoreSecurityScopedBookmarks() {
 	C.resolveAllBookmarks()
+}
+
+// selectDirectoryDarwin uses NSOpenPanel with runModal and security-scoped
+// resource activation so directory selection works reliably on macOS.
+func (a *App) selectDirectoryDarwin() (string, error) {
+	cTitle := C.CString("Select Directory")
+	defer C.free(unsafe.Pointer(cTitle))
+
+	result := C.openDirectoryPanel(cTitle)
+	if result.error != nil {
+		errStr := C.GoString(result.error)
+		C.free(unsafe.Pointer(result.error))
+		return "", fmt.Errorf("%s", errStr)
+	}
+	if result.path == nil {
+		return "", nil
+	}
+	path := C.GoString(result.path)
+	C.free(unsafe.Pointer(result.path))
+	return path, nil
 }
 
 // selectDatabaseFileDarwin uses NSOpenPanel with security-scoped resource

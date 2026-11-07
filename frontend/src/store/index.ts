@@ -132,6 +132,8 @@ const migrateSettings = async (state: any) => {
   const { os: _os, newUIEnabled: _newUIEnabled, ...settings } = state;
   return {
     ...settings,
+    sidebarWidth: typeof settings.sidebarWidth === 'number' ? settings.sidebarWidth : 256,
+    subSidebarWidth: typeof settings.subSidebarWidth === 'number' ? settings.subSidebarWidth : 256,
     language: 'zh_CN',
   };
 };

@@ -1243,12 +1243,86 @@ export const LoginForm: FC<LoginFormProps> = ({
         );
     }
 
-    if (landing && loading) {
-        return <div className="ce-connect-loading" role="status" aria-live="polite" data-testid="connection-loading">
-            <Spinner className="size-20" aria-hidden="true" />
-            <h1>{t('connectingTo', { host: hostName || databaseType.label })}</h1>
-            <p>{databaseType.label}{database ? ` · ${database}` : ''}</p>
-        </div>;
+    if (landing) {
+        return (
+            <div
+                className={classNames(
+                    "flex flex-col items-center justify-center min-h-screen w-full p-6",
+                    className,
+                )}
+                data-testid="login-form-container"
+            >
+                <div className="fixed top-4 right-4 z-20" data-testid="mode-toggle-login">
+                    <ModeToggle />
+                </div>
+                <div className="flex flex-col gap-lg w-full max-w-lg min-w-0" data-testid="ops-control-plane-section">
+                    {error && (
+                        <Badge id="login-error" variant="destructive" className="self-start" role="alert">
+                            {error}
+                        </Badge>
+                    )}
+                    <Alert className="w-full min-w-0" data-testid="ops-plane-synced-alert">
+                        <CheckCircleIcon className="h-4 w-4 shrink-0" aria-hidden="true" />
+                        <AlertTitle className="break-words leading-snug">
+                            {t('opsPlane.loggedInAs', {
+                                username: opsStatus.Username ?? '',
+                                role: opsStatus.Role ?? '',
+                            })}
+                        </AlertTitle>
+                        <AlertDescription className="flex flex-wrap items-center justify-between gap-sm mt-1">
+                            <span>
+                                {t('opsPlane.syncSummary', {
+                                    envCount: opsStatus.EnvironmentCount,
+                                    profileCount: opsStatus.ProfileCount,
+                                })}
+                            </span>
+                            <span className="flex items-center gap-xs">
+                                <Button
+                                    size="sm"
+                                    variant="secondary"
+                                    onClick={handleOpsPlaneSync}
+                                    disabled={opsSyncLoading}
+                                    data-testid="ops-plane-sync-button"
+                                >
+                                    {opsSyncLoading ? t('opsPlane.syncing') : t('opsPlane.resync')}
+                                </Button>
+                                <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={handleOpsPlaneLogout}
+                                    disabled={opsLogoutLoading}
+                                    data-testid="ops-plane-logout-button"
+                                >
+                                    {t('opsPlane.logout')}
+                                </Button>
+                            </span>
+                        </AlertDescription>
+                    </Alert>
+                    <div className="flex flex-col gap-lg">
+                        <Label>{t('availableProfiles')}</Label>
+                        <SearchSelect
+                            value={selectedAvailableProfile}
+                            onChange={handleAvailableProfileChange}
+                            placeholder={t('selectProfile')}
+                            contentClassName="w-[var(--radix-popover-trigger-width)]"
+                            options={availableProfiles}
+                            buttonProps={{
+                                "data-testid": "available-profiles-select",
+                            }}
+                            rightIcon={<ChevronDownIcon className="w-4 h-4"/>}
+                        />
+                        <Button
+                            onClick={() => { handleLoginWithSourceProfileSubmit(); }}
+                            data-testid="login-with-profile-button"
+                            variant={loginWithSourceProfileEnabled ? "default" : "secondary"}
+                            disabled={!loginWithSourceProfileEnabled || loading}
+                        >
+                            {loading ? <Spinner className="size-4" aria-hidden="true" /> : <CheckCircleIcon className="w-4 h-4" />} {loading ? t('connecting') : t('title')}
+                        </Button>
+                    </div>
+                </div>
+            </div>
+        );
     }
 
     const showSidePanel = sampleProfile && !hideHeader && featureFlags.sampleDatabaseTour && isFirstLogin && !hasCompletedOnboarding();

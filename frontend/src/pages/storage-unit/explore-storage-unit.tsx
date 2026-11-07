@@ -90,13 +90,9 @@ import {InternalRoutes} from "../../config/routes";
 import {useSourceContract} from "../../hooks/useSourceContract";
 import {useAppDispatch, useAppSelector} from "../../store/hooks";
 import {ExploreConditionsActions} from "../../store/explore-conditions";
-import {getSourceOperators} from "../../utils/source-operators";
 import {usePageSize} from "../../hooks/use-page-size";
-import {ExploreStorageUnitWhereCondition} from "./explore-storage-unit-where-condition";
 import {useTranslation} from "../../hooks/use-translation";
-import {whereConditionToSql} from "../../utils/where-condition-to-sql";
 import {isDestructiveQuery} from "../../utils/query-utils";
-import {getComponent} from "../../config/component-registry";
 import { findSourceObjectType } from "../../config/source-types";
 import {buildSourceObjectRef, buildSourceParentRef} from "../../utils/source-refs";
 import {formatAttributeKey, formatAttributeValue} from "../../utils/functions";
@@ -167,28 +163,12 @@ function buildRedisScratchpadQuery(keyName: string): string {
     return `TYPE ${JSON.stringify(keyName)}`;
 }
 
-type EESearchBarProps = {
-    columns: string[];
-    columnTypes: (string | undefined)[];
-    validOperators: string[];
-    onConditionChange: (condition: WhereCondition | undefined) => void;
-    onSubmit: () => void;
-};
-
 export const ExploreStorageUnit: FC = () => {
     const location = useLocation();
     const defaultPageSize = useAppSelector(state => state.settings.defaultPageSize);
     const maxPageSize = useAppSelector(state => state.settings.maxPageSize);
     const pageSizeOptions = useMemo(() => ({ maxPageSize }), [maxPageSize]);
-    const {
-        pageSize,
-        pageSizeString,
-        isCustom: isCustomPageSize,
-        customInput: customPageSizeInput,
-        setCustomInput: setCustomPageSizeInput,
-        handleSelectChange: handlePageSizeChange,
-        handleCustomApply: handleCustomPageSizeApply,
-    } = usePageSize(defaultPageSize, pageSizeOptions);
+    const { pageSize } = usePageSize(defaultPageSize, pageSizeOptions);
     const { t } = useTranslation('pages/explore-storage-unit');
 
     let schema = useAppSelector(state => state.database.schema);
@@ -202,7 +182,6 @@ export const ExploreStorageUnit: FC = () => {
         supportsSchema,
         usesDatabaseInsteadOfSchema,
     } = useSourceContract(currentType);
-    const whereConditionMode = useAppSelector(state => state.settings.whereConditionMode);
     const formatDatesLocale = useAppSelector(state => state.settings.formatDatesLocale);
     const formatBooleansReadable = useAppSelector(state => state.settings.formatBooleansReadable);
     const locationState = location.state as ExploreSourceState | undefined;
@@ -278,12 +257,33 @@ export const ExploreStorageUnit: FC = () => {
     const savedLastSql = useAppSelector(state =>
         conditionKey ? state.exploreConditions.lastSqlByKey?.[conditionKey] : undefined
     );
-    const sqlHistory = useAppSelector(state => state.exploreConditions.sqlHistory ?? []);
+    const allSqlHistory = useAppSelector(state => state.exploreConditions.sqlHistory ?? []);
+    const currentDbName = current?.Database ?? schema ?? '';
+    const sqlHistory = useMemo(() => {
+        const currentTable = unit?.Name;
+        if (!currentTable) {
+            return [];
+        }
+        const seen = new Set<string>();
+        return allSqlHistory.filter(historyItem => {
+            if (historyItem.table !== currentTable) {
+                return false;
+            }
+            if (historyItem.database && currentDbName && historyItem.database !== currentDbName) {
+                return false;
+            }
+            const dedupKey = historyItem.sql.trim().replace(/;+\s*$/, '').replace(/\s+/g, ' ');
+            if (!dedupKey || seen.has(dedupKey)) {
+                return false;
+            }
+            seen.add(dedupKey);
+            return true;
+        });
+    }, [allSqlHistory, currentDbName, unit?.Name]);
 
     const [currentPage, setCurrentPage] = useState(1);
     const [whereCondition, setWhereCondition] = useState<WhereCondition | undefined>(savedConditions?.whereCondition);
     const [sortConditions, setSortConditions] = useState<SortCondition[]>(savedConditions?.sortConditions ?? []);
-    const [isScratchpadOpen, setIsScratchpadOpen] = useState(true);
     const [isSqlHistoryOpen, setIsSqlHistoryOpen] = useState(false);
     const [activeSqlQuery, setActiveSqlQuery] = useState<string | null>(null);
     const [sqlError, setSqlError] = useState<string | null>(null);
@@ -305,9 +305,6 @@ export const ExploreStorageUnit: FC = () => {
     );
     const [showAdd, setShowAdd] = useState(false);
     const searchRef = useRef<(search: string) => void>(() => {});
-    const [localSearch, setLocalSearch] = useState("");
-    const [searchCondition, setSearchCondition] = useState<WhereCondition | undefined>();
-    const [EESearchBar, setEESearchBar] = useState<FC<EESearchBarProps> | null>(null);
 
     // Request counter to prevent race conditions - only the latest query's results should be used
     const latestRequestIdRef = useRef(0);
@@ -338,14 +335,6 @@ export const ExploreStorageUnit: FC = () => {
     const [tableHeight, setTableHeight] = useState<number>(500);
 
     const [updateStorageUnit] = useMutation(UpdateStorageUnitDocument);
-
-    // Load search bar extension from component registry
-    useEffect(() => {
-        const SearchBarComponent = getComponent('search-bar');
-        if (SearchBarComponent) {
-            setEESearchBar(() => SearchBarComponent as unknown as FC<EESearchBarProps>);
-        }
-    }, []);
 
     // Keep whereConditionRef in sync with whereCondition state
     useEffect(() => {
@@ -411,26 +400,6 @@ export const ExploreStorageUnit: FC = () => {
         return `SELECT * FROM ${qualified} LIMIT ${pageSize}`;
     }, [currentTableName, currentType, pageSize, schema, unitName]);
 
-    const scratchpadQueryWithConditions = useMemo(() => {
-        if (currentType === "MongoDB" || currentType === "Redis") {
-            return initialScratchpadQuery;
-        }
-        const whereClause = whereConditionToSql(whereCondition);
-
-        if (!whereClause) {
-            return initialScratchpadQuery;
-        }
-
-        const limitMatch = initialScratchpadQuery.match(/\s+LIMIT\s+\d+/i);
-        if (limitMatch) {
-            const beforeLimit = initialScratchpadQuery.substring(0, limitMatch.index);
-            const limitPart = initialScratchpadQuery.substring(limitMatch.index ?? 0);
-            return `${beforeLimit} WHERE ${whereClause}${limitPart}`;
-        }
-
-        return `${initialScratchpadQuery} WHERE ${whereClause}`;
-    }, [currentType, initialScratchpadQuery, whereCondition]);
-
     const [code, setCode] = useState((savedLastSql?.trim() ? savedLastSql : undefined) ?? initialScratchpadQuery);
 
     const handleCodeChange = useCallback((nextCode: string) => {
@@ -481,27 +450,6 @@ export const ExploreStorageUnit: FC = () => {
         };
     }, [rows?.Columns]);
 
-    // Compute valid operators for the current database
-    const validOperators = useMemo(() => {
-        if (!current?.Type) {
-            return [];
-        }
-        return getSourceOperators(current.Type);
-    }, [current?.Type]);
-
-    // Compute where columns (handles NoSQL document types)
-    const {whereColumns, whereColumnTypes} = useMemo(() => {
-        if (rows?.Columns == null || rows?.Columns.length === 0 || rows == null || rows.Rows.length === 0) {
-            return {whereColumns: [], whereColumnTypes: []};
-        }
-        if (rows?.Columns.length === 1 && rows?.Columns[0].Type === "Document" && isNoSQL) {
-            const whereColumns = Object.keys(JSON.parse(rows?.Rows[0][0]));
-            const whereColumnTypes = whereColumns.map(() => "string");
-            return {whereColumns, whereColumnTypes}
-        }
-        return {whereColumns: columns, whereColumnTypes: columnTypes}
-    }, [rows?.Columns, rows?.Rows, isNoSQL, columns, columnTypes]);
-
     const handleSubmitRequest = useCallback((pageOffset: number | null = null) => {
         if (!isTabularObject) {
             return;
@@ -522,15 +470,10 @@ export const ExploreStorageUnit: FC = () => {
             return;
         }
 
-        // Merge EE search condition with user-defined where condition
-        const mergedCondition = searchCondition && currentWhereCondition
-            ? { Type: WhereConditionType.And, And: { Children: [currentWhereCondition, searchCondition] } }
-            : searchCondition ?? currentWhereCondition;
-
         void getStorageUnitRows({
             variables: {
                 ref,
-                where: mergedCondition,
+                where: currentWhereCondition,
                 sort: sortConditions.length > 0 ? sortConditions : undefined,
                 pageSize,
                 pageOffset: pageOffset ?? (currentPage - 1) * pageSize,
@@ -548,14 +491,7 @@ export const ExploreStorageUnit: FC = () => {
                 }
             }
         });
-    }, [conditionKey, current, currentPage, currentTableName, currentUnitRef, getStorageUnitRows, isTabularObject, item, pageSize, schema, searchCondition, sortConditions, unitName]);
-
-    const handleQuery = useCallback(() => {
-        setActiveSqlQuery(null);
-        setSqlError(null);
-        setCurrentPage(1);
-        handleSubmitRequest(0);
-    }, [handleSubmitRequest]);
+    }, [conditionKey, current, currentPage, currentTableName, currentUnitRef, getStorageUnitRows, isTabularObject, item, pageSize, schema, sortConditions, unitName]);
 
     const handlePageChange = useCallback((page: number) => {
         setCurrentPage(page);
@@ -670,9 +606,7 @@ export const ExploreStorageUnit: FC = () => {
         setShowEntitySearchSheet(false);
         setEntitySearchData(null);
         setEntitySearchResults(null);
-        setLocalSearch("");
         searchRef.current("");
-        setSearchCondition(undefined);
 
         // Restore saved conditions for this unit, or reset to empty if none saved
         const restoredWhere = savedConditions?.whereCondition;
@@ -787,18 +721,6 @@ export const ExploreStorageUnit: FC = () => {
             resizeObserver.disconnect();
         };
     }, [rows]);
-
-    const handleFilterChange = useCallback((filters: WhereCondition) => {
-        whereConditionRef.current = filters;
-        setWhereCondition(filters);
-        if (conditionKey) {
-            dispatch(ExploreConditionsActions.setExploreConditions({
-                key: conditionKey,
-                whereCondition: filters,
-                sortConditions,
-            }));
-        }
-    }, [conditionKey, sortConditions, dispatch]);
 
     const sortedColumnsMap = useMemo(() => {
         const map = new Map<string, 'asc' | 'desc'>();
@@ -998,16 +920,6 @@ export const ExploreStorageUnit: FC = () => {
         }
     }, [code, current, doScratchpadExecute]);
 
-    const handleOpenScratchpad = useCallback(() => {
-        setIsScratchpadOpen(prev => {
-            const next = !prev;
-            if (next && !code.trim()) {
-                setCode(scratchpadQueryWithConditions);
-            }
-            return next;
-        });
-    }, [code, scratchpadQueryWithConditions]);
-
     const handleResetSqlResult = useCallback(() => {
         setActiveSqlQuery(null);
         setSqlError(null);
@@ -1201,182 +1113,99 @@ export const ExploreStorageUnit: FC = () => {
                 </div>
                 <div className="ce-explore-heading-actions" ref={setTableActionsTarget} />
             </div>
-            <div className="flex w-full relative" data-testid="explore-storage-unit-options">
-                <div className="flex flex-wrap justify-between items-end gap-2 w-full">
-                    <div className="flex flex-wrap gap-2">
-                        {EESearchBar != null ? (
-                            <EESearchBar
-                                key={conditionKey}
-                                columns={whereColumns}
-                                columnTypes={whereColumnTypes ?? []}
-                                validOperators={validOperators}
-                                onConditionChange={setSearchCondition}
-                                onSubmit={handleQuery}
-                            />
-                        ) : (
-                            <div className="flex flex-col gap-2">
-                                <Label>{t('search')}</Label>
-                                <div className="relative">
-                                    <WhoDBChatIcon name="search" className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
-                                    <Input
-                                        placeholder={t('searchPlaceholder')}
-                                        className="w-64 pl-10"
-                                        value={localSearch}
-                                        onChange={e => {
-                                            setLocalSearch(e.target.value);
-                                            searchRef.current(e.target.value);
-                                        }}
-                                        onKeyDown={e => {
-                                            if (e.key === "Enter" && localSearch) {
-                                                searchRef.current(localSearch);
-                                            }
-                                        }}
-                                        data-testid="table-search"
+            <Sheet open={showAdd} onOpenChange={setShowAdd}>
+                <SheetContent
+                    side="right"
+                    className="ce-add-row-sheet flex flex-col"
+                    onKeyDown={(e) => {
+                        if (e.key === 'Escape') {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            setShowAdd(false);
+                        }
+                    }}
+                    footer={
+                        <SheetFooter className="ce-add-row-footer">
+                            <span className="ce-add-row-required-count">{t('requiredFields', {count: constraintsData?.SourceFieldConstraints?.filter(c => c.Nullable !== true && !c.Identity && c.DefaultValue == null).length ?? 0})}</span>
+                            <Button
+                                variant="secondary"
+                                onClick={() =>{  setShowAdd(false); }}
+                                data-testid="cancel-add-row"
+                            >
+                                {t('cancel')}
+                            </Button>
+                            <Button onClick={handleAddRowSubmit} data-testid="submit-add-row-button" disabled={adding}>
+                                {adding && <Spinner className="size-4" aria-hidden="true" />} {t('addRowButton')}
+                            </Button>
+                        </SheetFooter>
+                    }
+                >
+                    <div className="ce-add-row-header"><span>{unitName}</span><SheetTitle>{t('addRowTitle')}</SheetTitle></div>
+                    <div className="ce-add-row-body flex-1 overflow-y-auto">
+                        {/* NoSQL Document input - show JSON editor */}
+                        {isNoSQL && rows?.Columns?.length === 1 && rows?.Columns?.[0]?.Type === "Document" ? (
+                            <div className="flex flex-col gap-4" data-testid="add-row-field-document">
+                                <Label>{t('documentJson')}</Label>
+                                <p className="text-xs text-muted-foreground">{t('documentJsonHelp')}</p>
+                                <div className={`h-[300px] border rounded-md overflow-hidden ${ph.noCapture}`}>
+                                    <CodeEditor
+                                        language="json"
+                                        value={addRowData.document ?? "{\n  \n}"}
+                                        setValue={(value) =>{  handleAddRowFieldChange("document", value); }}
                                     />
                                 </div>
                             </div>
-                        )}
-                        {isTabularObject && <ExploreStorageUnitWhereCondition
-                            defaultWhere={whereCondition}
-                            objectName={unit.Name}
-                            sheetOnly={whereConditionMode === 'sheet'}
-                            columns={whereColumns}
-                            operators={validOperators}
-                            onChange={handleFilterChange}
-                            columnTypes={whereColumnTypes ?? []}
-                        />}
-                    </div>
-                    <div className="ce-explore-run-controls">
-                        <Select value={isCustomPageSize ? "custom" : pageSizeString} onValueChange={handlePageSizeChange}>
-                            <SelectTrigger className="w-32" data-testid="table-page-size" aria-label={t('pageSizeLabel')}>
-                                <span>{isCustomPageSize ? t('custom') : `${pageSizeString} ${t('rows')}`}</span>
-                            </SelectTrigger>
-                            <SelectContent align="end">
-                                {import.meta.env.VITE_E2E_TEST === "true" && <SelectItem value="1" data-value="1">1</SelectItem>}
-                                {import.meta.env.VITE_E2E_TEST === "true" && <SelectItem value="2" data-value="2">2</SelectItem>}
-                                <SelectItem value="10" data-value="10">10</SelectItem>
-                                <SelectItem value="25" data-value="25">25</SelectItem>
-                                <SelectItem value="50" data-value="50">50</SelectItem>
-                                <SelectItem value="100" data-value="100">100</SelectItem>
-                                <SelectItem value="250" data-value="250">250</SelectItem>
-                                <SelectItem value="500" data-value="500">500</SelectItem>
-                                <SelectItem value="1000" data-value="1000">1000</SelectItem>
-                                <SelectItem value="custom" data-value="custom">{t('custom')}</SelectItem>
-                            </SelectContent>
-                        </Select>
-                        {isCustomPageSize && (
-                            <Input type="number" min={1} className="w-24" value={customPageSizeInput}
-                                onChange={(e) => { setCustomPageSizeInput(e.target.value); }}
-                                onBlur={handleCustomPageSizeApply}
-                                onKeyDown={(e) => { if (e.key === "Enter") handleCustomPageSizeApply(); }}
-                                data-testid="table-page-size-custom" />
-                        )}
-                        <Button onClick={handleQuery} data-testid="submit-button">
-                            <WhoDBChatIcon name="play" /> {t('run')}
-                        </Button>
-                    </div>
-                    <Button onClick={handleOpenScratchpad} data-testid="embedded-scratchpad-button" variant={isScratchpadOpen ? "default" : "secondary"}
-                        className={cn({
-                            "hidden": !supportsScratchpad,
-                        })}>
-                        <CommandLineIcon className="w-4 h-4" /> {t('scratchpad')}
-                    </Button>
-                </div>
-                <Sheet open={showAdd} onOpenChange={setShowAdd}>
-                    <SheetContent
-                        side="right"
-                        className="ce-add-row-sheet flex flex-col"
-                        onKeyDown={(e) => {
-                            if (e.key === 'Escape') {
-                                e.preventDefault();
-                                e.stopPropagation();
-                                setShowAdd(false);
-                            }
-                        }}
-                        footer={
-                            <SheetFooter className="ce-add-row-footer">
-                                <span className="ce-add-row-required-count">{t('requiredFields', {count: constraintsData?.SourceFieldConstraints?.filter(c => c.Nullable !== true && !c.Identity && c.DefaultValue == null).length ?? 0})}</span>
-                                <Button
-                                    variant="secondary"
-                                    onClick={() =>{  setShowAdd(false); }}
-                                    data-testid="cancel-add-row"
-                                >
-                                    {t('cancel')}
-                                </Button>
-                                <Button onClick={handleAddRowSubmit} data-testid="submit-add-row-button" disabled={adding}>
-                                    {adding && <Spinner className="size-4" aria-hidden="true" />} {t('addRowButton')}
-                                </Button>
-                            </SheetFooter>
-                        }
-                    >
-                        <div className="ce-add-row-header"><span>{unitName}</span><SheetTitle>{t('addRowTitle')}</SheetTitle></div>
-                        <div className="ce-add-row-body flex-1 overflow-y-auto">
-                            {/* NoSQL Document input - show JSON editor */}
-                            {isNoSQL && rows?.Columns?.length === 1 && rows?.Columns?.[0]?.Type === "Document" ? (
-                                <div className="flex flex-col gap-4" data-testid="add-row-field-document">
-                                    <Label>{t('documentJson')}</Label>
-                                    <p className="text-xs text-muted-foreground">{t('documentJsonHelp')}</p>
-                                    <div className={`h-[300px] border rounded-md overflow-hidden ${ph.noCapture}`}>
-                                        <CodeEditor
-                                            language="json"
-                                            value={addRowData.document ?? "{\n  \n}"}
-                                            setValue={(value) =>{  handleAddRowFieldChange("document", value); }}
-                                        />
-                                    </div>
-                                </div>
-                            ) : (
-                                /* Regular column-based input for SQL databases */
-                                <div className="flex flex-col gap-4">
-                                    {rows?.Columns?.map((col) => {
-                                        const constraint = constraintsData?.SourceFieldConstraints?.find(c => c.Name === col.Name);
-                                        const isRequired = constraint ? (constraint.Nullable !== true && !constraint.Identity && constraint.DefaultValue == null) : false;
-                                        const isIdentity = constraint?.Identity === true;
-                                        const hasDefault = constraint?.DefaultValue != null;
-                                        return (
-                                            <div key={col.Name} className="ce-add-row-field flex flex-col gap-2"
-                                                 data-testid={`add-row-field-${col.Name}`}>
-                                                <div className="ce-add-row-field-heading">
-                                                    <div className="ce-add-row-field-name">
-                                                        <Label className="w-fit" htmlFor={`add-row-${col.Name}`}>
-                                                            {col.Name}
-                                                        </Label>
-                                                        {isRequired && <Badge variant="secondary" className="text-[10px] px-1 py-0">{t('required')}</Badge>}
-                                                        {isIdentity && <Badge variant="outline" className="text-[10px] px-1 py-0">{t('autoGenerated')}</Badge>}
-                                                        {hasDefault && !isIdentity && <Badge variant="outline" className="text-[10px] px-1 py-0">{t('hasDefault')}</Badge>}
-                                                    </div>
-                                                    <span>{col.IsForeignKey && col.ReferencedTable && col.ReferencedColumn ? `→ ${col.ReferencedTable}.${col.ReferencedColumn}` : col.Type?.toLowerCase()}</span>
+                        ) : (
+                            /* Regular column-based input for SQL databases */
+                            <div className="flex flex-col gap-4">
+                                {rows?.Columns?.map((col) => {
+                                    const constraint = constraintsData?.SourceFieldConstraints?.find(c => c.Name === col.Name);
+                                    const isRequired = constraint ? (constraint.Nullable !== true && !constraint.Identity && constraint.DefaultValue == null) : false;
+                                    const isIdentity = constraint?.Identity === true;
+                                    const hasDefault = constraint?.DefaultValue != null;
+                                    return (
+                                        <div key={col.Name} className="ce-add-row-field flex flex-col gap-2"
+                                             data-testid={`add-row-field-${col.Name}`}>
+                                            <div className="ce-add-row-field-heading">
+                                                <div className="ce-add-row-field-name">
+                                                    <Label className="w-fit" htmlFor={`add-row-${col.Name}`}>
+                                                        {col.Name}
+                                                    </Label>
+                                                    {isRequired && <Badge variant="secondary" className="text-[10px] px-1 py-0">{t('required')}</Badge>}
+                                                    {isIdentity && <Badge variant="outline" className="text-[10px] px-1 py-0">{t('autoGenerated')}</Badge>}
+                                                    {hasDefault && !isIdentity && <Badge variant="outline" className="text-[10px] px-1 py-0">{t('hasDefault')}</Badge>}
                                                 </div>
-                                                {col.IsForeignKey && col.ReferencedTable && col.ReferencedColumn && current ? (
-                                                    <ForeignKeyAddRowField
-                                                        reference={buildSourceObjectRef(item, current, schema, col.ReferencedTable)}
-                                                        column={col.ReferencedColumn}
-                                                        fieldName={col.Name}
-                                                        value={addRowData[col.Name] ?? ""}
-                                                        onChange={value => { handleAddRowFieldChange(col.Name, value); }}
-                                                    />
-                                                ) : <Input
-                                                    id={`add-row-${col.Name}`}
-                                                    value={addRowData[col.Name] ?? ""}
-                                                    onChange={e =>{  handleAddRowFieldChange(col.Name, e.target.value); }}
-                                                    placeholder={hasDefault ? t('defaultValuePlaceholder', {value: constraint?.DefaultValue ?? ''}) : isIdentity ? t('autoGeneratedPlaceholder') : t('enterValueFor', {column: col.Name})}
-                                                    disabled={isIdentity}
-                                                    {...getInputPropsForColumnType(col.Type || '')}
-                                                />}
+                                                <span>{col.IsForeignKey && col.ReferencedTable && col.ReferencedColumn ? `→ ${col.ReferencedTable}.${col.ReferencedColumn}` : col.Type?.toLowerCase()}</span>
                                             </div>
-                                        );
-                                    })}
-                                </div>
-                            )}
-                            {rows?.Columns?.some(col => col.IsForeignKey && col.ReferencedTable) && <p className="ce-add-row-fk-note">{t('foreignKeyPickerHelp')}</p>}
-                            {addRowError && (
-                                <ErrorState error={addRowError} />
-                            )}
-                        </div>
-                    </SheetContent>
-                </Sheet>
-
-            </div>
-            {supportsScratchpad && isScratchpadOpen && (
+                                            {col.IsForeignKey && col.ReferencedTable && col.ReferencedColumn && current ? (
+                                                <ForeignKeyAddRowField
+                                                    reference={buildSourceObjectRef(item, current, schema, col.ReferencedTable)}
+                                                    column={col.ReferencedColumn}
+                                                    fieldName={col.Name}
+                                                    value={addRowData[col.Name] ?? ""}
+                                                    onChange={value => { handleAddRowFieldChange(col.Name, value); }}
+                                                />
+                                            ) : <Input
+                                                id={`add-row-${col.Name}`}
+                                                value={addRowData[col.Name] ?? ""}
+                                                onChange={e =>{  handleAddRowFieldChange(col.Name, e.target.value); }}
+                                                placeholder={hasDefault ? t('defaultValuePlaceholder', {value: constraint?.DefaultValue ?? ''}) : isIdentity ? t('autoGeneratedPlaceholder') : t('enterValueFor', {column: col.Name})}
+                                                disabled={isIdentity}
+                                                {...getInputPropsForColumnType(col.Type || '')}
+                                            />}
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        )}
+                        {rows?.Columns?.some(col => col.IsForeignKey && col.ReferencedTable) && <p className="ce-add-row-fk-note">{t('foreignKeyPickerHelp')}</p>}
+                        {addRowError && (
+                            <ErrorState error={addRowError} />
+                        )}
+                    </div>
+                </SheetContent>
+            </Sheet>
+            {supportsScratchpad && (
                 <div className="flex flex-col gap-2 w-full" data-testid="inline-sql-console">
                     <div className="ce-inline-sql-bar flex items-center gap-2 w-full rounded-lg border border-border bg-card/60 px-3 py-1.5">
                         <CommandLineIcon className="w-4 h-4 text-muted-foreground shrink-0" />
@@ -1662,7 +1491,10 @@ export const ExploreStorageUnit: FC = () => {
                                         <Button
                                             variant="destructive"
                                             onClick={() => {
-                                                dispatch(ExploreConditionsActions.clearSqlHistory());
+                                                dispatch(ExploreConditionsActions.clearSqlHistory({
+                                                    table: unitName,
+                                                    database: current?.Database ?? schema,
+                                                }));
                                             }}
                                             data-testid="clear-sql-history-confirm"
                                         >

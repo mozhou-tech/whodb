@@ -16,7 +16,8 @@
 
 import { Button, cn, Kbd, SidebarProvider, Tooltip, TooltipContent, TooltipTrigger, useTheme, IconMenu as Bars3Icon } from '@clidey/ux';
 import classNames from "classnames";
-import type {CSSProperties, FC, ReactNode} from "react";
+import type {CSSProperties, FC, MouseEvent as ReactMouseEvent, ReactNode} from "react";
+import {useCallback, useEffect, useRef, useState} from "react";
 import {twMerge} from "tailwind-merge";
 import {InternalRoutes, type IInternalRoute} from "../config/routes";
 import {useAppDispatch, useAppSelector} from "../store/hooks";
@@ -116,15 +117,71 @@ const ThemeToggle: FC = () => {
     </Button>;
 };
 
+const MIN_SIDEBAR_WIDTH = 180;
+const MAX_MAIN_SIDEBAR_WIDTH = 520;
+const MAX_SUB_SIDEBAR_WIDTH = 640;
+
 /** Renders the authenticated app shell and optional full-height content panels. */
 export const InternalPage: FC<IInternalPageProps> = (props) => {
     const { t } = useTranslation('components/page');
     const isLoggedIn = useAppSelector(state => state.auth.current != null);
     const sidebarOpen = useAppSelector(state => state.settings.sidebarOpen);
+    const sidebarWidth = useAppSelector(state => state.settings.sidebarWidth ?? 256);
+    const subSidebarWidth = useAppSelector(state => state.settings.subSidebarWidth ?? 256);
     const isTablesPage = props.routes?.at(-1)?.path === InternalRoutes.Dashboard.StorageUnit.path;
     const isExplorePage = props.routes?.at(-1)?.path === InternalRoutes.Dashboard.ExploreStorageUnit.path;
     const isWorkspacePage = [InternalRoutes.RawExecute.path, InternalRoutes.Settings?.path, InternalRoutes.ContactUs?.path].includes(props.routes?.at(-1)?.path);
     const dispatch = useAppDispatch();
+    const [resizingColumn, setResizingColumn] = useState<'main' | 'sub' | null>(null);
+    const resizeStateRef = useRef<{ column: 'main' | 'sub'; startX: number; startWidth: number; zoom: number } | null>(null);
+
+    const startResize = useCallback((column: 'main' | 'sub', startWidth: number, e: ReactMouseEvent<HTMLDivElement>) => {
+        e.preventDefault();
+        const zoom = Number.parseFloat(window.getComputedStyle(document.body).zoom) || 1;
+        resizeStateRef.current = {
+            column,
+            startX: e.clientX,
+            startWidth,
+            zoom,
+        };
+        setResizingColumn(column);
+    }, []);
+
+    useEffect(() => {
+        if (!resizingColumn) return;
+
+        const prevCursor = document.body.style.cursor;
+        const prevUserSelect = document.body.style.userSelect;
+        document.body.style.cursor = 'col-resize';
+        document.body.style.userSelect = 'none';
+
+        const handleMouseMove = (e: MouseEvent) => {
+            const state = resizeStateRef.current;
+            if (!state) return;
+            const delta = (e.clientX - state.startX) / state.zoom;
+            if (state.column === 'main') {
+                const nextWidth = Math.round(Math.min(MAX_MAIN_SIDEBAR_WIDTH, Math.max(MIN_SIDEBAR_WIDTH, state.startWidth + delta)));
+                dispatch(SettingsActions.setSidebarWidth(nextWidth));
+            } else {
+                const nextWidth = Math.round(Math.min(MAX_SUB_SIDEBAR_WIDTH, Math.max(MIN_SIDEBAR_WIDTH, state.startWidth + delta)));
+                dispatch(SettingsActions.setSubSidebarWidth(nextWidth));
+            }
+        };
+
+        const handleMouseUp = () => {
+            resizeStateRef.current = null;
+            setResizingColumn(null);
+        };
+
+        window.addEventListener('mousemove', handleMouseMove);
+        window.addEventListener('mouseup', handleMouseUp);
+        return () => {
+            document.body.style.cursor = prevCursor;
+            document.body.style.userSelect = prevUserSelect;
+            window.removeEventListener('mousemove', handleMouseMove);
+            window.removeEventListener('mouseup', handleMouseUp);
+        };
+    }, [dispatch, resizingColumn]);
 
     // Fetch source session metadata when logged in so Apollo state is ready
     // for source-operator and column-type helpers.
@@ -132,13 +189,49 @@ export const InternalPage: FC<IInternalPageProps> = (props) => {
 
     return (
         <Container>
-            <div className="flex flex-row grow h-full overflow-hidden">
-                <SidebarProvider open={sidebarOpen} onOpenChange={(open) => dispatch(SettingsActions.setSidebarOpen(open))}>
-                    <Sidebar />
-                </SidebarProvider>
-                {props.sidebar && <SidebarProvider style={props.subSidebarWidth ? { '--sidebar-width': props.subSidebarWidth } as CSSProperties : undefined}>
-                    {props.sidebar}
-                </SidebarProvider>}
+            <div className="flex flex-row shrink-0 h-full" data-resizing={resizingColumn != null ? 'true' : undefined}>
+                <div className="relative h-full shrink-0">
+                    <SidebarProvider
+                        open={sidebarOpen}
+                        onOpenChange={(open) => dispatch(SettingsActions.setSidebarOpen(open))}
+                        className="w-auto shrink-0"
+                        style={{ '--sidebar-width': `${sidebarWidth}px` } as CSSProperties}
+                    >
+                        <Sidebar />
+                    </SidebarProvider>
+                    {sidebarOpen && (
+                        <div
+                            role="separator"
+                            aria-orientation="vertical"
+                            data-testid="main-sidebar-resizer"
+                            onMouseDown={(e) => { startResize('main', sidebarWidth, e); }}
+                            className={cn(
+                                "hidden md:block absolute top-0 -right-1 bottom-0 w-2 cursor-col-resize z-[60] transition-colors",
+                                resizingColumn === 'main' ? "bg-primary/60" : "hover:bg-primary/40"
+                            )}
+                        />
+                    )}
+                </div>
+                {props.sidebar && (
+                    <div className="relative h-full shrink-0">
+                        <SidebarProvider
+                            className="w-auto shrink-0"
+                            style={{ '--sidebar-width': props.subSidebarWidth ?? `${subSidebarWidth}px` } as CSSProperties}
+                        >
+                            {props.sidebar}
+                        </SidebarProvider>
+                        <div
+                            role="separator"
+                            aria-orientation="vertical"
+                            data-testid="sub-sidebar-resizer"
+                            onMouseDown={(e) => { startResize('sub', subSidebarWidth, e); }}
+                            className={cn(
+                                "hidden md:block absolute top-0 -right-1 bottom-0 w-2 cursor-col-resize z-[60] transition-colors",
+                                resizingColumn === 'sub' ? "bg-primary/60" : "hover:bg-primary/40"
+                            )}
+                        />
+                    </div>
+                )}
             </div>
             <Page {...props} wrapperClassName={cn('p-0', isTablesPage && 'ce-tables-shell', isExplorePage && 'ce-explore-shell', isWorkspacePage && 'ce-workspace-shell')}>
                 <div className={cn("flex flex-col grow py-6", (isTablesPage || isExplorePage || isWorkspacePage) && 'ce-app-content', props.fullHeight && "min-h-0 !py-0")}>

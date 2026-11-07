@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import {skipToken, useQuery} from "@apollo/client/react";
+import {skipToken, useMutation, useQuery} from "@apollo/client/react";
 import {
     Button,
     cn,
@@ -43,6 +43,7 @@ import {
     IconCopy as DocumentDuplicateIcon,
     IconPlusCircle as PlusCircleIcon,
     IconApp as RectangleGroupIcon,
+    IconRefresh as ArrowPathRoundedSquareIcon,
     IconTable as TableCellsIcon,
     IconClose as XMarkIcon,
     SearchSelect,
@@ -53,6 +54,7 @@ import {
     SourceProfileLabelStrategy,
     SourceFieldOptionsDocument,
     SourceProfilesDocument,
+    SyncOpsControlPlaneProfilesDocument,
 } from '@graphql';
 import {useTranslation} from '@/hooks/use-translation';
 import {VisuallyHidden} from "@radix-ui/react-visually-hidden";
@@ -348,7 +350,34 @@ export const Sidebar: FC = () => {
         errorMessage: t('errorSigningIn'),
     });
     const { items: sourceTypeItems } = useSourceTypeItems();
-    const { data: backendProfilesData } = useQuery(SourceProfilesDocument);
+    const { data: backendProfilesData, refetch: refetchBackendProfiles } = useQuery(SourceProfilesDocument);
+    const [syncOpsControlPlane] = useMutation(SyncOpsControlPlaneProfilesDocument);
+    const [refreshingProfiles, setRefreshingProfiles] = useState(false);
+
+    const handleRefreshProfiles = useCallback(() => {
+        setRefreshingProfiles(true);
+        void (async () => {
+            try {
+                try {
+                    await syncOpsControlPlane();
+                } catch {
+                    // Ignore when Ops Control Plane is not authenticated or offline; still refetch local/backend profiles
+                }
+                const { data } = await refetchBackendProfiles();
+                const sourceProfiles = data?.SourceProfiles;
+                if (sourceProfiles && sourceProfiles.length > 0) {
+                    const payloads = sourceProfiles
+                        .filter(p => p.Source !== "builtin")
+                        .map(p => createProfilePayloadFromSourceProfile(p));
+                    if (payloads.length > 0) {
+                        dispatch(AuthActions.syncSourceProfiles(payloads));
+                    }
+                }
+            } finally {
+                setRefreshingProfiles(false);
+            }
+        })();
+    }, [dispatch, refetchBackendProfiles, syncOpsControlPlane]);
 
     useEffect(() => {
         const sourceProfiles = backendProfilesData?.SourceProfiles;
@@ -480,12 +509,35 @@ export const Sidebar: FC = () => {
             pathname !== InternalRoutes.Graph.path &&
             pathname !== InternalRoutes.Dashboard.StorageUnit.path &&
             pathname !== InternalRoutes.Dashboard.ExploreStorageUnit.path &&
-            pathname !== InternalRoutes.DataCopy.path
+            pathname !== InternalRoutes.DataCopy.path &&
+            pathname !== InternalRoutes.MigrationTool.path
         ) {
             void navigate(InternalRoutes.Dashboard.ExploreStorageUnit.path);
         }
         void handleProfileChange(current.Id, value);
     }, [current, handleProfileChange, navigate, pathname]);
+
+    const [refreshingDatabases, setRefreshingDatabases] = useState(false);
+
+    const handleRefreshDatabases = useCallback(() => {
+        if (!current?.Id || !current?.Type) {
+            return;
+        }
+        const targetProfileId = current.Id;
+        setRefreshingDatabases(true);
+        void getDatabases({ sourceType: current.Type })
+            .then(({ data }) => {
+                if (data) {
+                    setProfileDatabases({
+                        profileId: targetProfileId,
+                        databases: data.SourceFieldOptions,
+                    });
+                }
+            })
+            .finally(() => {
+                setRefreshingDatabases(false);
+            });
+    }, [current?.Id, current?.Type, getDatabases]);
 
     useEffect(() => {
         if (current == null) return;
@@ -788,7 +840,23 @@ export const Sidebar: FC = () => {
                 </div>
             )}
             <div className={cn("flex flex-col gap-sm w-full", !hasProjects && 'ce-sidebar-profile-wrap')}>
-                {(!newUIEnabled || hasProjects) && <h2 className={cn("text-sm", { hidden: !open })}>{profileLabel}</h2>}
+                {(!newUIEnabled || hasProjects) && (
+                    <div className={cn("flex items-center justify-between", { hidden: !open })}>
+                        <h2 className="text-sm">{profileLabel}</h2>
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-6 w-6 p-0 shrink-0"
+                            onClick={handleRefreshProfiles}
+                            disabled={refreshingProfiles}
+                            title={t('refresh')}
+                            aria-label={t('refresh')}
+                            data-testid="refresh-profiles-button"
+                        >
+                            <ArrowPathRoundedSquareIcon className={cn("w-3.5 h-3.5", refreshingProfiles && "animate-spin")} />
+                        </Button>
+                    </div>
+                )}
                 {!hasProjects && !newUIEnabled && open && current && (
                     <div className="ce-sidebar-profile-display" aria-hidden="true">
                         <span className="ce-sidebar-profile-icon"><WhoDBChatIcon name="source" /></span>
@@ -856,18 +924,35 @@ export const Sidebar: FC = () => {
                                         <>
                                             {connectionSelectors}
                                             {supportsDatabaseSwitching && (
-                                                <SearchSelect
-                                                    label={databaseDropdownLabel}
-                                                    options={databaseOptions}
-                                                    value={current?.Database}
-                                                    onChange={handleDatabaseChange}
-                                                    disabled={availableDatabasesLoading}
-                                                    placeholder={databaseSchemaTerminology === 'schema' && usesDatabaseInsteadOfSchema ? t('selectSchema') : t('selectDatabase')}
-                                                    searchPlaceholder={databaseSchemaTerminology === 'schema' && usesDatabaseInsteadOfSchema ? t('searchSchema') : t('searchDatabase')}
-                                                    side="left" align="start"
-                                                    buttonClassName={ph.mask}
-                                                    buttonProps={{ "data-testid": "sidebar-database", "aria-label": databaseDropdownLabel }}
-                                                />
+                                                <div className="flex flex-col gap-sm w-full">
+                                                    <div className="flex items-center justify-between">
+                                                        <h2 className="text-sm" data-testid="sidebar-database-label">{databaseDropdownLabel}</h2>
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="sm"
+                                                            className="h-6 w-6 p-0 shrink-0"
+                                                            onClick={handleRefreshDatabases}
+                                                            disabled={availableDatabasesLoading || refreshingDatabases}
+                                                            title={t('refresh')}
+                                                            aria-label={t('refresh')}
+                                                            data-testid="refresh-databases-button"
+                                                        >
+                                                            <ArrowPathRoundedSquareIcon className={cn("w-3.5 h-3.5", (availableDatabasesLoading || refreshingDatabases) && "animate-spin")} />
+                                                        </Button>
+                                                    </div>
+                                                    <SearchSelect
+                                                        label={databaseDropdownLabel}
+                                                        options={databaseOptions}
+                                                        value={current?.Database}
+                                                        onChange={handleDatabaseChange}
+                                                        disabled={availableDatabasesLoading}
+                                                        placeholder={databaseSchemaTerminology === 'schema' && usesDatabaseInsteadOfSchema ? t('selectSchema') : t('selectDatabase')}
+                                                        searchPlaceholder={databaseSchemaTerminology === 'schema' && usesDatabaseInsteadOfSchema ? t('searchSchema') : t('searchDatabase')}
+                                                        side="left" align="start"
+                                                        buttonClassName={ph.mask}
+                                                        buttonProps={{ "data-testid": "sidebar-database", "aria-label": databaseDropdownLabel }}
+                                                    />
+                                                </div>
                                             )}
                                             {supportsSchema && !pathname.includes(InternalRoutes.RawExecute.path) && (
                                                 <SearchSelect
@@ -892,18 +977,35 @@ export const Sidebar: FC = () => {
                                         <div className="flex flex-col gap-sm mb-4">
                                             {connectionSelectors}
                                             {supportsDatabaseSwitching && (
-                                                <SearchSelect
-                                                    label={databaseDropdownLabel}
-                                                    options={databaseOptions}
-                                                    value={current?.Database}
-                                                    onChange={handleDatabaseChange}
-                                                    disabled={availableDatabasesLoading}
-                                                    placeholder={databaseSchemaTerminology === 'schema' && usesDatabaseInsteadOfSchema ? t('selectSchema') : t('selectDatabase')}
-                                                    searchPlaceholder={databaseSchemaTerminology === 'schema' && usesDatabaseInsteadOfSchema ? t('searchSchema') : t('searchDatabase')}
-                                                    side="left" align="start"
-                                                    buttonClassName={ph.mask}
-                                                    buttonProps={{ "data-testid": "sidebar-database", "aria-label": databaseDropdownLabel }}
-                                                />
+                                                <div className="flex flex-col gap-sm w-full">
+                                                    <div className="flex items-center justify-between">
+                                                        <h2 className="text-sm" data-testid="sidebar-database-label">{databaseDropdownLabel}</h2>
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="sm"
+                                                            className="h-6 w-6 p-0 shrink-0"
+                                                            onClick={handleRefreshDatabases}
+                                                            disabled={availableDatabasesLoading || refreshingDatabases}
+                                                            title={t('refresh')}
+                                                            aria-label={t('refresh')}
+                                                            data-testid="refresh-databases-button"
+                                                        >
+                                                            <ArrowPathRoundedSquareIcon className={cn("w-3.5 h-3.5", (availableDatabasesLoading || refreshingDatabases) && "animate-spin")} />
+                                                        </Button>
+                                                    </div>
+                                                    <SearchSelect
+                                                        label={databaseDropdownLabel}
+                                                        options={databaseOptions}
+                                                        value={current?.Database}
+                                                        onChange={handleDatabaseChange}
+                                                        disabled={availableDatabasesLoading}
+                                                        placeholder={databaseSchemaTerminology === 'schema' && usesDatabaseInsteadOfSchema ? t('selectSchema') : t('selectDatabase')}
+                                                        searchPlaceholder={databaseSchemaTerminology === 'schema' && usesDatabaseInsteadOfSchema ? t('searchSchema') : t('searchDatabase')}
+                                                        side="left" align="start"
+                                                        buttonClassName={ph.mask}
+                                                        buttonProps={{ "data-testid": "sidebar-database", "aria-label": databaseDropdownLabel }}
+                                                    />
+                                                </div>
                                             )}
                                             {supportsSchema && !pathname.includes(InternalRoutes.RawExecute.path) && (
                                                 <SearchSelect
@@ -958,7 +1060,21 @@ export const Sidebar: FC = () => {
                                     <div className={cn("flex flex-col gap-sm w-full", {
                                         "opacity-0 pointer-events-none": !open,
                                     })}>
-                                        <h2 className="text-sm" data-testid="sidebar-database-label">{databaseDropdownLabel}</h2>
+                                        <div className="flex items-center justify-between">
+                                            <h2 className="text-sm" data-testid="sidebar-database-label">{databaseDropdownLabel}</h2>
+                                            <Button
+                                                variant="ghost"
+                                                size="sm"
+                                                className="h-6 w-6 p-0 shrink-0"
+                                                onClick={handleRefreshDatabases}
+                                                disabled={availableDatabasesLoading || refreshingDatabases}
+                                                title={t('refresh')}
+                                                aria-label={t('refresh')}
+                                                data-testid="refresh-databases-button"
+                                            >
+                                                <ArrowPathRoundedSquareIcon className={cn("w-3.5 h-3.5", (availableDatabasesLoading || refreshingDatabases) && "animate-spin")} />
+                                            </Button>
+                                        </div>
                                         <SearchSelect
                                             label={databaseDropdownLabel}
                                             options={databaseOptions}
