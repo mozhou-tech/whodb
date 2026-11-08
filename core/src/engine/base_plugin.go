@@ -29,6 +29,11 @@ import (
 // User-facing operations return errors.ErrUnsupported; internal operations return empty results.
 type BasePlugin struct{}
 
+// PlanMigrationRecovery reports that schema reconciliation is unsupported by default.
+func (b *BasePlugin) PlanMigrationRecovery(_ *PluginConfig, _ string, _ string) (*MigrationRecoveryPlan, error) {
+	return nil, errors.ErrUnsupported
+}
+
 // Compile-time check that BasePlugin satisfies PluginFunctions.
 var _ PluginFunctions = (*BasePlugin)(nil)
 

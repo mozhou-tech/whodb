@@ -424,6 +424,11 @@ func (r *mutationResolver) ExecuteFlyway(ctx context.Context, input model.Execut
 	return executeFlyway(ctx, input)
 }
 
+// RepairSourceMigrations is the resolver for the RepairSourceMigrations field.
+func (r *mutationResolver) RepairSourceMigrations(ctx context.Context, input model.SourceMigrationRepairInput) (*model.SourceMigrationRepairResult, error) {
+	return repairSourceMigrations(ctx, input)
+}
+
 // ImportSQL is the resolver for the ImportSQL field.
 func (r *mutationResolver) ImportSQL(ctx context.Context, input model.ImportSQLInput) (*model.ImportResult, error) {
 	spec, session, err := getSourceSessionForContext(ctx)
@@ -1134,6 +1139,11 @@ func (r *queryResolver) FlywayStatus(ctx context.Context) (*model.FlywayStatus, 
 // InspectFlywayDirectory is the resolver for the InspectFlywayDirectory field.
 func (r *queryResolver) InspectFlywayDirectory(ctx context.Context, directory string) (*model.FlywayDirectoryPreview, error) {
 	return inspectFlywayDirectory(ctx, directory)
+}
+
+// SourceMigrationDiagnosis is the resolver for the SourceMigrationDiagnosis field.
+func (r *queryResolver) SourceMigrationDiagnosis(ctx context.Context, input model.SourceMigrationInput) (*model.SourceMigrationDiagnosis, error) {
+	return diagnoseSourceMigrations(ctx, input)
 }
 
 // Mutation returns MutationResolver implementation.

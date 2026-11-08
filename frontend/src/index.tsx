@@ -27,7 +27,6 @@ import {PersistGate} from 'redux-persist/integration/react';
 import {initPosthog} from "./config/posthog";
 import {ThemeProvider} from '@clidey/ux'
 import {isDesktopApp} from './utils/external-links';
-import {PosthogConsentBanner} from './components/analytics/posthog-consent-banner';
 import {ErrorBoundary} from './components/error-boundary';
 import {LanguageGate} from './components/language-switch';
 import {getBasePath} from './utils/base-path';
@@ -72,7 +71,6 @@ const AppWithProviders = () => {
         <ThemeProvider defaultPalette="paper-ink">
             <LanguageGate>
                 <App />
-                <PosthogConsentBanner/>
             </LanguageGate>
         </ThemeProvider>
     );

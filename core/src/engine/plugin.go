@@ -85,6 +85,8 @@ type PluginFunctions interface {
 	GetRowCount(config *PluginConfig, schema string, storageUnit string, where *query.WhereCondition) (int64, error)
 	GetGraph(config *PluginConfig, schema string) ([]GraphUnit, error)
 	RawExecute(config *PluginConfig, sql string, params ...any) (*GetRowsResult, error)
+	// PlanMigrationRecovery compares additive migration DDL with current metadata without writes.
+	PlanMigrationRecovery(config *PluginConfig, schema string, sql string) (*MigrationRecoveryPlan, error)
 	Chat(config *PluginConfig, schema string, previousConversation string, prompt string) ([]*ChatMessage, error)
 	ExportData(config *PluginConfig, schema string, storageUnit string, writer func([]string) error, selectedRows []map[string]any) error
 	FormatValue(val any) string

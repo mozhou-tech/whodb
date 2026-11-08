@@ -20,6 +20,12 @@ import {
     Button,
     Checkbox,
     cn,
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
     Input,
     Label,
     Select,
@@ -37,11 +43,12 @@ import {
     toast,
     IconRefresh as ArrowPathIcon,
     IconCheckCircle as CheckCircleIcon,
+    IconChevronDown as ChevronDownIcon,
     IconDownload as ArrowDownTrayIcon,
     IconFolder as FolderOpenIcon,
     IconInfo as InformationCircleIcon,
     IconPlay as PlayIcon,
-    IconTerminal as CommandLineIcon,
+    IconTrash as TrashIcon,
 } from "@clidey/ux";
 import {
     ExecuteFlywayDocument,
@@ -49,13 +56,18 @@ import {
     FlywayStatusDocument,
     InspectFlywayDirectoryDocument,
     InstallFlywayDocument,
+    SourceMigrationDiagnosisDocument,
+    RepairSourceMigrationsDocument,
+    type SourceMigrationDiagnosisQuery,
+    type RepairSourceMigrationsMutation,
+    type SourceMigrationInput,
     SourceProfilesDocument,
     type SourceProfilesQuery,
     SourceTargetDatabasesDocument,
     SourceTargetSchemasDocument,
     type SourceTargetConnectionInput,
 } from "@graphql";
-import { type FC, useCallback, useEffect, useMemo, useState } from "react";
+import { type FC, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { InternalPage } from "../../components/page";
 import { Loading } from "../../components/loading";
 import { InternalRoutes } from "../../config/routes";
@@ -71,7 +83,34 @@ type FlywayExecResult = ExecuteFlywayMutation["ExecuteFlyway"];
 
 const LOCAL_PROJECT_KEY = "__local__";
 const STORAGE_KEY_DIRECTORY = "whodb.flyway.lastDirectory";
+const STORAGE_KEY_DIRECTORY_HISTORY = "whodb.flyway.directoryHistory";
+const MAX_DIRECTORY_HISTORY = 20;
 const SUPPORTED_FLYWAY_TYPES = new Set(["Postgres", "MySQL", "MariaDB", "ClickHouse", "Sqlite3", "DuckDB"]);
+
+function loadDirectoryHistory(): string[] {
+    try {
+        const raw = localStorage.getItem(STORAGE_KEY_DIRECTORY_HISTORY);
+        const parsed = raw ? (JSON.parse(raw) as unknown) : [];
+        const list = Array.isArray(parsed)
+            ? parsed.filter((item): item is string => typeof item === "string" && item.trim().length > 0).map(s => s.trim())
+            : [];
+        const last = localStorage.getItem(STORAGE_KEY_DIRECTORY)?.trim();
+        if (last && !list.includes(last)) {
+            list.unshift(last);
+        }
+        return Array.from(new Set(list)).slice(0, MAX_DIRECTORY_HISTORY);
+    } catch {
+        return [];
+    }
+}
+
+function saveDirectoryHistoryList(list: string[]): void {
+    try {
+        localStorage.setItem(STORAGE_KEY_DIRECTORY_HISTORY, JSON.stringify(list));
+    } catch {
+        // ignore storage errors
+    }
+}
 
 interface TargetInstanceOption {
     id: string;
@@ -137,6 +176,15 @@ export const MigrationToolPage: FC = () => {
         { fetchPolicy: "network-only" }
     );
     const [executeFlywayMutation, { loading: executing }] = useMutation(ExecuteFlywayDocument);
+    const [diagnoseMigration, { loading: diagnosing }] = useLazyQuery(SourceMigrationDiagnosisDocument, { fetchPolicy: "network-only" });
+    const [repairMigrations, { loading: repairing }] = useMutation(RepairSourceMigrationsDocument);
+    const [diagnosisOpen, setDiagnosisOpen] = useState(false);
+    const [diagnosis, setDiagnosis] = useState<SourceMigrationDiagnosisQuery["SourceMigrationDiagnosis"] | null>(null);
+    const [diagnosisInput, setDiagnosisInput] = useState<SourceMigrationInput | null>(null);
+    const [diagnosisTarget, setDiagnosisTarget] = useState("");
+    const [diagnosisError, setDiagnosisError] = useState<string | null>(null);
+    const [cleanupConfirmed, setCleanupConfirmed] = useState(false);
+    const [repairResult, setRepairResult] = useState<RepairSourceMigrationsMutation["RepairSourceMigrations"] | null>(null);
 
     const { data: profilesData } = useQuery(SourceProfilesDocument, {
         fetchPolicy: "cache-and-network",
@@ -157,6 +205,57 @@ export const MigrationToolPage: FC = () => {
             return "";
         }
     });
+    const [directoryHistory, setDirectoryHistory] = useState<string[]>(() => loadDirectoryHistory());
+    const [directoryDropdownOpen, setDirectoryDropdownOpen] = useState(false);
+    const directoryDropdownRef = useRef<HTMLDivElement>(null);
+    const [filesOpen, setFilesOpen] = useState(false);
+
+    const recordDirectoryHistory = useCallback((dir: string) => {
+        const trimmed = dir.trim();
+        if (!trimmed) {
+            return;
+        }
+        try {
+            localStorage.setItem(STORAGE_KEY_DIRECTORY, trimmed);
+        } catch {
+            // ignore storage errors
+        }
+        setDirectoryHistory(prev => {
+            const next = [trimmed, ...prev.filter(item => item !== trimmed)].slice(0, MAX_DIRECTORY_HISTORY);
+            saveDirectoryHistoryList(next);
+            return next;
+        });
+    }, []);
+
+    const handleRemoveDirectoryHistory = useCallback((dirToRemove: string) => {
+        setDirectoryHistory(prev => {
+            const next = prev.filter(item => item !== dirToRemove);
+            saveDirectoryHistoryList(next);
+            try {
+                if (localStorage.getItem(STORAGE_KEY_DIRECTORY) === dirToRemove) {
+                    localStorage.setItem(STORAGE_KEY_DIRECTORY, next[0] ?? "");
+                }
+            } catch {
+                // ignore storage errors
+            }
+            return next;
+        });
+    }, []);
+
+    useEffect(() => {
+        if (!directoryDropdownOpen) {
+            return;
+        }
+        const handleClickOutside = (event: MouseEvent) => {
+            if (directoryDropdownRef.current && !directoryDropdownRef.current.contains(event.target as Node)) {
+                setDirectoryDropdownOpen(false);
+            }
+        };
+        document.addEventListener("mousedown", handleClickOutside);
+        return () => {
+            document.removeEventListener("mousedown", handleClickOutside);
+        };
+    }, [directoryDropdownOpen]);
     const [installOutput, setInstallOutput] = useState<string>("");
     const [baselineOnMigrate, setBaselineOnMigrate] = useState<boolean>(true);
     const [validateOnMigrate, setValidateOnMigrate] = useState<boolean>(true);
@@ -435,13 +534,20 @@ export const MigrationToolPage: FC = () => {
         if (!targetDir) {
             return;
         }
-        try {
-            localStorage.setItem(STORAGE_KEY_DIRECTORY, targetDir);
-        } catch {
-            // ignore storage errors
-        }
+        recordDirectoryHistory(targetDir);
+        setFilesOpen(true);
         void inspectDirectoryQuery({ variables: { directory: targetDir } });
-    }, [directory, inspectDirectoryQuery]);
+    }, [directory, inspectDirectoryQuery, recordDirectoryHistory]);
+
+    const handleSelectHistoryDirectory = useCallback((selectedDir: string) => {
+        const trimmed = selectedDir.trim();
+        setDirectory(trimmed);
+        setDirectoryDropdownOpen(false);
+        if (trimmed) {
+            recordDirectoryHistory(trimmed);
+            void inspectDirectoryQuery({ variables: { directory: trimmed } });
+        }
+    }, [inspectDirectoryQuery, recordDirectoryHistory]);
 
     const handleBrowseDirectory = useCallback(async () => {
         const chosen = await selectDirectory();
@@ -475,6 +581,7 @@ export const MigrationToolPage: FC = () => {
             toast.error(t("directoryPlaceholder"));
             return;
         }
+        recordDirectoryHistory(trimmedDir);
         const targetInput = buildTargetInput(selectedInstance, selectedTargetDatabase);
         if (!targetInput) {
             return;
@@ -518,6 +625,7 @@ export const MigrationToolPage: FC = () => {
         directory,
         executeFlywayMutation,
         outOfOrder,
+        recordDirectoryHistory,
         selectedInstance,
         selectedTargetDatabase,
         selectedTargetSchema,
@@ -527,13 +635,73 @@ export const MigrationToolPage: FC = () => {
         validateOnMigrate,
     ]);
 
+    const handleDiagnose = useCallback(async () => {
+        if (!selectedInstance || !directory.trim()) return;
+        recordDirectoryHistory(directory.trim());
+        const target = buildTargetInput(selectedInstance, selectedTargetDatabase);
+        if (!target) return;
+        const input: SourceMigrationInput = {
+            Target: target,
+            TargetSchema: !usesDatabaseInsteadOfSchema && supportsSchema ? selectedTargetSchema : undefined,
+            Directory: directory.trim(),
+            BaselineOnMigrate: baselineOnMigrate,
+            OutOfOrder: outOfOrder,
+            ValidateOnMigrate: true,
+        };
+        setDiagnosisInput(input);
+        setDiagnosisTarget(`${selectedInstance.displayName} · ${selectedTargetDatabase}${input.TargetSchema ? ` · ${input.TargetSchema}` : ''}`);
+        setDiagnosis(null);
+        setDiagnosisError(null);
+        setCleanupConfirmed(false);
+        setRepairResult(null);
+        setDiagnosisOpen(true);
+        try {
+            const response = await diagnoseMigration({ variables: { input } });
+            setDiagnosis(response.data?.SourceMigrationDiagnosis ?? null);
+        } catch (error) {
+            setDiagnosisError(error instanceof Error ? error.message : String(error));
+        }
+    }, [baselineOnMigrate, buildTargetInput, diagnoseMigration, directory, outOfOrder, recordDirectoryHistory, selectedInstance, selectedTargetDatabase, selectedTargetSchema, supportsSchema, usesDatabaseInsteadOfSchema]);
+
+    const handleDiagnosedRepair = useCallback(async () => {
+        if (!diagnosisInput || !diagnosis?.Token || !cleanupConfirmed || repairing || repairResult) return;
+        const structural = diagnosis.Issues.some(issue => issue.Recovery?.Safe === true);
+        try {
+            const response = await repairMigrations({ variables: { input: {
+                Migration: diagnosisInput,
+                Token: diagnosis.Token,
+                ConfirmPartialChangesResolved: !structural,
+                ConfirmPlanExecution: structural,
+            } } });
+            const result = response.data?.RepairSourceMigrations;
+            if (result) {
+                setRepairResult(result);
+                const lastStep = result.Steps.at(-1);
+                if (lastStep) setExecutionResult(lastStep);
+            }
+        } catch (error) {
+            setDiagnosisError(error instanceof Error ? error.message : String(error));
+        } finally {
+            // The backend consumes the plan on its first confirmed use.
+            setDiagnosis(previous => previous ? { ...previous, Token: null } : previous);
+        }
+    }, [cleanupConfirmed, diagnosis, diagnosisInput, repairMigrations, repairing, repairResult]);
+
     const preview = directoryData?.InspectFlywayDirectory;
+    const hasStructureRecovery = diagnosis?.Issues.some(issue => issue.Recovery != null) ?? false;
+    const recoveryStatusLabels = { MATCHED: t("recoveryMatched"), PENDING: t("recoveryPending"), CONFLICT: t("recoveryConflict") };
+    const recoveryKindLabels = { CREATE_TABLE: t("recoveryCreateTable"), ADD_COLUMN: t("recoveryAddColumn"), CREATE_INDEX: t("recoveryCreateIndex") };
+    const recoveryPhaseLabels: Record<string, string> = {
+        repair: t("actionRepair"), validate: t("actionValidate"), migrate: t("actionMigrate"),
+        "verify-original-checksum": t("recoveryVerifyChecksum"), "restore-checksum": t("recoveryRestoreChecksum"), "validate-final": t("recoveryFinalValidation"),
+        "verify-structure": t("recoveryVerifyStructure"),
+    };
     const files = preview?.Files ?? [];
     const canExecute = Boolean(
         flywayStatus?.Installed &&
         selectedInstance &&
         directory.trim() &&
-        !executing
+        !executing && !diagnosing && !repairing
     );
 
     const renderMigrationTypeBadge = (type: string) => {
@@ -552,15 +720,6 @@ export const MigrationToolPage: FC = () => {
     return (
         <InternalPage routes={[InternalRoutes.MigrationTool]}>
             <div className="flex flex-col gap-5 w-full max-w-7xl mx-auto pb-8">
-                {/* Page Header */}
-                <div className="flex flex-col gap-1">
-                    <div className="flex items-center gap-2">
-                        <CommandLineIcon className="w-5 h-5 text-primary" />
-                        <h1 className="text-xl font-semibold tracking-tight">{t("title")}</h1>
-                    </div>
-                    <p className="text-xs text-muted-foreground">{t("subtitle")}</p>
-                </div>
-
                 {/* 1. Flyway CLI Status & One-Click Install */}
                 <div className="rounded-xl border border-border bg-card p-4 flex flex-col gap-3 shadow-xs">
                     <div className="flex flex-wrap items-center justify-between gap-3">
@@ -720,7 +879,7 @@ export const MigrationToolPage: FC = () => {
                                 ) : (
                                     <Input
                                         value={selectedTargetDatabase}
-                                        onChange={e => setSelectedTargetDatabase(e.target.value)}
+                                        onChange={e =>{  setSelectedTargetDatabase(e.target.value); }}
                                         placeholder={t("selectDatabasePlaceholder")}
                                         className="h-9 text-xs"
                                     />
@@ -751,7 +910,7 @@ export const MigrationToolPage: FC = () => {
                                     ) : (
                                         <Input
                                             value={selectedTargetSchema}
-                                            onChange={e => setSelectedTargetSchema(e.target.value)}
+                                            onChange={e =>{  setSelectedTargetSchema(e.target.value); }}
                                             placeholder={t("selectSchemaPlaceholder")}
                                             className="h-9 text-xs"
                                         />
@@ -767,18 +926,73 @@ export const MigrationToolPage: FC = () => {
                             <span className="text-sm font-medium">{t("directorySectionTitle")}</span>
 
                             <div className="flex items-center gap-2">
-                                <Input
-                                    value={directory}
-                                    onChange={e => setDirectory(e.target.value)}
-                                    onKeyDown={e => {
-                                        if (e.key === "Enter") {
-                                            handleScanDirectory();
-                                        }
-                                    }}
-                                    placeholder={t("directoryPlaceholder")}
-                                    className="flex-1 h-9 text-xs font-mono"
-                                    data-testid="flyway-directory-input"
-                                />
+                                <div className="relative flex-1 min-w-0" ref={directoryDropdownRef}>
+                                    <Input
+                                        value={directory}
+                                        onChange={e => { setDirectory(e.target.value); }}
+                                        onFocus={() => {
+                                            if (directoryHistory.length > 0) {
+                                                setDirectoryDropdownOpen(true);
+                                            }
+                                        }}
+                                        onKeyDown={e => {
+                                            if (e.key === "Enter") {
+                                                setDirectoryDropdownOpen(false);
+                                                handleScanDirectory();
+                                            } else if (e.key === "Escape") {
+                                                setDirectoryDropdownOpen(false);
+                                            }
+                                        }}
+                                        placeholder={t("directoryPlaceholder")}
+                                        className={cn("w-full h-9 text-xs font-mono", directoryHistory.length > 0 && "pr-8")}
+                                        data-testid="flyway-directory-input"
+                                    />
+                                    {directoryHistory.length > 0 && (
+                                        <button
+                                            type="button"
+                                            aria-label={t("directoryHistoryLabel")}
+                                            data-testid="flyway-directory-history-trigger"
+                                            onClick={() => { setDirectoryDropdownOpen(prev => !prev); }}
+                                            className="absolute right-1.5 top-1/2 -translate-y-1/2 flex items-center justify-center w-6 h-6 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                                        >
+                                            <ChevronDownIcon className={cn("w-3.5 h-3.5 transition-transform", directoryDropdownOpen && "rotate-180")} />
+                                        </button>
+                                    )}
+                                    {directoryDropdownOpen && directoryHistory.length > 0 && (
+                                        <div
+                                            className="absolute left-0 right-0 top-full mt-1 z-50 max-h-60 overflow-y-auto rounded-lg border border-border bg-popover text-popover-foreground shadow-md p-1"
+                                            data-testid="flyway-directory-history-dropdown"
+                                        >
+                                            {directoryHistory.map(historyPath => (
+                                                <div
+                                                    key={historyPath}
+                                                    className={cn(
+                                                        "flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-md text-xs font-mono hover:bg-accent hover:text-accent-foreground cursor-pointer group",
+                                                        historyPath === directory.trim() && "bg-accent/60 font-medium"
+                                                    )}
+                                                    onClick={() => { handleSelectHistoryDirectory(historyPath); }}
+                                                >
+                                                    <span className="truncate flex-1 min-w-0" title={historyPath}>
+                                                        {historyPath}
+                                                    </span>
+                                                    <button
+                                                        type="button"
+                                                        aria-label={t("removeDirectoryHistory")}
+                                                        title={t("removeDirectoryHistory")}
+                                                        data-testid="delete-directory-history-item"
+                                                        onClick={e => {
+                                                            e.stopPropagation();
+                                                            handleRemoveDirectoryHistory(historyPath);
+                                                        }}
+                                                        className="shrink-0 p-1 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+                                                    >
+                                                        <TrashIcon className="w-3.5 h-3.5" />
+                                                    </button>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
                                 {isDesktopApp() && (
                                     <Button
                                         variant="secondary"
@@ -800,6 +1014,12 @@ export const MigrationToolPage: FC = () => {
                                     <ArrowPathIcon className={cn("w-3.5 h-3.5", scanningDirectory && "animate-spin")} />
                                     {t("scanDirectory")}
                                 </Button>
+                                {preview && (
+                                    <Button variant="outline" size="sm" className="h-9 text-xs shrink-0"
+                                        onClick={() => { setFilesOpen(true); }} data-testid="view-migration-files">
+                                        {t("viewFiles")} ({files.length})
+                                    </Button>
+                                )}
                             </div>
 
                             {/* Options */}
@@ -809,21 +1029,21 @@ export const MigrationToolPage: FC = () => {
                                     <label className="flex items-center gap-2 text-xs cursor-pointer select-none">
                                         <Checkbox
                                             checked={baselineOnMigrate}
-                                            onCheckedChange={val => setBaselineOnMigrate(Boolean(val))}
+                                            onCheckedChange={val =>{  setBaselineOnMigrate(Boolean(val)); }}
                                         />
                                         <span>{t("baselineOnMigrate")}</span>
                                     </label>
                                     <label className="flex items-center gap-2 text-xs cursor-pointer select-none">
                                         <Checkbox
                                             checked={validateOnMigrate}
-                                            onCheckedChange={val => setValidateOnMigrate(Boolean(val))}
+                                            onCheckedChange={val =>{  setValidateOnMigrate(Boolean(val)); }}
                                         />
                                         <span>{t("validateOnMigrate")}</span>
                                     </label>
                                     <label className="flex items-center gap-2 text-xs cursor-pointer select-none">
                                         <Checkbox
                                             checked={outOfOrder}
-                                            onCheckedChange={val => setOutOfOrder(Boolean(val))}
+                                            onCheckedChange={val =>{  setOutOfOrder(Boolean(val)); }}
                                         />
                                         <span>{t("outOfOrder")}</span>
                                     </label>
@@ -880,65 +1100,126 @@ export const MigrationToolPage: FC = () => {
                             >
                                 {activeAction === "repair" ? t("runningAction", { action: "repair" }) : t("actionRepair")}
                             </Button>
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-9 text-xs gap-1.5"
+                                disabled={!canExecute}
+                                onClick={() => { void handleDiagnose(); }}
+                                data-testid="diagnose-migrations"
+                            >
+                                {t("diagnoseAndRepair")}
+                            </Button>
                         </div>
                     </div>
                 </div>
 
-                {/* 3. Discovered Migration Files */}
-                {preview && (
-                    <div className="rounded-xl border border-border bg-card p-4 flex flex-col gap-3 shadow-xs">
-                        <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-2">
-                                <span className="text-sm font-medium">{t("directorySectionTitle")}</span>
-                                <Badge variant="secondary">{t("filesFound", { count: files.length })}</Badge>
-                            </div>
-                            <code className="text-xs text-muted-foreground font-mono truncate max-w-md">
-                                {preview.Directory}
-                            </code>
-                        </div>
+                <Dialog open={filesOpen} onOpenChange={setFilesOpen}>
+                    <DialogContent className="flex max-h-[85vh] w-[calc(100vw-2rem)] flex-col overflow-hidden sm:max-w-[1100px]" data-testid="migration-files-dialog">
+                        <DialogHeader className="shrink-0 pr-6">
+                            <DialogTitle>{t("directorySectionTitle")}</DialogTitle>
+                            <DialogDescription className="break-all font-mono text-xs">
+                                {preview?.Directory ?? directory}
+                            </DialogDescription>
+                        </DialogHeader>
+                        {scanningDirectory ? <Loading /> : preview && <>
+                            <Badge variant="secondary" className="w-fit shrink-0">{t("filesFound", { count: files.length })}</Badge>
+                            {!preview.Exists || preview.Error ? (
+                                <div className="text-xs text-destructive py-4">
+                                    {t("directoryNotExist", { error: preview.Error ?? "" })}
+                                </div>
+                            ) : files.length === 0 ? (
+                                <div className="text-xs text-muted-foreground py-6 text-center">
+                                    {t("noFilesFound")}
+                                </div>
+                            ) : (
+                                <div className="min-h-0 flex-1 overflow-auto rounded-lg border border-border">
+                                    <Table className="min-w-[800px]">
+                                        <TableHeader>
+                                            <TableHeadRow>
+                                                <TableHead className="w-28">{t("colVersion")}</TableHead>
+                                                <TableHead className="w-32">{t("colType")}</TableHead>
+                                                <TableHead>{t("colDescription")}</TableHead>
+                                                <TableHead>{t("colFilename")}</TableHead>
+                                                <TableHead className="w-24 text-right">{t("colSize")}</TableHead>
+                                            </TableHeadRow>
+                                        </TableHeader>
+                                        <TableBody>
+                                            {files.map(file => (
+                                                <TableRow key={file.RelativePath}>
+                                                    <TableCell className="font-mono text-xs font-medium">
+                                                        {file.Version}
+                                                    </TableCell>
+                                                    <TableCell>{renderMigrationTypeBadge(file.Type)}</TableCell>
+                                                    <TableCell className="text-xs">{file.Description}</TableCell>
+                                                    <TableCell className="font-mono text-xs text-muted-foreground">
+                                                        {file.RelativePath}
+                                                    </TableCell>
+                                                    <TableCell className="font-mono text-xs text-right text-muted-foreground">
+                                                        {formatBytes(file.SizeBytes)}
+                                                    </TableCell>
+                                                </TableRow>
+                                            ))}
+                                        </TableBody>
+                                    </Table>
+                                </div>
+                            )}
+                        </>}
+                    </DialogContent>
+                </Dialog>
 
-                        {!preview.Exists ? (
-                            <div className="text-xs text-destructive py-4">
-                                {t("directoryNotExist", { error: preview.Error ?? "" })}
-                            </div>
-                        ) : files.length === 0 ? (
-                            <div className="text-xs text-muted-foreground py-6 text-center">
-                                {t("noFilesFound")}
-                            </div>
-                        ) : (
-                            <div className="max-h-72 overflow-auto rounded-lg border border-border">
-                                <Table>
-                                    <TableHeader>
-                                        <TableHeadRow>
-                                            <TableHead className="w-28">{t("colVersion")}</TableHead>
-                                            <TableHead className="w-32">{t("colType")}</TableHead>
-                                            <TableHead>{t("colDescription")}</TableHead>
-                                            <TableHead>{t("colFilename")}</TableHead>
-                                            <TableHead className="w-24 text-right">{t("colSize")}</TableHead>
-                                        </TableHeadRow>
-                                    </TableHeader>
-                                    <TableBody>
-                                        {files.map(file => (
-                                            <TableRow key={file.RelativePath}>
-                                                <TableCell className="font-mono text-xs font-medium">
-                                                    {file.Version}
-                                                </TableCell>
-                                                <TableCell>{renderMigrationTypeBadge(file.Type)}</TableCell>
-                                                <TableCell className="text-xs">{file.Description}</TableCell>
-                                                <TableCell className="font-mono text-xs text-muted-foreground">
-                                                    {file.RelativePath}
-                                                </TableCell>
-                                                <TableCell className="font-mono text-xs text-right text-muted-foreground">
-                                                    {formatBytes(file.SizeBytes)}
-                                                </TableCell>
-                                            </TableRow>
-                                        ))}
-                                    </TableBody>
-                                </Table>
-                            </div>
-                        )}
-                    </div>
-                )}
+                <Dialog open={diagnosisOpen} onOpenChange={open => { if (!repairing) setDiagnosisOpen(open); }}>
+                    <DialogContent className="flex max-h-[85vh] w-[calc(100vw-2rem)] flex-col overflow-hidden sm:max-w-3xl" data-testid="migration-diagnosis-dialog">
+                        <DialogHeader className="shrink-0 pr-6">
+                            <DialogTitle>{t("diagnoseAndRepair")}</DialogTitle>
+                            <DialogDescription className="break-all">{diagnosisTarget}</DialogDescription>
+                        </DialogHeader>
+                        <div className="min-h-0 overflow-auto space-y-4">
+                            <p className="text-xs text-muted-foreground">{t("diagnosisScope")}</p>
+                            {diagnosing && <div role="status"><Loading /><p className="mt-2 text-sm">{t("diagnosingMigrations")}</p></div>}
+                            {(diagnosisError ?? diagnosis?.Error) && <p role="alert" className="text-sm text-destructive">{diagnosisError ?? diagnosis?.Error}</p>}
+                            {diagnosis?.Healthy && <p className="text-sm">{t("diagnosisHealthy")}</p>}
+                            {diagnosis && !diagnosis.Healthy && !diagnosis.Error && <>
+                                <p className="text-sm text-muted-foreground">{diagnosis.RepairAllowed ? hasStructureRecovery ? t("structureRecoveryReview") : t("diagnosisReviewNeeded") : t("diagnosisBlocked")}</p>
+                                {diagnosis.Issues.map(issue => <div key={`${issue.Version}-${issue.Script}-${issue.Code}`} className="space-y-2 rounded-md border border-border p-3">
+                                    <div className="flex flex-wrap items-center gap-2 text-sm"><Badge variant="outline">{issue.Version}</Badge><code className="break-all">{issue.Script}</code></div>
+                                    <p className="whitespace-pre-wrap break-words text-xs text-muted-foreground">{issue.Message}</p>
+                                    {issue.Recovery && <div className="space-y-2" data-testid="migration-structure-plan">
+                                        <p className="text-sm">{t("structureRecoverySummary", { matched: issue.Recovery.Matched, pending: issue.Recovery.Pending })}</p>
+                                        {issue.Recovery.Error && <p role="alert" className="text-sm text-destructive">{issue.Recovery.Error}</p>}
+                                        <ul className="divide-y divide-border">
+                                            {issue.Recovery.Steps.map(step => <li key={`${step.Kind}-${step.Object}`} className="py-2 space-y-1">
+                                                <div className="flex flex-wrap items-center gap-2 text-xs">
+                                                    <Badge variant={step.Status === "CONFLICT" ? "destructive" : "outline"}>{recoveryStatusLabels[step.Status]}</Badge>
+                                                    <span>{recoveryKindLabels[step.Kind]}</span><code className="break-all">{step.Object}</code>
+                                                </div>
+                                                <p className="text-xs text-muted-foreground">{step.Reason}</p>
+                                            </li>)}
+                                        </ul>
+                                    </div>}
+                                    {issue.SQL && <details><summary className="cursor-pointer text-sm">{t("reviewMigrationSQL")}</summary><pre className="mt-2 max-h-64 overflow-auto rounded-md bg-muted p-3 text-xs">{issue.SQL}</pre></details>}
+                                </div>)}
+                                {diagnosis.RepairAllowed && !repairResult && <label className="flex items-start gap-3 text-sm">
+                                    <Checkbox checked={cleanupConfirmed} onCheckedChange={value => { setCleanupConfirmed(value === true); }} disabled={repairing} data-testid="confirm-migration-cleanup" />
+                                    <span>{hasStructureRecovery ? t("confirmStructureRecovery") : t("confirmMigrationCleanup")}</span>
+                                </label>}
+                            </>}
+                            {repairing && <p role="status" className="text-sm">{t("repairingMigrations")}</p>}
+                            {repairResult && <div className="space-y-3" data-testid="migration-repair-result">
+                                <p role="status" className={cn("text-sm", !repairResult.Success && "text-destructive")}>{repairResult.Success ? t("repairMigrationsSuccess") : t("repairMigrationsStopped")}</p>
+                                {repairResult.Error && <p className="text-sm text-destructive">{repairResult.Error}</p>}
+                                {repairResult.Steps.map(step => <details key={step.Action} open={!step.Success}>
+                                    <summary className="cursor-pointer text-sm">{recoveryPhaseLabels[step.Action]} · {step.Success ? t("statusSuccess") : t("statusFailed")}</summary>
+                                    <pre className="mt-2 max-h-64 overflow-auto rounded-md bg-muted p-3 text-xs whitespace-pre-wrap break-all">{step.Output || step.Error}</pre>
+                                </details>)}
+                            </div>}
+                        </div>
+                        <DialogFooter className="shrink-0">
+                            {diagnosis?.RepairAllowed && !repairResult && <Button disabled={!cleanupConfirmed || !diagnosis.Token || repairing} onClick={() => { void handleDiagnosedRepair(); }} data-testid="repair-diagnosed-migrations">{repairing ? t("repairingMigrations") : hasStructureRecovery ? t("applyStructureRecovery") : t("repairAndRetryMigrations")}</Button>}
+                            {(repairResult != null || diagnosisError != null || (diagnosis != null && !diagnosis.Token && !diagnosis.Healthy)) && <Button variant="outline" disabled={repairing || diagnosing} onClick={() => { void handleDiagnose(); }}>{t("diagnoseAgain")}</Button>}
+                        </DialogFooter>
+                    </DialogContent>
+                </Dialog>
 
                 {/* 4. Execution Output Console */}
                 {(executing || executionResult) && (

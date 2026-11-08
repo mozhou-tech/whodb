@@ -1,4 +1,32 @@
 en_US:
+  recoveryVerifyStructure: Verify recovered schema
+  recoveryMatched: Matched
+  recoveryPending: To apply
+  recoveryConflict: Conflict
+  recoveryCreateTable: Create table
+  recoveryAddColumn: Add column
+  recoveryCreateIndex: Create index
+  recoveryVerifyChecksum: Check original checksum differences
+  recoveryRestoreChecksum: Align original script checksum
+  recoveryFinalValidation: Validate original scripts again
+  structureRecoveryReview: Existing structures are checked against the script. Matching operations will be skipped, and only missing additive operations in the failed version will run. Conflicts block recovery. Existing data and original SQL files are preserved.
+  structureRecoverySummary: "{matched} matching operations; {pending} missing operations to apply"
+  confirmStructureRecovery: I have reviewed this plan and authorize preserving matching structures, applying only missing operations in the failed version, and aligning its original script checksum.
+  applyStructureRecovery: Apply verified recovery plan
+  diagnoseAndRepair: Diagnose and repair
+  diagnosingMigrations: Reading migration history and validating scripts…
+  diagnosisScope: Uses the selected database/schema and Flyway's default history table. Project configuration and callbacks are not loaded.
+  diagnosisHealthy: Validation passed. No failed migration records need repair.
+  diagnosisReviewNeeded: A failed migration record was found. Inspect the SQL and database for partial changes before confirming. This tool cannot determine which statements completed and will not delete tables or data.
+  diagnosisBlocked: These validation conflicts cannot be handled by this repair flow. Resolve the reported script or history differences, then diagnose again.
+  reviewMigrationSQL: Review migration SQL
+  confirmMigrationCleanup: I have reviewed the target database and SQL, resolved any partial changes, and authorize repairing migration history and retrying migrations once.
+  repairingMigrations: Repairing history, validating, and retrying migrations once…
+  repairAndRetryMigrations: Repair, validate and retry once
+  repairMigrationsSuccess: Repair, validation and migration completed successfully.
+  repairMigrationsStopped: The workflow stopped after a failure. Review the log before diagnosing again.
+  diagnoseAgain: Diagnose again
+  viewFiles: View files
   title: Migration Tool
   subtitle: Install Flyway CLI with one click, select a migration SQL directory, and run migrations against your target project and database.
   flywaySectionTitle: Flyway CLI Environment
@@ -15,6 +43,8 @@ en_US:
   notInstalledDesc: Flyway CLI was not detected on your system. Click "One-Click Install Flyway CLI" to install via Homebrew or download the official Flyway CLI automatically.
   directorySectionTitle: Migration Files Directory
   directoryPlaceholder: /path/to/db/migration
+  directoryHistoryLabel: Recent Directories
+  removeDirectoryHistory: Remove from history
   browseDirectory: Browse Directory
   scanDirectory: Scan Files
   filesFound: "{count} migration files found"
@@ -59,6 +89,34 @@ en_US:
   unsupportedDbWarning: "Current database type ({type}) does not support Flyway JDBC migrations. Supported types: PostgreSQL, MySQL, MariaDB, ClickHouse, SQLite, DuckDB."
 
 zh_CN:
+  recoveryVerifyStructure: 核对补齐后的数据库结构
+  recoveryMatched: 已匹配
+  recoveryPending: 待补齐
+  recoveryConflict: 冲突
+  recoveryCreateTable: 创建表
+  recoveryAddColumn: 增加字段
+  recoveryCreateIndex: 创建索引
+  recoveryVerifyChecksum: 核对原始校验和差异
+  recoveryRestoreChecksum: 对齐原始脚本校验和
+  recoveryFinalValidation: 再次校验原始脚本
+  structureRecoveryReview: 已对照脚本核对数据库结构。匹配的操作将跳过，仅补齐当前失败版本中缺失的新增操作；存在冲突时会阻止执行。保留现有数据，不修改原始 SQL 文件。
+  structureRecoverySummary: "已匹配 {matched} 项操作，待补齐 {pending} 项操作"
+  confirmStructureRecovery: 我已核对上述计划，确认保留已匹配的结构，仅补齐当前失败版本中的缺失操作，并对齐该版本的原始脚本校验和。
+  applyStructureRecovery: 执行已核对的补齐计划
+  diagnoseAndRepair: 诊断并修复
+  diagnosingMigrations: 正在读取迁移历史并校验脚本…
+  diagnosisScope: 使用所选数据库及架构中的默认 Flyway 迁移历史表，不加载项目自定义配置和回调。
+  diagnosisHealthy: 校验通过，没有需要修复的失败迁移记录。
+  diagnosisReviewNeeded: 发现失败的迁移记录。请先核对 SQL 和数据库，确认是否存在部分执行的变更。本工具无法判断哪些语句已完成，也不会自动删除表或数据。
+  diagnosisBlocked: 当前校验冲突无法通过此流程修复。请先处理列出的脚本或迁移历史差异，再重新诊断。
+  reviewMigrationSQL: 查看迁移 SQL
+  confirmMigrationCleanup: 我已核对目标数据库和迁移 SQL，处理了部分执行的残留变更，并确认修复迁移历史后重试迁移一次。
+  repairingMigrations: 正在修复迁移历史、校验并重试迁移一次…
+  repairAndRetryMigrations: 修复、校验并重试一次
+  repairMigrationsSuccess: 迁移历史修复、校验和迁移均已成功完成。
+  repairMigrationsStopped: 流程因失败已停止，请查看日志后重新诊断。
+  diagnoseAgain: 重新诊断
+  viewFiles: 查看文件
   title: 迁移工具
   subtitle: 支持一键安装 Flyway CLI，指定本地迁移 SQL 目录，在选定的项目和数据库中执行迁移与版本检查。
   flywaySectionTitle: Flyway CLI 环境状态
@@ -75,6 +133,8 @@ zh_CN:
   notInstalledDesc: 未检测到系统中的 Flyway CLI。点击右侧“一键安装 Flyway CLI”可通过 Homebrew 或自动下载官方命令行包完成安装。
   directorySectionTitle: 迁移文件目录
   directoryPlaceholder: 请选择或输入包含 V1__*.sql 的迁移文件目录路径...
+  directoryHistoryLabel: 历史目录记录
+  removeDirectoryHistory: 删除该历史记录
   browseDirectory: 选择目录
   scanDirectory: 扫描文件
   filesFound: "已发现 {count} 个 SQL 迁移文件"

@@ -252,6 +252,7 @@ type ComplexityRoot struct {
 		LoginWithSourceProfile           func(childComplexity int, profile model.SourceProfileLoginInput) int
 		Logout                           func(childComplexity int) int
 		LogoutOpsControlPlane            func(childComplexity int) int
+		RepairSourceMigrations           func(childComplexity int, input model.SourceMigrationRepairInput) int
 		SyncOpsControlPlaneProfiles      func(childComplexity int) int
 		TestSourceConnection             func(childComplexity int, credentials model.SourceLoginInput) int
 		UpdateSettings                   func(childComplexity int, newSettings model.SettingsConfigInput) int
@@ -297,6 +298,7 @@ type ComplexityRoot struct {
 		SourceFieldConstraints       func(childComplexity int, ref model.SourceObjectRefInput) int
 		SourceFieldOptions           func(childComplexity int, sourceType string, fieldKey string, values []*model.RecordInput) int
 		SourceGraph                  func(childComplexity int, ref *model.SourceObjectRefInput) int
+		SourceMigrationDiagnosis     func(childComplexity int, input model.SourceMigrationInput) int
 		SourceObject                 func(childComplexity int, ref model.SourceObjectRefInput) int
 		SourceObjectCreationMetadata func(childComplexity int, parent *model.SourceObjectRefInput) int
 		SourceObjects                func(childComplexity int, parent *model.SourceObjectRefInput, kinds []model.SourceObjectKind) int
@@ -415,6 +417,45 @@ type ComplexityRoot struct {
 		Constraints           func(childComplexity int) int
 		Graph                 func(childComplexity int) int
 		SystemObjectFiltering func(childComplexity int) int
+	}
+
+	SourceMigrationDiagnosis struct {
+		Error         func(childComplexity int) int
+		Healthy       func(childComplexity int) int
+		Issues        func(childComplexity int) int
+		RepairAllowed func(childComplexity int) int
+		Token         func(childComplexity int) int
+	}
+
+	SourceMigrationIssue struct {
+		Code     func(childComplexity int) int
+		Message  func(childComplexity int) int
+		Recovery func(childComplexity int) int
+		SQL      func(childComplexity int) int
+		Script   func(childComplexity int) int
+		Version  func(childComplexity int) int
+	}
+
+	SourceMigrationRecoveryPlan struct {
+		Error   func(childComplexity int) int
+		Matched func(childComplexity int) int
+		Pending func(childComplexity int) int
+		Safe    func(childComplexity int) int
+		Steps   func(childComplexity int) int
+	}
+
+	SourceMigrationRecoveryStep struct {
+		Kind   func(childComplexity int) int
+		Object func(childComplexity int) int
+		Reason func(childComplexity int) int
+		SQL    func(childComplexity int) int
+		Status func(childComplexity int) int
+	}
+
+	SourceMigrationRepairResult struct {
+		Error   func(childComplexity int) int
+		Steps   func(childComplexity int) int
+		Success func(childComplexity int) int
 	}
 
 	SourceMockDataTraits struct {
@@ -585,6 +626,7 @@ type MutationResolver interface {
 	CopySourceObjects(ctx context.Context, input model.CopySourceObjectsInput) (*model.CopySourceObjectsResult, error)
 	InstallFlyway(ctx context.Context) (*model.FlywayInstallResult, error)
 	ExecuteFlyway(ctx context.Context, input model.ExecuteFlywayInput) (*model.FlywayExecutionResult, error)
+	RepairSourceMigrations(ctx context.Context, input model.SourceMigrationRepairInput) (*model.SourceMigrationRepairResult, error)
 	ImportSQL(ctx context.Context, input model.ImportSQLInput) (*model.ImportResult, error)
 	ImportPreview(ctx context.Context, file graphql.Upload, options model.ImportFileOptions, ref *model.SourceObjectRefInput, useHeaderMapping *bool) (*model.ImportPreview, error)
 	ImportSourceObjectFile(ctx context.Context, input model.ImportFileInput) (*model.ImportResult, error)
@@ -622,6 +664,7 @@ type QueryResolver interface {
 	SourceTargetSchemas(ctx context.Context, target model.SourceTargetConnectionInput) ([]string, error)
 	FlywayStatus(ctx context.Context) (*model.FlywayStatus, error)
 	InspectFlywayDirectory(ctx context.Context, directory string) (*model.FlywayDirectoryPreview, error)
+	SourceMigrationDiagnosis(ctx context.Context, input model.SourceMigrationInput) (*model.SourceMigrationDiagnosis, error)
 }
 
 // endregion ************************** generated!.gotpl **************************
@@ -1591,6 +1634,17 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.Mutation.LogoutOpsControlPlane(childComplexity), true
+	case "Mutation.RepairSourceMigrations":
+		if e.ComplexityRoot.Mutation.RepairSourceMigrations == nil {
+			break
+		}
+
+		args, err := ec.field_Mutation_RepairSourceMigrations_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.ComplexityRoot.Mutation.RepairSourceMigrations(childComplexity, args["input"].(model.SourceMigrationRepairInput)), true
 	case "Mutation.SyncOpsControlPlaneProfiles":
 		if e.ComplexityRoot.Mutation.SyncOpsControlPlaneProfiles == nil {
 			break
@@ -1876,6 +1930,17 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.Query.SourceGraph(childComplexity, args["ref"].(*model.SourceObjectRefInput)), true
+	case "Query.SourceMigrationDiagnosis":
+		if e.ComplexityRoot.Query.SourceMigrationDiagnosis == nil {
+			break
+		}
+
+		args, err := ec.field_Query_SourceMigrationDiagnosis_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.ComplexityRoot.Query.SourceMigrationDiagnosis(childComplexity, args["input"].(model.SourceMigrationInput)), true
 	case "Query.SourceObject":
 		if e.ComplexityRoot.Query.SourceObject == nil {
 			break
@@ -2398,6 +2463,155 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.SourceMetadataTraits.SystemObjectFiltering(childComplexity), true
+
+	case "SourceMigrationDiagnosis.Error":
+		if e.ComplexityRoot.SourceMigrationDiagnosis.Error == nil {
+			break
+		}
+
+		return e.ComplexityRoot.SourceMigrationDiagnosis.Error(childComplexity), true
+	case "SourceMigrationDiagnosis.Healthy":
+		if e.ComplexityRoot.SourceMigrationDiagnosis.Healthy == nil {
+			break
+		}
+
+		return e.ComplexityRoot.SourceMigrationDiagnosis.Healthy(childComplexity), true
+	case "SourceMigrationDiagnosis.Issues":
+		if e.ComplexityRoot.SourceMigrationDiagnosis.Issues == nil {
+			break
+		}
+
+		return e.ComplexityRoot.SourceMigrationDiagnosis.Issues(childComplexity), true
+	case "SourceMigrationDiagnosis.RepairAllowed":
+		if e.ComplexityRoot.SourceMigrationDiagnosis.RepairAllowed == nil {
+			break
+		}
+
+		return e.ComplexityRoot.SourceMigrationDiagnosis.RepairAllowed(childComplexity), true
+	case "SourceMigrationDiagnosis.Token":
+		if e.ComplexityRoot.SourceMigrationDiagnosis.Token == nil {
+			break
+		}
+
+		return e.ComplexityRoot.SourceMigrationDiagnosis.Token(childComplexity), true
+
+	case "SourceMigrationIssue.Code":
+		if e.ComplexityRoot.SourceMigrationIssue.Code == nil {
+			break
+		}
+
+		return e.ComplexityRoot.SourceMigrationIssue.Code(childComplexity), true
+	case "SourceMigrationIssue.Message":
+		if e.ComplexityRoot.SourceMigrationIssue.Message == nil {
+			break
+		}
+
+		return e.ComplexityRoot.SourceMigrationIssue.Message(childComplexity), true
+	case "SourceMigrationIssue.Recovery":
+		if e.ComplexityRoot.SourceMigrationIssue.Recovery == nil {
+			break
+		}
+
+		return e.ComplexityRoot.SourceMigrationIssue.Recovery(childComplexity), true
+	case "SourceMigrationIssue.SQL":
+		if e.ComplexityRoot.SourceMigrationIssue.SQL == nil {
+			break
+		}
+
+		return e.ComplexityRoot.SourceMigrationIssue.SQL(childComplexity), true
+	case "SourceMigrationIssue.Script":
+		if e.ComplexityRoot.SourceMigrationIssue.Script == nil {
+			break
+		}
+
+		return e.ComplexityRoot.SourceMigrationIssue.Script(childComplexity), true
+	case "SourceMigrationIssue.Version":
+		if e.ComplexityRoot.SourceMigrationIssue.Version == nil {
+			break
+		}
+
+		return e.ComplexityRoot.SourceMigrationIssue.Version(childComplexity), true
+
+	case "SourceMigrationRecoveryPlan.Error":
+		if e.ComplexityRoot.SourceMigrationRecoveryPlan.Error == nil {
+			break
+		}
+
+		return e.ComplexityRoot.SourceMigrationRecoveryPlan.Error(childComplexity), true
+	case "SourceMigrationRecoveryPlan.Matched":
+		if e.ComplexityRoot.SourceMigrationRecoveryPlan.Matched == nil {
+			break
+		}
+
+		return e.ComplexityRoot.SourceMigrationRecoveryPlan.Matched(childComplexity), true
+	case "SourceMigrationRecoveryPlan.Pending":
+		if e.ComplexityRoot.SourceMigrationRecoveryPlan.Pending == nil {
+			break
+		}
+
+		return e.ComplexityRoot.SourceMigrationRecoveryPlan.Pending(childComplexity), true
+	case "SourceMigrationRecoveryPlan.Safe":
+		if e.ComplexityRoot.SourceMigrationRecoveryPlan.Safe == nil {
+			break
+		}
+
+		return e.ComplexityRoot.SourceMigrationRecoveryPlan.Safe(childComplexity), true
+	case "SourceMigrationRecoveryPlan.Steps":
+		if e.ComplexityRoot.SourceMigrationRecoveryPlan.Steps == nil {
+			break
+		}
+
+		return e.ComplexityRoot.SourceMigrationRecoveryPlan.Steps(childComplexity), true
+
+	case "SourceMigrationRecoveryStep.Kind":
+		if e.ComplexityRoot.SourceMigrationRecoveryStep.Kind == nil {
+			break
+		}
+
+		return e.ComplexityRoot.SourceMigrationRecoveryStep.Kind(childComplexity), true
+	case "SourceMigrationRecoveryStep.Object":
+		if e.ComplexityRoot.SourceMigrationRecoveryStep.Object == nil {
+			break
+		}
+
+		return e.ComplexityRoot.SourceMigrationRecoveryStep.Object(childComplexity), true
+	case "SourceMigrationRecoveryStep.Reason":
+		if e.ComplexityRoot.SourceMigrationRecoveryStep.Reason == nil {
+			break
+		}
+
+		return e.ComplexityRoot.SourceMigrationRecoveryStep.Reason(childComplexity), true
+	case "SourceMigrationRecoveryStep.SQL":
+		if e.ComplexityRoot.SourceMigrationRecoveryStep.SQL == nil {
+			break
+		}
+
+		return e.ComplexityRoot.SourceMigrationRecoveryStep.SQL(childComplexity), true
+	case "SourceMigrationRecoveryStep.Status":
+		if e.ComplexityRoot.SourceMigrationRecoveryStep.Status == nil {
+			break
+		}
+
+		return e.ComplexityRoot.SourceMigrationRecoveryStep.Status(childComplexity), true
+
+	case "SourceMigrationRepairResult.Error":
+		if e.ComplexityRoot.SourceMigrationRepairResult.Error == nil {
+			break
+		}
+
+		return e.ComplexityRoot.SourceMigrationRepairResult.Error(childComplexity), true
+	case "SourceMigrationRepairResult.Steps":
+		if e.ComplexityRoot.SourceMigrationRepairResult.Steps == nil {
+			break
+		}
+
+		return e.ComplexityRoot.SourceMigrationRepairResult.Steps(childComplexity), true
+	case "SourceMigrationRepairResult.Success":
+		if e.ComplexityRoot.SourceMigrationRepairResult.Success == nil {
+			break
+		}
+
+		return e.ComplexityRoot.SourceMigrationRepairResult.Success(childComplexity), true
 
 	case "SourceMockDataTraits.SupportsRelationalDependencies":
 		if e.ComplexityRoot.SourceMockDataTraits.SupportsRelationalDependencies == nil {
@@ -2955,6 +3169,8 @@ func (e *executableSchema) Exec(ctx context.Context) graphql.ResponseHandler {
 			graphql.NewInputUnmarshaler("SettingsConfigInput", ec.unmarshalInputSettingsConfigInput),
 			graphql.NewInputUnmarshaler("SortCondition", ec.unmarshalInputSortCondition),
 			graphql.NewInputUnmarshaler("SourceLoginInput", ec.unmarshalInputSourceLoginInput),
+			graphql.NewInputUnmarshaler("SourceMigrationInput", ec.unmarshalInputSourceMigrationInput),
+			graphql.NewInputUnmarshaler("SourceMigrationRepairInput", ec.unmarshalInputSourceMigrationRepairInput),
 			graphql.NewInputUnmarshaler("SourceObjectDefinitionInput", ec.unmarshalInputSourceObjectDefinitionInput),
 			graphql.NewInputUnmarshaler("SourceObjectRefInput", ec.unmarshalInputSourceObjectRefInput),
 			graphql.NewInputUnmarshaler("SourceProfileLoginInput", ec.unmarshalInputSourceProfileLoginInput),
@@ -3693,6 +3909,84 @@ func (ec *executionContext) childFields_SourceMetadataTraits(ctx context.Context
 	return nil, fmt.Errorf("no field named %q was found under type SourceMetadataTraits", field.Name)
 }
 
+func (ec *executionContext) childFields_SourceMigrationDiagnosis(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+	switch field.Name {
+	case "Healthy":
+		return ec.fieldContext_SourceMigrationDiagnosis_Healthy(ctx, field)
+	case "RepairAllowed":
+		return ec.fieldContext_SourceMigrationDiagnosis_RepairAllowed(ctx, field)
+	case "Token":
+		return ec.fieldContext_SourceMigrationDiagnosis_Token(ctx, field)
+	case "Issues":
+		return ec.fieldContext_SourceMigrationDiagnosis_Issues(ctx, field)
+	case "Error":
+		return ec.fieldContext_SourceMigrationDiagnosis_Error(ctx, field)
+	}
+	return nil, fmt.Errorf("no field named %q was found under type SourceMigrationDiagnosis", field.Name)
+}
+
+func (ec *executionContext) childFields_SourceMigrationIssue(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+	switch field.Name {
+	case "Version":
+		return ec.fieldContext_SourceMigrationIssue_Version(ctx, field)
+	case "Script":
+		return ec.fieldContext_SourceMigrationIssue_Script(ctx, field)
+	case "Code":
+		return ec.fieldContext_SourceMigrationIssue_Code(ctx, field)
+	case "Message":
+		return ec.fieldContext_SourceMigrationIssue_Message(ctx, field)
+	case "SQL":
+		return ec.fieldContext_SourceMigrationIssue_SQL(ctx, field)
+	case "Recovery":
+		return ec.fieldContext_SourceMigrationIssue_Recovery(ctx, field)
+	}
+	return nil, fmt.Errorf("no field named %q was found under type SourceMigrationIssue", field.Name)
+}
+
+func (ec *executionContext) childFields_SourceMigrationRecoveryPlan(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+	switch field.Name {
+	case "Safe":
+		return ec.fieldContext_SourceMigrationRecoveryPlan_Safe(ctx, field)
+	case "Matched":
+		return ec.fieldContext_SourceMigrationRecoveryPlan_Matched(ctx, field)
+	case "Pending":
+		return ec.fieldContext_SourceMigrationRecoveryPlan_Pending(ctx, field)
+	case "Error":
+		return ec.fieldContext_SourceMigrationRecoveryPlan_Error(ctx, field)
+	case "Steps":
+		return ec.fieldContext_SourceMigrationRecoveryPlan_Steps(ctx, field)
+	}
+	return nil, fmt.Errorf("no field named %q was found under type SourceMigrationRecoveryPlan", field.Name)
+}
+
+func (ec *executionContext) childFields_SourceMigrationRecoveryStep(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+	switch field.Name {
+	case "Kind":
+		return ec.fieldContext_SourceMigrationRecoveryStep_Kind(ctx, field)
+	case "Object":
+		return ec.fieldContext_SourceMigrationRecoveryStep_Object(ctx, field)
+	case "Status":
+		return ec.fieldContext_SourceMigrationRecoveryStep_Status(ctx, field)
+	case "Reason":
+		return ec.fieldContext_SourceMigrationRecoveryStep_Reason(ctx, field)
+	case "SQL":
+		return ec.fieldContext_SourceMigrationRecoveryStep_SQL(ctx, field)
+	}
+	return nil, fmt.Errorf("no field named %q was found under type SourceMigrationRecoveryStep", field.Name)
+}
+
+func (ec *executionContext) childFields_SourceMigrationRepairResult(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+	switch field.Name {
+	case "Success":
+		return ec.fieldContext_SourceMigrationRepairResult_Success(ctx, field)
+	case "Steps":
+		return ec.fieldContext_SourceMigrationRepairResult_Steps(ctx, field)
+	case "Error":
+		return ec.fieldContext_SourceMigrationRepairResult_Error(ctx, field)
+	}
+	return nil, fmt.Errorf("no field named %q was found under type SourceMigrationRepairResult", field.Name)
+}
+
 func (ec *executionContext) childFields_SourceMockDataTraits(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
 	switch field.Name {
 	case "SupportsRelationalDependencies":
@@ -4415,6 +4709,20 @@ func (ec *executionContext) field_Mutation_LoginWithSourceProfile_args(ctx conte
 	return args, nil
 }
 
+func (ec *executionContext) field_Mutation_RepairSourceMigrations_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "input",
+		func(ctx context.Context, v any) (model.SourceMigrationRepairInput, error) {
+			return ec.unmarshalNSourceMigrationRepairInput2githubᚗcomᚋclideyᚋwhodbᚋcoreᚋgraphᚋmodelᚐSourceMigrationRepairInput(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["input"] = arg0
+	return args, nil
+}
+
 func (ec *executionContext) field_Mutation_TestSourceConnection_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
 	var err error
 	args := map[string]any{}
@@ -4666,6 +4974,20 @@ func (ec *executionContext) field_Query_SourceGraph_args(ctx context.Context, ra
 		return nil, err
 	}
 	args["ref"] = arg0
+	return args, nil
+}
+
+func (ec *executionContext) field_Query_SourceMigrationDiagnosis_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "input",
+		func(ctx context.Context, v any) (model.SourceMigrationInput, error) {
+			return ec.unmarshalNSourceMigrationInput2githubᚗcomᚋclideyᚋwhodbᚋcoreᚋgraphᚋmodelᚐSourceMigrationInput(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["input"] = arg0
 	return args, nil
 }
 
@@ -8508,6 +8830,50 @@ func (ec *executionContext) fieldContext_Mutation_ExecuteFlyway(ctx context.Cont
 	return fc, nil
 }
 
+func (ec *executionContext) _Mutation_RepairSourceMigrations(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Mutation_RepairSourceMigrations(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.Resolvers.Mutation().RepairSourceMigrations(ctx, fc.Args["input"].(model.SourceMigrationRepairInput))
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *model.SourceMigrationRepairResult) graphql.Marshaler {
+			return ec.marshalNSourceMigrationRepairResult2ᚖgithubᚗcomᚋclideyᚋwhodbᚋcoreᚋgraphᚋmodelᚐSourceMigrationRepairResult(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Mutation_RepairSourceMigrations(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Mutation",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_SourceMigrationRepairResult(ctx, field)
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Mutation_RepairSourceMigrations_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
 func (ec *executionContext) _Mutation_ImportSQL(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -10264,6 +10630,50 @@ func (ec *executionContext) fieldContext_Query_InspectFlywayDirectory(ctx contex
 	return fc, nil
 }
 
+func (ec *executionContext) _Query_SourceMigrationDiagnosis(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Query_SourceMigrationDiagnosis(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.Resolvers.Query().SourceMigrationDiagnosis(ctx, fc.Args["input"].(model.SourceMigrationInput))
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *model.SourceMigrationDiagnosis) graphql.Marshaler {
+			return ec.marshalNSourceMigrationDiagnosis2ᚖgithubᚗcomᚋclideyᚋwhodbᚋcoreᚋgraphᚋmodelᚐSourceMigrationDiagnosis(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Query_SourceMigrationDiagnosis(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Query",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_SourceMigrationDiagnosis(ctx, field)
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Query_SourceMigrationDiagnosis_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
 func (ec *executionContext) _Query___type(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -11901,6 +12311,594 @@ func (ec *executionContext) _SourceMetadataTraits_SystemObjectFiltering(ctx cont
 }
 func (ec *executionContext) fieldContext_SourceMetadataTraits_SystemObjectFiltering(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
 	return graphql.NewScalarFieldContext("SourceMetadataTraits", field, false, false, "SourceMetadataFidelity")
+}
+
+func (ec *executionContext) _SourceMigrationDiagnosis_Healthy(ctx context.Context, field graphql.CollectedField, obj *model.SourceMigrationDiagnosis) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_SourceMigrationDiagnosis_Healthy(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Healthy, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v bool) graphql.Marshaler {
+			return ec.marshalNBoolean2bool(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_SourceMigrationDiagnosis_Healthy(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("SourceMigrationDiagnosis", field, false, false, "Boolean")
+}
+
+func (ec *executionContext) _SourceMigrationDiagnosis_RepairAllowed(ctx context.Context, field graphql.CollectedField, obj *model.SourceMigrationDiagnosis) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_SourceMigrationDiagnosis_RepairAllowed(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.RepairAllowed, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v bool) graphql.Marshaler {
+			return ec.marshalNBoolean2bool(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_SourceMigrationDiagnosis_RepairAllowed(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("SourceMigrationDiagnosis", field, false, false, "Boolean")
+}
+
+func (ec *executionContext) _SourceMigrationDiagnosis_Token(ctx context.Context, field graphql.CollectedField, obj *model.SourceMigrationDiagnosis) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_SourceMigrationDiagnosis_Token(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Token, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *string) graphql.Marshaler {
+			return ec.marshalOString2ᚖstring(ctx, selections, v)
+		},
+		true,
+		false,
+	)
+}
+func (ec *executionContext) fieldContext_SourceMigrationDiagnosis_Token(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("SourceMigrationDiagnosis", field, false, false, "String")
+}
+
+func (ec *executionContext) _SourceMigrationDiagnosis_Issues(ctx context.Context, field graphql.CollectedField, obj *model.SourceMigrationDiagnosis) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_SourceMigrationDiagnosis_Issues(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Issues, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v []*model.SourceMigrationIssue) graphql.Marshaler {
+			return ec.marshalNSourceMigrationIssue2ᚕᚖgithubᚗcomᚋclideyᚋwhodbᚋcoreᚋgraphᚋmodelᚐSourceMigrationIssueᚄ(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_SourceMigrationDiagnosis_Issues(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "SourceMigrationDiagnosis",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_SourceMigrationIssue(ctx, field)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _SourceMigrationDiagnosis_Error(ctx context.Context, field graphql.CollectedField, obj *model.SourceMigrationDiagnosis) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_SourceMigrationDiagnosis_Error(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Error, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *string) graphql.Marshaler {
+			return ec.marshalOString2ᚖstring(ctx, selections, v)
+		},
+		true,
+		false,
+	)
+}
+func (ec *executionContext) fieldContext_SourceMigrationDiagnosis_Error(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("SourceMigrationDiagnosis", field, false, false, "String")
+}
+
+func (ec *executionContext) _SourceMigrationIssue_Version(ctx context.Context, field graphql.CollectedField, obj *model.SourceMigrationIssue) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_SourceMigrationIssue_Version(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Version, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_SourceMigrationIssue_Version(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("SourceMigrationIssue", field, false, false, "String")
+}
+
+func (ec *executionContext) _SourceMigrationIssue_Script(ctx context.Context, field graphql.CollectedField, obj *model.SourceMigrationIssue) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_SourceMigrationIssue_Script(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Script, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_SourceMigrationIssue_Script(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("SourceMigrationIssue", field, false, false, "String")
+}
+
+func (ec *executionContext) _SourceMigrationIssue_Code(ctx context.Context, field graphql.CollectedField, obj *model.SourceMigrationIssue) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_SourceMigrationIssue_Code(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Code, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_SourceMigrationIssue_Code(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("SourceMigrationIssue", field, false, false, "String")
+}
+
+func (ec *executionContext) _SourceMigrationIssue_Message(ctx context.Context, field graphql.CollectedField, obj *model.SourceMigrationIssue) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_SourceMigrationIssue_Message(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Message, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_SourceMigrationIssue_Message(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("SourceMigrationIssue", field, false, false, "String")
+}
+
+func (ec *executionContext) _SourceMigrationIssue_SQL(ctx context.Context, field graphql.CollectedField, obj *model.SourceMigrationIssue) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_SourceMigrationIssue_SQL(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.SQL, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_SourceMigrationIssue_SQL(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("SourceMigrationIssue", field, false, false, "String")
+}
+
+func (ec *executionContext) _SourceMigrationIssue_Recovery(ctx context.Context, field graphql.CollectedField, obj *model.SourceMigrationIssue) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_SourceMigrationIssue_Recovery(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Recovery, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *model.SourceMigrationRecoveryPlan) graphql.Marshaler {
+			return ec.marshalOSourceMigrationRecoveryPlan2ᚖgithubᚗcomᚋclideyᚋwhodbᚋcoreᚋgraphᚋmodelᚐSourceMigrationRecoveryPlan(ctx, selections, v)
+		},
+		true,
+		false,
+	)
+}
+func (ec *executionContext) fieldContext_SourceMigrationIssue_Recovery(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "SourceMigrationIssue",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_SourceMigrationRecoveryPlan(ctx, field)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _SourceMigrationRecoveryPlan_Safe(ctx context.Context, field graphql.CollectedField, obj *model.SourceMigrationRecoveryPlan) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_SourceMigrationRecoveryPlan_Safe(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Safe, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v bool) graphql.Marshaler {
+			return ec.marshalNBoolean2bool(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_SourceMigrationRecoveryPlan_Safe(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("SourceMigrationRecoveryPlan", field, false, false, "Boolean")
+}
+
+func (ec *executionContext) _SourceMigrationRecoveryPlan_Matched(ctx context.Context, field graphql.CollectedField, obj *model.SourceMigrationRecoveryPlan) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_SourceMigrationRecoveryPlan_Matched(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Matched, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v int) graphql.Marshaler {
+			return ec.marshalNInt2int(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_SourceMigrationRecoveryPlan_Matched(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("SourceMigrationRecoveryPlan", field, false, false, "Int")
+}
+
+func (ec *executionContext) _SourceMigrationRecoveryPlan_Pending(ctx context.Context, field graphql.CollectedField, obj *model.SourceMigrationRecoveryPlan) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_SourceMigrationRecoveryPlan_Pending(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Pending, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v int) graphql.Marshaler {
+			return ec.marshalNInt2int(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_SourceMigrationRecoveryPlan_Pending(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("SourceMigrationRecoveryPlan", field, false, false, "Int")
+}
+
+func (ec *executionContext) _SourceMigrationRecoveryPlan_Error(ctx context.Context, field graphql.CollectedField, obj *model.SourceMigrationRecoveryPlan) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_SourceMigrationRecoveryPlan_Error(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Error, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *string) graphql.Marshaler {
+			return ec.marshalOString2ᚖstring(ctx, selections, v)
+		},
+		true,
+		false,
+	)
+}
+func (ec *executionContext) fieldContext_SourceMigrationRecoveryPlan_Error(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("SourceMigrationRecoveryPlan", field, false, false, "String")
+}
+
+func (ec *executionContext) _SourceMigrationRecoveryPlan_Steps(ctx context.Context, field graphql.CollectedField, obj *model.SourceMigrationRecoveryPlan) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_SourceMigrationRecoveryPlan_Steps(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Steps, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v []*model.SourceMigrationRecoveryStep) graphql.Marshaler {
+			return ec.marshalNSourceMigrationRecoveryStep2ᚕᚖgithubᚗcomᚋclideyᚋwhodbᚋcoreᚋgraphᚋmodelᚐSourceMigrationRecoveryStepᚄ(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_SourceMigrationRecoveryPlan_Steps(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "SourceMigrationRecoveryPlan",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_SourceMigrationRecoveryStep(ctx, field)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _SourceMigrationRecoveryStep_Kind(ctx context.Context, field graphql.CollectedField, obj *model.SourceMigrationRecoveryStep) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_SourceMigrationRecoveryStep_Kind(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Kind, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v model.SourceMigrationRecoveryKind) graphql.Marshaler {
+			return ec.marshalNSourceMigrationRecoveryKind2githubᚗcomᚋclideyᚋwhodbᚋcoreᚋgraphᚋmodelᚐSourceMigrationRecoveryKind(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_SourceMigrationRecoveryStep_Kind(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("SourceMigrationRecoveryStep", field, false, false, "SourceMigrationRecoveryKind")
+}
+
+func (ec *executionContext) _SourceMigrationRecoveryStep_Object(ctx context.Context, field graphql.CollectedField, obj *model.SourceMigrationRecoveryStep) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_SourceMigrationRecoveryStep_Object(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Object, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_SourceMigrationRecoveryStep_Object(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("SourceMigrationRecoveryStep", field, false, false, "String")
+}
+
+func (ec *executionContext) _SourceMigrationRecoveryStep_Status(ctx context.Context, field graphql.CollectedField, obj *model.SourceMigrationRecoveryStep) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_SourceMigrationRecoveryStep_Status(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Status, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v model.SourceMigrationRecoveryStatus) graphql.Marshaler {
+			return ec.marshalNSourceMigrationRecoveryStatus2githubᚗcomᚋclideyᚋwhodbᚋcoreᚋgraphᚋmodelᚐSourceMigrationRecoveryStatus(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_SourceMigrationRecoveryStep_Status(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("SourceMigrationRecoveryStep", field, false, false, "SourceMigrationRecoveryStatus")
+}
+
+func (ec *executionContext) _SourceMigrationRecoveryStep_Reason(ctx context.Context, field graphql.CollectedField, obj *model.SourceMigrationRecoveryStep) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_SourceMigrationRecoveryStep_Reason(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Reason, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_SourceMigrationRecoveryStep_Reason(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("SourceMigrationRecoveryStep", field, false, false, "String")
+}
+
+func (ec *executionContext) _SourceMigrationRecoveryStep_SQL(ctx context.Context, field graphql.CollectedField, obj *model.SourceMigrationRecoveryStep) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_SourceMigrationRecoveryStep_SQL(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.SQL, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_SourceMigrationRecoveryStep_SQL(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("SourceMigrationRecoveryStep", field, false, false, "String")
+}
+
+func (ec *executionContext) _SourceMigrationRepairResult_Success(ctx context.Context, field graphql.CollectedField, obj *model.SourceMigrationRepairResult) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_SourceMigrationRepairResult_Success(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Success, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v bool) graphql.Marshaler {
+			return ec.marshalNBoolean2bool(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_SourceMigrationRepairResult_Success(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("SourceMigrationRepairResult", field, false, false, "Boolean")
+}
+
+func (ec *executionContext) _SourceMigrationRepairResult_Steps(ctx context.Context, field graphql.CollectedField, obj *model.SourceMigrationRepairResult) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_SourceMigrationRepairResult_Steps(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Steps, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v []*model.FlywayExecutionResult) graphql.Marshaler {
+			return ec.marshalNFlywayExecutionResult2ᚕᚖgithubᚗcomᚋclideyᚋwhodbᚋcoreᚋgraphᚋmodelᚐFlywayExecutionResultᚄ(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_SourceMigrationRepairResult_Steps(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "SourceMigrationRepairResult",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_FlywayExecutionResult(ctx, field)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _SourceMigrationRepairResult_Error(ctx context.Context, field graphql.CollectedField, obj *model.SourceMigrationRepairResult) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_SourceMigrationRepairResult_Error(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Error, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *string) graphql.Marshaler {
+			return ec.marshalOString2ᚖstring(ctx, selections, v)
+		},
+		true,
+		false,
+	)
+}
+func (ec *executionContext) fieldContext_SourceMigrationRepairResult_Error(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("SourceMigrationRepairResult", field, false, false, "String")
 }
 
 func (ec *executionContext) _SourceMockDataTraits_SupportsRelationalDependencies(ctx context.Context, field graphql.CollectedField, obj *model.SourceMockDataTraits) (ret graphql.Marshaler) {
@@ -16234,6 +17232,163 @@ func UnmarshalSourceLoginInput(ctx context.Context, raw any) (model.SourceLoginI
 	return out, err
 }
 
+func (ec *executionContext) unmarshalInputSourceMigrationInput(ctx context.Context, obj any) (model.SourceMigrationInput, error) {
+	var it model.SourceMigrationInput
+	if obj == nil {
+		return it, nil
+	}
+
+	asMap := map[string]any{}
+	for k, v := range obj.(map[string]any) {
+		asMap[k] = v
+	}
+
+	if _, present := asMap["BaselineOnMigrate"]; !present {
+		asMap["BaselineOnMigrate"] = true
+	}
+	if _, present := asMap["OutOfOrder"]; !present {
+		asMap["OutOfOrder"] = false
+	}
+	if _, present := asMap["ValidateOnMigrate"]; !present {
+		asMap["ValidateOnMigrate"] = true
+	}
+
+	fieldsInOrder := [...]string{"Target", "TargetSchema", "Directory", "BaselineOnMigrate", "OutOfOrder", "ValidateOnMigrate"}
+	for _, k := range fieldsInOrder {
+		v, ok := asMap[k]
+		if !ok {
+			continue
+		}
+		switch k {
+		case "Target":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("Target"))
+			data, err := ec.unmarshalNSourceTargetConnectionInput2ᚖgithubᚗcomᚋclideyᚋwhodbᚋcoreᚋgraphᚋmodelᚐSourceTargetConnectionInput(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.Target = data
+		case "TargetSchema":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("TargetSchema"))
+			data, err := ec.unmarshalOString2ᚖstring(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.TargetSchema = data
+		case "Directory":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("Directory"))
+			data, err := ec.unmarshalNString2string(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.Directory = data
+		case "BaselineOnMigrate":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("BaselineOnMigrate"))
+			data, err := ec.unmarshalOBoolean2ᚖbool(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.BaselineOnMigrate = data
+		case "OutOfOrder":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("OutOfOrder"))
+			data, err := ec.unmarshalOBoolean2ᚖbool(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.OutOfOrder = data
+		case "ValidateOnMigrate":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("ValidateOnMigrate"))
+			data, err := ec.unmarshalOBoolean2ᚖbool(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.ValidateOnMigrate = data
+		}
+	}
+	return it, nil
+}
+
+// UnmarshalSourceMigrationInput unmarshals raw into the SourceMigrationInput input type, using the
+// unmarshaler bound to ctx's request. Call it from a resolver to decode an input
+// object that was not passed as a field argument.
+//
+// ctx must come from a gqlgen request; outside one there is no unmarshaler to use
+// and the returned error says so.
+func UnmarshalSourceMigrationInput(ctx context.Context, raw any) (model.SourceMigrationInput, error) {
+	var out model.SourceMigrationInput
+	err := graphql.UnmarshalNamedInputFromContext(ctx, "SourceMigrationInput", raw, &out)
+	return out, err
+}
+
+func (ec *executionContext) unmarshalInputSourceMigrationRepairInput(ctx context.Context, obj any) (model.SourceMigrationRepairInput, error) {
+	var it model.SourceMigrationRepairInput
+	if obj == nil {
+		return it, nil
+	}
+
+	asMap := map[string]any{}
+	for k, v := range obj.(map[string]any) {
+		asMap[k] = v
+	}
+
+	if _, present := asMap["ConfirmPartialChangesResolved"]; !present {
+		asMap["ConfirmPartialChangesResolved"] = false
+	}
+	if _, present := asMap["ConfirmPlanExecution"]; !present {
+		asMap["ConfirmPlanExecution"] = false
+	}
+
+	fieldsInOrder := [...]string{"Migration", "Token", "ConfirmPartialChangesResolved", "ConfirmPlanExecution"}
+	for _, k := range fieldsInOrder {
+		v, ok := asMap[k]
+		if !ok {
+			continue
+		}
+		switch k {
+		case "Migration":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("Migration"))
+			data, err := ec.unmarshalNSourceMigrationInput2ᚖgithubᚗcomᚋclideyᚋwhodbᚋcoreᚋgraphᚋmodelᚐSourceMigrationInput(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.Migration = data
+		case "Token":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("Token"))
+			data, err := ec.unmarshalNString2string(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.Token = data
+		case "ConfirmPartialChangesResolved":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("ConfirmPartialChangesResolved"))
+			data, err := ec.unmarshalNBoolean2bool(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.ConfirmPartialChangesResolved = data
+		case "ConfirmPlanExecution":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("ConfirmPlanExecution"))
+			data, err := ec.unmarshalNBoolean2bool(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.ConfirmPlanExecution = data
+		}
+	}
+	return it, nil
+}
+
+// UnmarshalSourceMigrationRepairInput unmarshals raw into the SourceMigrationRepairInput input type, using the
+// unmarshaler bound to ctx's request. Call it from a resolver to decode an input
+// object that was not passed as a field argument.
+//
+// ctx must come from a gqlgen request; outside one there is no unmarshaler to use
+// and the returned error says so.
+func UnmarshalSourceMigrationRepairInput(ctx context.Context, raw any) (model.SourceMigrationRepairInput, error) {
+	var out model.SourceMigrationRepairInput
+	err := graphql.UnmarshalNamedInputFromContext(ctx, "SourceMigrationRepairInput", raw, &out)
+	return out, err
+}
+
 func (ec *executionContext) unmarshalInputSourceObjectDefinitionInput(ctx context.Context, obj any) (model.SourceObjectDefinitionInput, error) {
 	var it model.SourceObjectDefinitionInput
 	if obj == nil {
@@ -17985,6 +19140,13 @@ func (ec *executionContext) _Mutation(ctx context.Context, sel ast.SelectionSet)
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
 			}
+		case "RepairSourceMigrations":
+			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
+				return ec._Mutation_RepairSourceMigrations(ctx, field)
+			})
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
 		case "ImportSQL":
 			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
 				return ec._Mutation_ImportSQL(ctx, field)
@@ -18366,6 +19528,12 @@ func (ec *executionContext) _Query(ctx context.Context, sel ast.SelectionSet) gr
 				true, true,
 				func(ctx context.Context) graphql.Marshaler {
 					return ec._Query_InspectFlywayDirectory(ctx, field)
+				})
+		case "SourceMigrationDiagnosis":
+			out.ResolveRootConcurrently(innerCtx, ec.OperationContext, i,
+				true, true,
+				func(ctx context.Context) graphql.Marshaler {
+					return ec._Query_SourceMigrationDiagnosis(ctx, field)
 				})
 		case "__type":
 			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
@@ -19073,6 +20241,266 @@ func (ec *executionContext) _SourceMetadataTraits(ctx context.Context, sel ast.S
 		case "SystemObjectFiltering":
 			out.Values[i] = ec._SourceMetadataTraits_SystemObjectFiltering(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	if n := len(deferred.Defers); n > 0 {
+		atomic.AddInt32(&ec.Deferred, int32(min(n, math.MaxInt32)))
+		ec.ProcessDeferredGroup(deferred)
+	}
+
+	return out
+}
+
+var sourceMigrationDiagnosisImplementors = []string{"SourceMigrationDiagnosis"}
+
+func (ec *executionContext) _SourceMigrationDiagnosis(ctx context.Context, sel ast.SelectionSet, obj *model.SourceMigrationDiagnosis) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, sourceMigrationDiagnosisImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferred := graphql.NewDeferredGroup(ctx)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("SourceMigrationDiagnosis")
+		case "Healthy":
+			out.Values[i] = ec._SourceMigrationDiagnosis_Healthy(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "RepairAllowed":
+			out.Values[i] = ec._SourceMigrationDiagnosis_RepairAllowed(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "Token":
+			out.Values[i] = ec._SourceMigrationDiagnosis_Token(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
+		case "Issues":
+			out.Values[i] = ec._SourceMigrationDiagnosis_Issues(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "Error":
+			out.Values[i] = ec._SourceMigrationDiagnosis_Error(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	if n := len(deferred.Defers); n > 0 {
+		atomic.AddInt32(&ec.Deferred, int32(min(n, math.MaxInt32)))
+		ec.ProcessDeferredGroup(deferred)
+	}
+
+	return out
+}
+
+var sourceMigrationIssueImplementors = []string{"SourceMigrationIssue"}
+
+func (ec *executionContext) _SourceMigrationIssue(ctx context.Context, sel ast.SelectionSet, obj *model.SourceMigrationIssue) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, sourceMigrationIssueImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferred := graphql.NewDeferredGroup(ctx)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("SourceMigrationIssue")
+		case "Version":
+			out.Values[i] = ec._SourceMigrationIssue_Version(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "Script":
+			out.Values[i] = ec._SourceMigrationIssue_Script(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "Code":
+			out.Values[i] = ec._SourceMigrationIssue_Code(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "Message":
+			out.Values[i] = ec._SourceMigrationIssue_Message(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "SQL":
+			out.Values[i] = ec._SourceMigrationIssue_SQL(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "Recovery":
+			out.Values[i] = ec._SourceMigrationIssue_Recovery(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	if n := len(deferred.Defers); n > 0 {
+		atomic.AddInt32(&ec.Deferred, int32(min(n, math.MaxInt32)))
+		ec.ProcessDeferredGroup(deferred)
+	}
+
+	return out
+}
+
+var sourceMigrationRecoveryPlanImplementors = []string{"SourceMigrationRecoveryPlan"}
+
+func (ec *executionContext) _SourceMigrationRecoveryPlan(ctx context.Context, sel ast.SelectionSet, obj *model.SourceMigrationRecoveryPlan) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, sourceMigrationRecoveryPlanImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferred := graphql.NewDeferredGroup(ctx)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("SourceMigrationRecoveryPlan")
+		case "Safe":
+			out.Values[i] = ec._SourceMigrationRecoveryPlan_Safe(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "Matched":
+			out.Values[i] = ec._SourceMigrationRecoveryPlan_Matched(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "Pending":
+			out.Values[i] = ec._SourceMigrationRecoveryPlan_Pending(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "Error":
+			out.Values[i] = ec._SourceMigrationRecoveryPlan_Error(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
+		case "Steps":
+			out.Values[i] = ec._SourceMigrationRecoveryPlan_Steps(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	if n := len(deferred.Defers); n > 0 {
+		atomic.AddInt32(&ec.Deferred, int32(min(n, math.MaxInt32)))
+		ec.ProcessDeferredGroup(deferred)
+	}
+
+	return out
+}
+
+var sourceMigrationRecoveryStepImplementors = []string{"SourceMigrationRecoveryStep"}
+
+func (ec *executionContext) _SourceMigrationRecoveryStep(ctx context.Context, sel ast.SelectionSet, obj *model.SourceMigrationRecoveryStep) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, sourceMigrationRecoveryStepImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferred := graphql.NewDeferredGroup(ctx)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("SourceMigrationRecoveryStep")
+		case "Kind":
+			out.Values[i] = ec._SourceMigrationRecoveryStep_Kind(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "Object":
+			out.Values[i] = ec._SourceMigrationRecoveryStep_Object(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "Status":
+			out.Values[i] = ec._SourceMigrationRecoveryStep_Status(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "Reason":
+			out.Values[i] = ec._SourceMigrationRecoveryStep_Reason(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "SQL":
+			out.Values[i] = ec._SourceMigrationRecoveryStep_SQL(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	if n := len(deferred.Defers); n > 0 {
+		atomic.AddInt32(&ec.Deferred, int32(min(n, math.MaxInt32)))
+		ec.ProcessDeferredGroup(deferred)
+	}
+
+	return out
+}
+
+var sourceMigrationRepairResultImplementors = []string{"SourceMigrationRepairResult"}
+
+func (ec *executionContext) _SourceMigrationRepairResult(ctx context.Context, sel ast.SelectionSet, obj *model.SourceMigrationRepairResult) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, sourceMigrationRepairResultImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferred := graphql.NewDeferredGroup(ctx)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("SourceMigrationRepairResult")
+		case "Success":
+			out.Values[i] = ec._SourceMigrationRepairResult_Success(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "Steps":
+			out.Values[i] = ec._SourceMigrationRepairResult_Steps(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "Error":
+			out.Values[i] = ec._SourceMigrationRepairResult_Error(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
 				out.Invalids++
 			}
 		default:
@@ -20630,6 +22058,22 @@ func (ec *executionContext) marshalNFlywayDirectoryPreview2ᚖgithubᚗcomᚋcli
 	return ec._FlywayDirectoryPreview(ctx, sel, v)
 }
 
+func (ec *executionContext) marshalNFlywayExecutionResult2ᚕᚖgithubᚗcomᚋclideyᚋwhodbᚋcoreᚋgraphᚋmodelᚐFlywayExecutionResultᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.FlywayExecutionResult) graphql.Marshaler {
+	ret := graphql.MarshalSliceConcurrently(ctx, len(v), 0, false, func(ctx context.Context, i int) graphql.Marshaler {
+		fc := graphql.GetFieldContext(ctx)
+		fc.Result = &v[i]
+		return ec.marshalNFlywayExecutionResult2ᚖgithubᚗcomᚋclideyᚋwhodbᚋcoreᚋgraphᚋmodelᚐFlywayExecutionResult(ctx, sel, v[i])
+	})
+
+	for _, e := range ret {
+		if e == graphql.Null {
+			return graphql.Null
+		}
+	}
+
+	return ret
+}
+
 func (ec *executionContext) marshalNFlywayExecutionResult2ᚖgithubᚗcomᚋclideyᚋwhodbᚋcoreᚋgraphᚋmodelᚐFlywayExecutionResult(ctx context.Context, sel ast.SelectionSet, v *model.FlywayExecutionResult) graphql.Marshaler {
 	if v == nil {
 		graphql.AddInvalidNullError(ctx, "FlywayExecutionResult!")
@@ -21248,6 +22692,105 @@ func (ec *executionContext) marshalNSourceMetadataTraits2ᚖgithubᚗcomᚋclide
 		return graphql.Null
 	}
 	return ec._SourceMetadataTraits(ctx, sel, v)
+}
+
+func (ec *executionContext) marshalNSourceMigrationDiagnosis2ᚖgithubᚗcomᚋclideyᚋwhodbᚋcoreᚋgraphᚋmodelᚐSourceMigrationDiagnosis(ctx context.Context, sel ast.SelectionSet, v *model.SourceMigrationDiagnosis) graphql.Marshaler {
+	if v == nil {
+		graphql.AddInvalidNullError(ctx, "SourceMigrationDiagnosis!")
+		return graphql.Null
+	}
+	return ec._SourceMigrationDiagnosis(ctx, sel, v)
+}
+
+func (ec *executionContext) unmarshalNSourceMigrationInput2githubᚗcomᚋclideyᚋwhodbᚋcoreᚋgraphᚋmodelᚐSourceMigrationInput(ctx context.Context, v any) (model.SourceMigrationInput, error) {
+	res, err := ec.unmarshalInputSourceMigrationInput(ctx, v)
+	return res, graphql.ErrorOnPath(ctx, err)
+}
+
+func (ec *executionContext) unmarshalNSourceMigrationInput2ᚖgithubᚗcomᚋclideyᚋwhodbᚋcoreᚋgraphᚋmodelᚐSourceMigrationInput(ctx context.Context, v any) (*model.SourceMigrationInput, error) {
+	res, err := ec.unmarshalInputSourceMigrationInput(ctx, v)
+	return &res, graphql.ErrorOnPath(ctx, err)
+}
+
+func (ec *executionContext) marshalNSourceMigrationIssue2ᚕᚖgithubᚗcomᚋclideyᚋwhodbᚋcoreᚋgraphᚋmodelᚐSourceMigrationIssueᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.SourceMigrationIssue) graphql.Marshaler {
+	ret := graphql.MarshalSliceConcurrently(ctx, len(v), 0, false, func(ctx context.Context, i int) graphql.Marshaler {
+		fc := graphql.GetFieldContext(ctx)
+		fc.Result = &v[i]
+		return ec.marshalNSourceMigrationIssue2ᚖgithubᚗcomᚋclideyᚋwhodbᚋcoreᚋgraphᚋmodelᚐSourceMigrationIssue(ctx, sel, v[i])
+	})
+
+	for _, e := range ret {
+		if e == graphql.Null {
+			return graphql.Null
+		}
+	}
+
+	return ret
+}
+
+func (ec *executionContext) marshalNSourceMigrationIssue2ᚖgithubᚗcomᚋclideyᚋwhodbᚋcoreᚋgraphᚋmodelᚐSourceMigrationIssue(ctx context.Context, sel ast.SelectionSet, v *model.SourceMigrationIssue) graphql.Marshaler {
+	if v == nil {
+		graphql.AddInvalidNullError(ctx, "SourceMigrationIssue!")
+		return graphql.Null
+	}
+	return ec._SourceMigrationIssue(ctx, sel, v)
+}
+
+func (ec *executionContext) unmarshalNSourceMigrationRecoveryKind2githubᚗcomᚋclideyᚋwhodbᚋcoreᚋgraphᚋmodelᚐSourceMigrationRecoveryKind(ctx context.Context, v any) (model.SourceMigrationRecoveryKind, error) {
+	var res model.SourceMigrationRecoveryKind
+	err := res.UnmarshalGQL(v)
+	return res, graphql.ErrorOnPath(ctx, err)
+}
+
+func (ec *executionContext) marshalNSourceMigrationRecoveryKind2githubᚗcomᚋclideyᚋwhodbᚋcoreᚋgraphᚋmodelᚐSourceMigrationRecoveryKind(ctx context.Context, sel ast.SelectionSet, v model.SourceMigrationRecoveryKind) graphql.Marshaler {
+	return v
+}
+
+func (ec *executionContext) unmarshalNSourceMigrationRecoveryStatus2githubᚗcomᚋclideyᚋwhodbᚋcoreᚋgraphᚋmodelᚐSourceMigrationRecoveryStatus(ctx context.Context, v any) (model.SourceMigrationRecoveryStatus, error) {
+	var res model.SourceMigrationRecoveryStatus
+	err := res.UnmarshalGQL(v)
+	return res, graphql.ErrorOnPath(ctx, err)
+}
+
+func (ec *executionContext) marshalNSourceMigrationRecoveryStatus2githubᚗcomᚋclideyᚋwhodbᚋcoreᚋgraphᚋmodelᚐSourceMigrationRecoveryStatus(ctx context.Context, sel ast.SelectionSet, v model.SourceMigrationRecoveryStatus) graphql.Marshaler {
+	return v
+}
+
+func (ec *executionContext) marshalNSourceMigrationRecoveryStep2ᚕᚖgithubᚗcomᚋclideyᚋwhodbᚋcoreᚋgraphᚋmodelᚐSourceMigrationRecoveryStepᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.SourceMigrationRecoveryStep) graphql.Marshaler {
+	ret := graphql.MarshalSliceConcurrently(ctx, len(v), 0, false, func(ctx context.Context, i int) graphql.Marshaler {
+		fc := graphql.GetFieldContext(ctx)
+		fc.Result = &v[i]
+		return ec.marshalNSourceMigrationRecoveryStep2ᚖgithubᚗcomᚋclideyᚋwhodbᚋcoreᚋgraphᚋmodelᚐSourceMigrationRecoveryStep(ctx, sel, v[i])
+	})
+
+	for _, e := range ret {
+		if e == graphql.Null {
+			return graphql.Null
+		}
+	}
+
+	return ret
+}
+
+func (ec *executionContext) marshalNSourceMigrationRecoveryStep2ᚖgithubᚗcomᚋclideyᚋwhodbᚋcoreᚋgraphᚋmodelᚐSourceMigrationRecoveryStep(ctx context.Context, sel ast.SelectionSet, v *model.SourceMigrationRecoveryStep) graphql.Marshaler {
+	if v == nil {
+		graphql.AddInvalidNullError(ctx, "SourceMigrationRecoveryStep!")
+		return graphql.Null
+	}
+	return ec._SourceMigrationRecoveryStep(ctx, sel, v)
+}
+
+func (ec *executionContext) unmarshalNSourceMigrationRepairInput2githubᚗcomᚋclideyᚋwhodbᚋcoreᚋgraphᚋmodelᚐSourceMigrationRepairInput(ctx context.Context, v any) (model.SourceMigrationRepairInput, error) {
+	res, err := ec.unmarshalInputSourceMigrationRepairInput(ctx, v)
+	return res, graphql.ErrorOnPath(ctx, err)
+}
+
+func (ec *executionContext) marshalNSourceMigrationRepairResult2ᚖgithubᚗcomᚋclideyᚋwhodbᚋcoreᚋgraphᚋmodelᚐSourceMigrationRepairResult(ctx context.Context, sel ast.SelectionSet, v *model.SourceMigrationRepairResult) graphql.Marshaler {
+	if v == nil {
+		graphql.AddInvalidNullError(ctx, "SourceMigrationRepairResult!")
+		return graphql.Null
+	}
+	return ec._SourceMigrationRepairResult(ctx, sel, v)
 }
 
 func (ec *executionContext) marshalNSourceMockDataTraits2ᚖgithubᚗcomᚋclideyᚋwhodbᚋcoreᚋgraphᚋmodelᚐSourceMockDataTraits(ctx context.Context, sel ast.SelectionSet, v *model.SourceMockDataTraits) graphql.Marshaler {
@@ -22156,6 +23699,13 @@ func (ec *executionContext) marshalOSourceContent2ᚖgithubᚗcomᚋclideyᚋwho
 		return graphql.Null
 	}
 	return ec._SourceContent(ctx, sel, v)
+}
+
+func (ec *executionContext) marshalOSourceMigrationRecoveryPlan2ᚖgithubᚗcomᚋclideyᚋwhodbᚋcoreᚋgraphᚋmodelᚐSourceMigrationRecoveryPlan(ctx context.Context, sel ast.SelectionSet, v *model.SourceMigrationRecoveryPlan) graphql.Marshaler {
+	if v == nil {
+		return graphql.Null
+	}
+	return ec._SourceMigrationRecoveryPlan(ctx, sel, v)
 }
 
 func (ec *executionContext) marshalOSourceObject2ᚖgithubᚗcomᚋclideyᚋwhodbᚋcoreᚋgraphᚋmodelᚐSourceObject(ctx context.Context, sel ast.SelectionSet, v *model.SourceObject) graphql.Marshaler {

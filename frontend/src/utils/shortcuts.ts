@@ -109,6 +109,7 @@ export const SHORTCUTS = {
 
     // ── Table Actions ────────────────────────────────────────
     editRow:       plain("Enter"),
+    saveCellEdits: plain("Enter"),
     deleteRow:     mod("Delete", "Delete"),
     deleteRowAlt:  mod("Backspace"),
     editRowAlt:    mod("e"),

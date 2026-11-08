@@ -809,6 +809,74 @@ type FlywayExecutionResult {
   DurationMs: Int!
 }
 
+"""A selected source and the local migration files to diagnose or repair."""
+input SourceMigrationInput {
+  Target: SourceTargetConnectionInput!
+  TargetSchema: String
+  Directory: String!
+  BaselineOnMigrate: Boolean = true
+  OutOfOrder: Boolean = false
+  ValidateOnMigrate: Boolean = true
+}
+
+"""A Flyway validation issue and its locally resolved migration script."""
+type SourceMigrationIssue {
+  Version: String!
+  Script: String!
+  Code: String!
+  Message: String!
+  SQL: String!
+  Recovery: SourceMigrationRecoveryPlan
+}
+
+"""Read-only outcome for an additive schema operation."""
+enum SourceMigrationRecoveryStatus { MATCHED PENDING CONFLICT }
+
+"""Additive DDL supported by the selected connector's recovery verifier."""
+enum SourceMigrationRecoveryKind { CREATE_TABLE ADD_COLUMN CREATE_INDEX }
+
+"""A schema operation that will be skipped, applied, or blocked."""
+type SourceMigrationRecoveryStep {
+  Kind: SourceMigrationRecoveryKind!
+  Object: String!
+  Status: SourceMigrationRecoveryStatus!
+  Reason: String!
+  SQL: String!
+}
+
+"""Verified schema recovery plan. No schema changes occur during diagnosis."""
+type SourceMigrationRecoveryPlan {
+  Safe: Boolean!
+  Matched: Int!
+  Pending: Int!
+  Error: String
+  Steps: [SourceMigrationRecoveryStep!]!
+}
+
+"""Read-only diagnosis. RepairAllowed still requires explicit confirmation of the reviewed plan or manual cleanup."""
+type SourceMigrationDiagnosis {
+  Healthy: Boolean!
+  RepairAllowed: Boolean!
+  Token: String
+  Issues: [SourceMigrationIssue!]!
+  Error: String
+}
+
+"""Result of repair, validation, and at most one migration retry."""
+type SourceMigrationRepairResult {
+  Success: Boolean!
+  Steps: [FlywayExecutionResult!]!
+  Error: String
+}
+
+"""A single-use diagnosis plan with explicit authorization for structural recovery or completed manual cleanup."""
+input SourceMigrationRepairInput {
+  Migration: SourceMigrationInput!
+  Token: String!
+  ConfirmPartialChangesResolved: Boolean! = false
+  ConfirmPlanExecution: Boolean! = false
+}
+
 type Query {
   Version: String!
   UpdateInfo: UpdateInfo!
@@ -840,6 +908,8 @@ type Query {
   SourceTargetSchemas(target: SourceTargetConnectionInput!): [String!]!
   FlywayStatus: FlywayStatus!
   InspectFlywayDirectory(directory: String!): FlywayDirectoryPreview!
+  """Inspect migration history and validate scripts without executing callbacks."""
+  SourceMigrationDiagnosis(input: SourceMigrationInput!): SourceMigrationDiagnosis!
 
 }
 
@@ -880,6 +950,8 @@ type Mutation {
   CopySourceObjects(input: CopySourceObjectsInput!): CopySourceObjectsResult!
   InstallFlyway: FlywayInstallResult!
   ExecuteFlyway(input: ExecuteFlywayInput!): FlywayExecutionResult!
+  """Recheck the diagnosis, repair history, validate, and retry migration once."""
+  RepairSourceMigrations(input: SourceMigrationRepairInput!): SourceMigrationRepairResult!
 
   ImportSQL(input: ImportSQLInput!): ImportResult!
   ImportPreview(

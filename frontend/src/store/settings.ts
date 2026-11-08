@@ -46,14 +46,11 @@ type ISettingsState = {
 
 const getInitialMetricsEnabled = (): boolean => {
     if (typeof window === 'undefined') {
-        return true;
+        return false;
     }
 
     const consent = window.localStorage.getItem(CONSENT_STORAGE_KEY);
-    if (consent === 'denied') {
-        return false;
-    }
-    return true;
+    return consent === 'granted';
 };
 
 const getInitialState = (): ISettingsState => {

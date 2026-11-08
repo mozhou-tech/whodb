@@ -56,7 +56,7 @@ test.describe('Inline Editing', () => {
             const editor = page.locator('[data-testid="cell-editor"]');
             await expect(editor).toBeVisible();
             await editor.fill(updatedValue);
-            await editor.press('Enter');
+            await editor.press('Tab');
 
             const saveBar = page.locator('[data-testid="cell-save-bar"]');
             await expect(saveBar).toBeVisible();
@@ -74,6 +74,30 @@ test.describe('Inline Editing', () => {
             await verifyDelete();
         });
 
+        test('saves a cell with Enter after ignoring IME confirmation', async ({ whodb, page }) => {
+            await whodb.data(tableName);
+            const { row, rowIndex } = await addUniqueRow(whodb, page);
+            const updatedValue = `${row[testTable.identifierField]}_enter`;
+
+            await whodb.dataCell(rowIndex, identifierColumnIndex).dblclick();
+            const editor = page.locator('[data-testid="cell-editor"]');
+            await editor.fill(updatedValue);
+            await editor.dispatchEvent('keydown', { key: 'Enter', code: 'Enter', isComposing: true });
+            await expect(editor).toBeVisible();
+            await expect(page.locator('[data-testid="cell-save-bar"]')).toBeVisible();
+
+            const verifyUpdate = waitForMutation(page, 'UpdateStorageUnit');
+            await editor.press('Enter');
+            await verifyUpdate();
+            await expect(editor).not.toBeAttached();
+            await expect(page.locator('[data-testid="cell-save-bar"]')).not.toBeAttached({ timeout: TIMEOUT.ACTION });
+            const updatedIndex = await whodb.waitForRowValue(identifierColumnIndex, updatedValue);
+
+            const verifyDelete = waitForMutation(page, 'DeleteRow');
+            await whodb.deleteRow(updatedIndex);
+            await verifyDelete();
+        });
+
         test('discards pending cell edits without saving', async ({ whodb, page }) => {
             await whodb.data(tableName);
             const { row, rowIndex } = await addUniqueRow(whodb, page);
@@ -81,7 +105,7 @@ test.describe('Inline Editing', () => {
             await whodb.dataCell(rowIndex, identifierColumnIndex).dblclick();
             const editor = page.locator('[data-testid="cell-editor"]');
             await editor.fill('discarded_value');
-            await editor.press('Enter');
+            await editor.press('Tab');
 
             const saveBar = page.locator('[data-testid="cell-save-bar"]');
             await expect(saveBar).toBeVisible();

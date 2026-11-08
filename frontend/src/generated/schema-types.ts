@@ -392,6 +392,8 @@ export type Mutation = {
   LoginWithSourceProfile: StatusResponse;
   Logout: StatusResponse;
   LogoutOpsControlPlane: StatusResponse;
+  /** Recheck the diagnosis, repair history, validate, and retry migration once. */
+  RepairSourceMigrations: SourceMigrationRepairResult;
   SyncOpsControlPlaneProfiles: OpsControlPlaneStatus;
   TestSourceConnection: StatusResponse;
   UpdateSettings: StatusResponse;
@@ -499,6 +501,11 @@ export type MutationLoginWithSourceProfileArgs = {
 };
 
 
+export type MutationRepairSourceMigrationsArgs = {
+  input: SourceMigrationRepairInput;
+};
+
+
 export type MutationTestSourceConnectionArgs = {
   credentials: SourceLoginInput;
 };
@@ -567,6 +574,8 @@ export type Query = {
   SourceFieldConstraints: Array<SourceFieldConstraints>;
   SourceFieldOptions: Array<Scalars['String']['output']>;
   SourceGraph: Array<GraphUnit>;
+  /** Inspect migration history and validate scripts without executing callbacks. */
+  SourceMigrationDiagnosis: SourceMigrationDiagnosis;
   SourceObject?: Maybe<SourceObject>;
   SourceObjectCreationMetadata: ObjectCreationMetadata;
   SourceObjects: Array<SourceObject>;
@@ -637,6 +646,11 @@ export type QuerySourceFieldOptionsArgs = {
 
 export type QuerySourceGraphArgs = {
   ref?: InputMaybe<SourceObjectRefInput>;
+};
+
+
+export type QuerySourceMigrationDiagnosisArgs = {
+  input: SourceMigrationInput;
 };
 
 
@@ -887,6 +901,87 @@ export type SourceMetadataTraits = {
   Constraints: SourceMetadataFidelity;
   Graph: SourceMetadataFidelity;
   SystemObjectFiltering: SourceMetadataFidelity;
+};
+
+/** Read-only diagnosis. RepairAllowed still requires explicit confirmation of the reviewed plan or manual cleanup. */
+export type SourceMigrationDiagnosis = {
+  __typename?: 'SourceMigrationDiagnosis';
+  Error?: Maybe<Scalars['String']['output']>;
+  Healthy: Scalars['Boolean']['output'];
+  Issues: Array<SourceMigrationIssue>;
+  RepairAllowed: Scalars['Boolean']['output'];
+  Token?: Maybe<Scalars['String']['output']>;
+};
+
+/** A selected source and the local migration files to diagnose or repair. */
+export type SourceMigrationInput = {
+  BaselineOnMigrate?: InputMaybe<Scalars['Boolean']['input']>;
+  Directory: Scalars['String']['input'];
+  OutOfOrder?: InputMaybe<Scalars['Boolean']['input']>;
+  Target: SourceTargetConnectionInput;
+  TargetSchema?: InputMaybe<Scalars['String']['input']>;
+  ValidateOnMigrate?: InputMaybe<Scalars['Boolean']['input']>;
+};
+
+/** A Flyway validation issue and its locally resolved migration script. */
+export type SourceMigrationIssue = {
+  __typename?: 'SourceMigrationIssue';
+  Code: Scalars['String']['output'];
+  Message: Scalars['String']['output'];
+  Recovery?: Maybe<SourceMigrationRecoveryPlan>;
+  SQL: Scalars['String']['output'];
+  Script: Scalars['String']['output'];
+  Version: Scalars['String']['output'];
+};
+
+/** Additive DDL supported by the selected connector's recovery verifier. */
+export enum SourceMigrationRecoveryKind {
+  AddColumn = 'ADD_COLUMN',
+  CreateIndex = 'CREATE_INDEX',
+  CreateTable = 'CREATE_TABLE'
+}
+
+/** Verified schema recovery plan. No schema changes occur during diagnosis. */
+export type SourceMigrationRecoveryPlan = {
+  __typename?: 'SourceMigrationRecoveryPlan';
+  Error?: Maybe<Scalars['String']['output']>;
+  Matched: Scalars['Int']['output'];
+  Pending: Scalars['Int']['output'];
+  Safe: Scalars['Boolean']['output'];
+  Steps: Array<SourceMigrationRecoveryStep>;
+};
+
+/** Read-only outcome for an additive schema operation. */
+export enum SourceMigrationRecoveryStatus {
+  Conflict = 'CONFLICT',
+  Matched = 'MATCHED',
+  Pending = 'PENDING'
+}
+
+/** A schema operation that will be skipped, applied, or blocked. */
+export type SourceMigrationRecoveryStep = {
+  __typename?: 'SourceMigrationRecoveryStep';
+  Kind: SourceMigrationRecoveryKind;
+  Object: Scalars['String']['output'];
+  Reason: Scalars['String']['output'];
+  SQL: Scalars['String']['output'];
+  Status: SourceMigrationRecoveryStatus;
+};
+
+/** A single-use diagnosis plan with explicit authorization for structural recovery or completed manual cleanup. */
+export type SourceMigrationRepairInput = {
+  ConfirmPartialChangesResolved?: Scalars['Boolean']['input'];
+  ConfirmPlanExecution?: Scalars['Boolean']['input'];
+  Migration: SourceMigrationInput;
+  Token: Scalars['String']['input'];
+};
+
+/** Result of repair, validation, and at most one migration retry. */
+export type SourceMigrationRepairResult = {
+  __typename?: 'SourceMigrationRepairResult';
+  Error?: Maybe<Scalars['String']['output']>;
+  Steps: Array<FlywayExecutionResult>;
+  Success: Scalars['Boolean']['output'];
 };
 
 export type SourceMockDataTraits = {

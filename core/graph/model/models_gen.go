@@ -465,6 +465,68 @@ type SourceMetadataTraits struct {
 	SystemObjectFiltering SourceMetadataFidelity `json:"SystemObjectFiltering"`
 }
 
+// Read-only diagnosis. RepairAllowed still requires explicit confirmation of the reviewed plan or manual cleanup.
+type SourceMigrationDiagnosis struct {
+	Healthy       bool                    `json:"Healthy"`
+	RepairAllowed bool                    `json:"RepairAllowed"`
+	Token         *string                 `json:"Token,omitempty"`
+	Issues        []*SourceMigrationIssue `json:"Issues"`
+	Error         *string                 `json:"Error,omitempty"`
+}
+
+// A selected source and the local migration files to diagnose or repair.
+type SourceMigrationInput struct {
+	Target            *SourceTargetConnectionInput `json:"Target"`
+	TargetSchema      *string                      `json:"TargetSchema,omitempty"`
+	Directory         string                       `json:"Directory"`
+	BaselineOnMigrate *bool                        `json:"BaselineOnMigrate,omitempty"`
+	OutOfOrder        *bool                        `json:"OutOfOrder,omitempty"`
+	ValidateOnMigrate *bool                        `json:"ValidateOnMigrate,omitempty"`
+}
+
+// A Flyway validation issue and its locally resolved migration script.
+type SourceMigrationIssue struct {
+	Version  string                       `json:"Version"`
+	Script   string                       `json:"Script"`
+	Code     string                       `json:"Code"`
+	Message  string                       `json:"Message"`
+	SQL      string                       `json:"SQL"`
+	Recovery *SourceMigrationRecoveryPlan `json:"Recovery,omitempty"`
+}
+
+// Verified schema recovery plan. No schema changes occur during diagnosis.
+type SourceMigrationRecoveryPlan struct {
+	Safe    bool                           `json:"Safe"`
+	Matched int                            `json:"Matched"`
+	Pending int                            `json:"Pending"`
+	Error   *string                        `json:"Error,omitempty"`
+	Steps   []*SourceMigrationRecoveryStep `json:"Steps"`
+}
+
+// A schema operation that will be skipped, applied, or blocked.
+type SourceMigrationRecoveryStep struct {
+	Kind   SourceMigrationRecoveryKind   `json:"Kind"`
+	Object string                        `json:"Object"`
+	Status SourceMigrationRecoveryStatus `json:"Status"`
+	Reason string                        `json:"Reason"`
+	SQL    string                        `json:"SQL"`
+}
+
+// A single-use diagnosis plan with explicit authorization for structural recovery or completed manual cleanup.
+type SourceMigrationRepairInput struct {
+	Migration                     *SourceMigrationInput `json:"Migration"`
+	Token                         string                `json:"Token"`
+	ConfirmPartialChangesResolved bool                  `json:"ConfirmPartialChangesResolved"`
+	ConfirmPlanExecution          bool                  `json:"ConfirmPlanExecution"`
+}
+
+// Result of repair, validation, and at most one migration retry.
+type SourceMigrationRepairResult struct {
+	Success bool                     `json:"Success"`
+	Steps   []*FlywayExecutionResult `json:"Steps"`
+	Error   *string                  `json:"Error,omitempty"`
+}
+
 type SourceMockDataTraits struct {
 	SupportsRelationalDependencies bool `json:"SupportsRelationalDependencies"`
 }
@@ -1584,6 +1646,122 @@ func (e *SourceMetadataFidelity) UnmarshalJSON(b []byte) error {
 }
 
 func (e SourceMetadataFidelity) MarshalJSON() ([]byte, error) {
+	var buf bytes.Buffer
+	e.MarshalGQL(&buf)
+	return buf.Bytes(), nil
+}
+
+// Additive DDL supported by the selected connector's recovery verifier.
+type SourceMigrationRecoveryKind string
+
+const (
+	SourceMigrationRecoveryKindCreateTable SourceMigrationRecoveryKind = "CREATE_TABLE"
+	SourceMigrationRecoveryKindAddColumn   SourceMigrationRecoveryKind = "ADD_COLUMN"
+	SourceMigrationRecoveryKindCreateIndex SourceMigrationRecoveryKind = "CREATE_INDEX"
+)
+
+var AllSourceMigrationRecoveryKind = []SourceMigrationRecoveryKind{
+	SourceMigrationRecoveryKindCreateTable,
+	SourceMigrationRecoveryKindAddColumn,
+	SourceMigrationRecoveryKindCreateIndex,
+}
+
+func (e SourceMigrationRecoveryKind) IsValid() bool {
+	switch e {
+	case SourceMigrationRecoveryKindCreateTable, SourceMigrationRecoveryKindAddColumn, SourceMigrationRecoveryKindCreateIndex:
+		return true
+	}
+	return false
+}
+
+func (e SourceMigrationRecoveryKind) String() string {
+	return string(e)
+}
+
+func (e *SourceMigrationRecoveryKind) UnmarshalGQL(v any) error {
+	str, ok := v.(string)
+	if !ok {
+		return fmt.Errorf("enums must be strings")
+	}
+
+	*e = SourceMigrationRecoveryKind(str)
+	if !e.IsValid() {
+		return fmt.Errorf("%s is not a valid SourceMigrationRecoveryKind", str)
+	}
+	return nil
+}
+
+func (e SourceMigrationRecoveryKind) MarshalGQL(w io.Writer) {
+	_, _ = fmt.Fprint(w, strconv.Quote(e.String()))
+}
+
+func (e *SourceMigrationRecoveryKind) UnmarshalJSON(b []byte) error {
+	s, err := strconv.Unquote(string(b))
+	if err != nil {
+		return err
+	}
+	return e.UnmarshalGQL(s)
+}
+
+func (e SourceMigrationRecoveryKind) MarshalJSON() ([]byte, error) {
+	var buf bytes.Buffer
+	e.MarshalGQL(&buf)
+	return buf.Bytes(), nil
+}
+
+// Read-only outcome for an additive schema operation.
+type SourceMigrationRecoveryStatus string
+
+const (
+	SourceMigrationRecoveryStatusMatched  SourceMigrationRecoveryStatus = "MATCHED"
+	SourceMigrationRecoveryStatusPending  SourceMigrationRecoveryStatus = "PENDING"
+	SourceMigrationRecoveryStatusConflict SourceMigrationRecoveryStatus = "CONFLICT"
+)
+
+var AllSourceMigrationRecoveryStatus = []SourceMigrationRecoveryStatus{
+	SourceMigrationRecoveryStatusMatched,
+	SourceMigrationRecoveryStatusPending,
+	SourceMigrationRecoveryStatusConflict,
+}
+
+func (e SourceMigrationRecoveryStatus) IsValid() bool {
+	switch e {
+	case SourceMigrationRecoveryStatusMatched, SourceMigrationRecoveryStatusPending, SourceMigrationRecoveryStatusConflict:
+		return true
+	}
+	return false
+}
+
+func (e SourceMigrationRecoveryStatus) String() string {
+	return string(e)
+}
+
+func (e *SourceMigrationRecoveryStatus) UnmarshalGQL(v any) error {
+	str, ok := v.(string)
+	if !ok {
+		return fmt.Errorf("enums must be strings")
+	}
+
+	*e = SourceMigrationRecoveryStatus(str)
+	if !e.IsValid() {
+		return fmt.Errorf("%s is not a valid SourceMigrationRecoveryStatus", str)
+	}
+	return nil
+}
+
+func (e SourceMigrationRecoveryStatus) MarshalGQL(w io.Writer) {
+	_, _ = fmt.Fprint(w, strconv.Quote(e.String()))
+}
+
+func (e *SourceMigrationRecoveryStatus) UnmarshalJSON(b []byte) error {
+	s, err := strconv.Unquote(string(b))
+	if err != nil {
+		return err
+	}
+	return e.UnmarshalGQL(s)
+}
+
+func (e SourceMigrationRecoveryStatus) MarshalJSON() ([]byte, error) {
 	var buf bytes.Buffer
 	e.MarshalGQL(&buf)
 	return buf.Bytes(), nil

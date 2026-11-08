@@ -339,6 +339,14 @@ func sseAwareTimeout(dt time.Duration) func(http.Handler) http.Handler {
 	}
 }
 
+func requestTimeout() time.Duration {
+	// Desktop requests include CLI installation, which can download large archives.
+	if env.GetIsDesktopMode() {
+		return 30 * time.Minute
+	}
+	return 90 * time.Second
+}
+
 // sseAwareThrottle applies concurrency throttling to all requests except SSE streaming
 // endpoints. SSE connections are long-lived and would permanently consume slots meant
 // for transactional traffic.
@@ -515,7 +523,7 @@ func setupMiddlewares(router *chi.Mux, additionalMiddlewares []func(http.Handler
 		middleware.RedirectSlashes,
 		middleware.Recoverer,
 		sseAwareCompress(),
-		sseAwareTimeout(90 * time.Second),
+		sseAwareTimeout(requestTimeout()),
 		cors.Handler(cors.Options{
 			AllowedOrigins:   allowedOrigins,
 			AllowOriginFunc:  allowOriginFunc,

@@ -100,6 +100,8 @@ export const App = () => {
       }
 
       if (consent === 'unknown') {
+          void optOutUser();
+          dispatch(SettingsActions.setMetricsEnabled(false));
           return;
       }
 

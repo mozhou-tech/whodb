@@ -47,3 +47,47 @@ mutation ExecuteFlyway($input: ExecuteFlywayInput!) {
     DurationMs
   }
 }
+
+query SourceMigrationDiagnosis($input: SourceMigrationInput!) {
+  SourceMigrationDiagnosis(input: $input) {
+    Healthy
+    RepairAllowed
+    Token
+    Error
+    Issues {
+      Version
+      Script
+      Code
+      Message
+      SQL
+      Recovery {
+        Safe
+        Matched
+        Pending
+        Error
+        Steps {
+          Kind
+          Object
+          Status
+          Reason
+          SQL
+        }
+      }
+    }
+  }
+}
+
+mutation RepairSourceMigrations($input: SourceMigrationRepairInput!) {
+  RepairSourceMigrations(input: $input) {
+    Success
+    Error
+    Steps {
+      Success
+      Action
+      Command
+      Output
+      Error
+      DurationMs
+    }
+  }
+}

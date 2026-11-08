@@ -107,3 +107,13 @@ test('the hosted allowlist continues to exclude UAT', async () => {
     assert.equal(await h.api.initPosthog(), null);
     assert.equal(h.initCount, 0);
 });
+
+test('declining an unset preference persists denial and keeps analytics disabled', async () => {
+    const h = await harness({ consent: 'unknown' });
+    await h.api.optOutUser();
+    assert.equal(h.api.getStoredConsentState(), 'denied');
+    assert.equal(await h.api.initPosthog(), null);
+    await h.api.trackFrontendEvent('ui.screen_viewed', { section: 'sources' });
+    assert.equal(h.initCount, 0);
+    assert.equal(h.captured.length, 0);
+});

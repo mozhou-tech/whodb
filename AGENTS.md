@@ -25,9 +25,16 @@ If the `ee/` directory is present, read `ee/AGENTS.md` for additional context. D
 2. **No SQL injection** - Never use `fmt.Sprintf` with user input for SQL. Use parameterized queries or GORM builders. See `.agents/docs/sql-security.md`
 3. **Plugin architecture** - Never use `switch dbType` or `if dbType ==` in shared code. All database-specific logic goes in plugins. See `.agents/docs/plugin-architecture.md`
 4. **Documentation requirements** - All exported Go functions/types need doc comments. All exported TypeScript functions/components need JSDoc. See `.agents/docs/documentation.md`
-5. **Localization requirements** - All user-facing strings must use `t()` with YAML keys. No fallback strings. No hardcoded UI text. When adding or updating keys, edit `en_US` only unless the user explicitly asks for other languages. See `.agents/docs/localization.md`
+5. **Localization requirements** - All user interfaces must use Simplified Chinese (`zh_CN`) unless the user explicitly requests another language. All user-facing strings must use `t()` with YAML keys. No fallback strings. No hardcoded UI text. New or updated keys must include complete `zh_CN` translations; maintain matching `en_US` keys for the existing localization system. See the Chinese interface requirements below and `.agents/docs/localization.md`.
 6. **Verify before completing** - For non-trivial tasks, define success criteria before editing. After finishing, verify: (1) type checks pass (`pnpm run build:ce` for frontend, `go build ./cmd/whodb` for backend), (2) no linting errors, (3) all added code is actually used (no dead code). See `.agents/docs/verification.md`
 7. **Show proof** - When making a claim about how something outside of our codebase works, for example a 3rd party library or function, always provide official documentation or the actual code to back that up. Check online if you have to.
+
+### 中文界面要求
+
+- 除非用户明确要求其他语言，Web、桌面应用及新增或修改的界面统一使用简体中文，默认语言为 `zh_CN`。
+- 标题、导航、按钮、弹窗、提示、加载状态、空状态、表单校验、错误说明和操作结果均须提供中文，不得因缺少中文词条而显示英文兜底文案。
+- 增加或修改本地化键时，必须同步维护 `zh_CN` 和 `en_US`，并在中文模式下检查实际显示效果；本要求优先于关联文档、规则、工作流或技能中的“仅更新 `en_US`”指导。
+- 数据库对象名、SQL、代码、文件路径、版本号、产品名及第三方原始日志可保留原文；面向用户的解释和操作指引必须使用中文。
 
 ## Behavioral Guidelines
 

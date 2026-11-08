@@ -20,6 +20,7 @@ import (
 	"archive/tar"
 	"compress/gzip"
 	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"io"
@@ -37,6 +38,7 @@ import (
 	"time"
 
 	"github.com/clidey/whodb/core/src/common/datadir"
+	"github.com/clidey/whodb/core/src/engine"
 	"github.com/clidey/whodb/core/src/opsplane"
 	"github.com/clidey/whodb/core/src/source"
 )
@@ -87,6 +89,14 @@ type ExecuteRequest struct {
 	BaselineOnMigrate bool
 	OutOfOrder        bool
 	ValidateOnMigrate bool
+	// RecoveryPlanner supplies the selected connector's read-only DDL verifier.
+	RecoveryPlanner func(context.Context, string) (*engine.MigrationRecoveryPlan, error) `json:"-"`
+	// StructureRecoveryConfirmed authorizes only a verified connector recovery plan.
+	StructureRecoveryConfirmed bool `json:"-"`
+	outputJSON                 bool
+	skipCallbacks              bool
+	reviewDirectory            string
+	migrationTarget            string
 }
 
 // ExecuteResult holds the output and exit status of a Flyway command execution.
@@ -253,7 +263,7 @@ func Install(ctx context.Context) InstallResult {
 	brewPath := findBrewBinary()
 	if brewPath != "" {
 		logs = append(logs, fmt.Sprintf("Using Homebrew (%s) to install Flyway CLI...", brewPath))
-		brewCtx, cancel := context.WithTimeout(ctx, 5*time.Minute)
+		brewCtx, cancel := context.WithTimeout(ctx, 10*time.Minute)
 		cmd := exec.CommandContext(brewCtx, brewPath, "install", "flyway")
 		cmd.Env = buildCommandEnv()
 		out, err := cmd.CombinedOutput()
@@ -365,7 +375,7 @@ func flywayArchiveURL(version string) (string, error) {
 }
 
 func downloadAndExtractTarGz(ctx context.Context, archiveURL string, destDir string) error {
-	dlCtx, cancel := context.WithTimeout(ctx, 5*time.Minute)
+	dlCtx, cancel := context.WithTimeout(ctx, 15*time.Minute)
 	defer cancel()
 
 	req, err := http.NewRequestWithContext(dlCtx, http.MethodGet, archiveURL, nil)
@@ -454,7 +464,32 @@ func expandDirectoryPath(raw string) string {
 	return trimmed
 }
 
-// InspectDirectory scans a local filesystem directory and returns discovered SQL migration files.
+// migrationDirectories resolves Maven source migration roots before scanning
+// a whole project, where target/classes also contains copies of the same SQL.
+func migrationDirectories(root string) []string {
+	var directories []string
+	_ = filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
+		if err != nil || !entry.IsDir() {
+			return nil
+		}
+		if path != root && (entry.Name() == "target" || strings.HasPrefix(entry.Name(), ".")) {
+			return filepath.SkipDir
+		}
+		if strings.HasSuffix(filepath.ToSlash(path), "/src/main/resources/db/migration") {
+			directories = append(directories, path)
+			return filepath.SkipDir
+		}
+		return nil
+	})
+	if len(directories) == 0 {
+		return []string{root}
+	}
+	sort.Strings(directories)
+	return directories
+}
+
+// InspectDirectory scans SQL migrations, preferring Maven source migration roots
+// when a project directory includes both source files and build output.
 func InspectDirectory(rawDir string) DirectoryPreview {
 	resolved := expandDirectoryPath(rawDir)
 	if resolved == "" {
@@ -482,38 +517,62 @@ func InspectDirectory(rawDir string) DirectoryPreview {
 	}
 
 	var files []MigrationFile
-	_ = filepath.WalkDir(resolved, func(path string, d os.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return nil
-		}
-		if d.IsDir() {
-			if path != resolved && strings.HasPrefix(d.Name(), ".") {
-				return filepath.SkipDir
+	type fingerprint struct {
+		name   string
+		sql    [32]byte
+		config [32]byte
+	}
+	seen := map[fingerprint]bool{}
+	for _, directory := range migrationDirectories(resolved) {
+		err := filepath.WalkDir(directory, func(path string, d os.DirEntry, walkErr error) error {
+			if walkErr != nil {
+				return nil
 			}
+			if d.IsDir() {
+				if path != resolved && strings.HasPrefix(d.Name(), ".") {
+					return filepath.SkipDir
+				}
+				return nil
+			}
+			if !strings.HasSuffix(strings.ToLower(d.Name()), ".sql") {
+				return nil
+			}
+			content, err := os.ReadFile(path)
+			if err != nil {
+				return err
+			}
+			config, err := os.ReadFile(path + ".conf")
+			if err != nil && !errors.Is(err, os.ErrNotExist) {
+				return err
+			}
+			key := fingerprint{name: d.Name(), sql: sha256.Sum256(content), config: sha256.Sum256(config)}
+			if seen[key] {
+				return nil
+			}
+			seen[key] = true
+			rel, err := filepath.Rel(resolved, path)
+			if err != nil {
+				rel = d.Name()
+			}
+			var size int64
+			if fi, statErr := d.Info(); statErr == nil {
+				size = fi.Size()
+			}
+			migType, ver, desc := classifyMigrationFilename(d.Name())
+			files = append(files, MigrationFile{
+				Filename:     d.Name(),
+				RelativePath: rel,
+				Version:      ver,
+				Description:  desc,
+				Type:         migType,
+				SizeBytes:    size,
+			})
 			return nil
-		}
-		if !strings.HasSuffix(strings.ToLower(d.Name()), ".sql") {
-			return nil
-		}
-		rel, err := filepath.Rel(resolved, path)
-		if err != nil {
-			rel = d.Name()
-		}
-		var size int64
-		if fi, statErr := d.Info(); statErr == nil {
-			size = fi.Size()
-		}
-		migType, ver, desc := classifyMigrationFilename(d.Name())
-		files = append(files, MigrationFile{
-			Filename:     d.Name(),
-			RelativePath: rel,
-			Version:      ver,
-			Description:  desc,
-			Type:         migType,
-			SizeBytes:    size,
 		})
-		return nil
-	})
+		if err != nil {
+			return DirectoryPreview{Directory: resolved, Exists: true, Error: err.Error()}
+		}
+	}
 
 	sort.Slice(files, func(i, j int) bool {
 		return compareMigrationFiles(files[i], files[j]) < 0
@@ -524,6 +583,40 @@ func InspectDirectory(rawDir string) DirectoryPreview {
 		Exists:    true,
 		Files:     files,
 	}
+}
+
+// prepareMigrationDirectory gives Flyway the exact deduplicated scan result.
+// Preserve relative paths and per-script configuration; never modify source files.
+func prepareMigrationDirectory(preview DirectoryPreview) (directory string, err error) {
+	directory, err = os.MkdirTemp("", "whodb-flyway-migrations-")
+	if err != nil {
+		return "", err
+	}
+	defer func() {
+		if err != nil {
+			_ = os.RemoveAll(directory)
+		}
+	}()
+	for _, file := range preview.Files {
+		for _, suffix := range []string{"", ".conf"} {
+			sourcePath := filepath.Join(preview.Directory, file.RelativePath) + suffix
+			content, readErr := os.ReadFile(sourcePath)
+			if suffix == ".conf" && errors.Is(readErr, os.ErrNotExist) {
+				continue
+			}
+			if readErr != nil {
+				return directory, readErr
+			}
+			target := filepath.Join(directory, file.RelativePath) + suffix
+			if err = os.MkdirAll(filepath.Dir(target), 0700); err != nil {
+				return directory, err
+			}
+			if err = os.WriteFile(target, content, 0600); err != nil {
+				return directory, err
+			}
+		}
+	}
+	return directory, nil
 }
 
 func classifyMigrationFilename(filename string) (migType, version, description string) {
@@ -614,7 +707,7 @@ func Execute(ctx context.Context, req ExecuteRequest) ExecuteResult {
 	}
 
 	dirPreview := InspectDirectory(req.Directory)
-	if !dirPreview.Exists {
+	if !dirPreview.Exists || dirPreview.Error != "" {
 		errMsg := dirPreview.Error
 		if errMsg == "" {
 			errMsg = fmt.Sprintf("migration directory does not exist: %s", req.Directory)
@@ -634,6 +727,12 @@ func Execute(ctx context.Context, req ExecuteRequest) ExecuteResult {
 		}
 	}
 
+	migrationDir, err := prepareMigrationDirectory(dirPreview)
+	if err != nil {
+		return ExecuteResult{Success: false, Action: action, Error: err.Error()}
+	}
+	defer func() { _ = os.RemoveAll(migrationDir) }()
+
 	jdbcURL, user, password, cleanup, err := buildTargetJDBCConnection(ctx, req.Credentials, req.TargetDatabase)
 	if err != nil {
 		return ExecuteResult{
@@ -646,7 +745,7 @@ func Execute(ctx context.Context, req ExecuteRequest) ExecuteResult {
 
 	args := []string{
 		"-url=" + jdbcURL,
-		"-locations=filesystem:" + dirPreview.Directory,
+		"-locations=filesystem:" + migrationDir,
 		"-connectRetries=2",
 	}
 	if user != "" {
@@ -667,6 +766,19 @@ func Execute(ctx context.Context, req ExecuteRequest) ExecuteResult {
 	if req.ValidateOnMigrate {
 		args = append(args, "-validateOnMigrate=true")
 	}
+	if req.migrationTarget != "" {
+		args = append(args, "-target="+req.migrationTarget)
+	}
+	if req.outputJSON {
+		args = append(args, "-outputType=json")
+	}
+	if req.skipCallbacks {
+		recoveryArgs, configErr := recoveryCommandOptions(migrationDir)
+		if configErr != nil {
+			return ExecuteResult{Success: false, Action: action, Error: configErr.Error()}
+		}
+		args = append(args, recoveryArgs...)
+	}
 	args = append(args, action)
 
 	maskedArgs := make([]string, len(args))
@@ -685,6 +797,10 @@ func Execute(ctx context.Context, req ExecuteRequest) ExecuteResult {
 	cmd := exec.CommandContext(execCtx, status.BinaryPath, args...)
 	cmd.Dir = dirPreview.Directory
 	cmd.Env = buildCommandEnv()
+	if req.skipCallbacks {
+		cmd.Dir = migrationDir
+		cmd.Env = recoveryCommandEnv(cmd.Env)
+	}
 	out, runErr := cmd.CombinedOutput()
 	durationMs := int(time.Since(start).Milliseconds())
 	outputStr := strings.TrimSpace(string(out))

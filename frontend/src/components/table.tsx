@@ -1356,7 +1356,13 @@ export const StorageUnitTable: FC<TableProps> = ({
                                     onDoubleClick={event => { event.stopPropagation(); }}
                                     onBlur={() => { setEditingCell(null); }}
                                     onKeyDown={event => {
-                                        if (event.key === 'Enter') setEditingCell(null);
+                                        if (event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229) return;
+                                        if (matchesShortcut(event, SHORTCUTS.saveCellEdits)) {
+                                            event.preventDefault();
+                                            event.stopPropagation();
+                                            setEditingCell(null);
+                                            void savePendingCells();
+                                        }
                                         if (event.key === 'Escape') {
                                             updatePendingCell(index, cellIdx, rows[index][cellIdx]);
                                             setEditingCell(null);
@@ -1402,6 +1408,7 @@ export const StorageUnitTable: FC<TableProps> = ({
     editingCell,
     pendingCells,
     updatePendingCell,
+    savePendingCells,
     rows,
     handleCellDoubleClick,
     formatDatesLocale,

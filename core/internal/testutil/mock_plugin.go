@@ -18,6 +18,7 @@ package testutil
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/clidey/whodb/core/src/engine"
@@ -28,7 +29,8 @@ import (
 // It allows tests to override only the behaviors they care about without
 // spinning up real database connections.
 type PluginMock struct {
-	Type engine.DatabaseType
+	Type                      engine.DatabaseType
+	PlanMigrationRecoveryFunc func(*engine.PluginConfig, string, string) (*engine.MigrationRecoveryPlan, error)
 
 	GetDatabasesFunc         func(*engine.PluginConfig) ([]string, error)
 	IsAvailableFunc          func(context.Context, *engine.PluginConfig) bool
@@ -57,6 +59,14 @@ type PluginMock struct {
 	GetForeignKeysFunc       func(*engine.PluginConfig, string, string) (map[string]*engine.ForeignKeyRelationship, error)
 	WithTransactionFunc      func(*engine.PluginConfig, func(tx any) error) error
 	GetSSLStatusFunc         func(*engine.PluginConfig) (*engine.SSLStatus, error)
+}
+
+// PlanMigrationRecovery delegates to the configured verifier or reports unsupported.
+func (m *PluginMock) PlanMigrationRecovery(config *engine.PluginConfig, schema, sql string) (*engine.MigrationRecoveryPlan, error) {
+	if m.PlanMigrationRecoveryFunc != nil {
+		return m.PlanMigrationRecoveryFunc(config, schema, sql)
+	}
+	return nil, errors.ErrUnsupported
 }
 
 // NewPluginMock creates a PluginMock with the provided database type.
