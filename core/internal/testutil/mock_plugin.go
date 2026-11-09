@@ -281,3 +281,8 @@ func (m *PluginMock) GetSSLStatus(config *engine.PluginConfig) (*engine.SSLStatu
 	}
 	return nil, nil
 }
+
+// CleanMigrationDuplicates reports unsupported unless the connector implements transactional cleanup.
+func (m *PluginMock) CleanMigrationDuplicates(_ *engine.PluginConfig, _ engine.MigrationRecoveryStep, _ bool, _ *string) (*engine.MigrationDuplicateCleanup, error) {
+	return nil, errors.ErrUnsupported
+}

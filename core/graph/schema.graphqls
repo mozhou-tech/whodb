@@ -837,11 +837,26 @@ enum SourceMigrationRecoveryKind { CREATE_TABLE ADD_COLUMN CREATE_INDEX }
 
 """A schema operation that will be skipped, applied, or blocked."""
 type SourceMigrationRecoveryStep {
+  """Whether the connector can export complete records for this duplicate-data conflict."""
+  DuplicateDataAvailable: Boolean!
   Kind: SourceMigrationRecoveryKind!
   Object: String!
   Status: SourceMigrationRecoveryStatus!
   Reason: String!
   SQL: String!
+}
+
+
+"""Retains the smallest or largest primary key under ascending database key ordering."""
+enum SourceDuplicateRetentionStrategy { FIRST LAST }
+
+"""Read-only cleanup preview, or the result of an atomic cleanup confirmed against its fingerprint."""
+type SourceMigrationDuplicateCleanup {
+ Groups: Int!
+ RowsToDelete: Int!
+ Deleted: Int!
+ PrimaryKeyColumns: [String!]!
+ Fingerprint: String!
 }
 
 """Verified schema recovery plan. No schema changes occur during diagnosis."""
@@ -904,6 +919,10 @@ type Query {
   AnalyzeMockDataDependencies(ref: SourceObjectRefInput!, rowCount: Int!, fkDensityRatio: Int): MockDataDependencyAnalysis!
   SSLStatus: SSLStatus
   SourceQuerySuggestions(ref: SourceObjectRefInput): [SourceQuerySuggestion!]!
+  """Previews duplicate cleanup, ordered by the complete primary key; performs no writes."""
+  SourceMigrationDuplicateCleanupPreview(input: SourceMigrationInput!, version: String!, object: String!, strategy: SourceDuplicateRetentionStrategy!): SourceMigrationDuplicateCleanup!
+  """Reads all records involved in one diagnosed unique-index conflict without modifying data."""
+  SourceMigrationDuplicateRows(input: SourceMigrationInput!, version: String!, object: String!): RowsResult!
   SourceTargetDatabases(target: SourceTargetConnectionInput!): [String!]!
   SourceTargetSchemas(target: SourceTargetConnectionInput!): [String!]!
   FlywayStatus: FlywayStatus!
@@ -928,6 +947,9 @@ type GenerateChatTitleResponse {
 }
 
 type Mutation {
+  """Deletes only reviewed duplicates in one transaction; rejects changes since the preview."""
+  SourceCleanMigrationDuplicates(input: SourceMigrationInput!, version: String!, object: String!, strategy: SourceDuplicateRetentionStrategy!, fingerprint: String!): SourceMigrationDuplicateCleanup!
+
   LoginOpsControlPlane(input: OpsControlPlaneLoginInput!): OpsControlPlaneStatus!
   SyncOpsControlPlaneProfiles: OpsControlPlaneStatus!
   LogoutOpsControlPlane: StatusResponse!

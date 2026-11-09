@@ -66,6 +66,7 @@ query SourceMigrationDiagnosis($input: SourceMigrationInput!) {
         Pending
         Error
         Steps {
+          DuplicateDataAvailable
           Kind
           Object
           Status
@@ -90,4 +91,22 @@ mutation RepairSourceMigrations($input: SourceMigrationRepairInput!) {
       DurationMs
     }
   }
+}
+
+query SourceMigrationDuplicateRows($input: SourceMigrationInput!, $version: String!, $object: String!) {
+ SourceMigrationDuplicateRows(input: $input, version: $version, object: $object) {
+  Columns { Name }
+  Rows
+ }
+}
+
+query SourceMigrationDuplicateCleanupPreview($input: SourceMigrationInput!, $version: String!, $object: String!, $strategy: SourceDuplicateRetentionStrategy!) {
+ SourceMigrationDuplicateCleanupPreview(input: $input, version: $version, object: $object, strategy: $strategy) {
+  Groups RowsToDelete Deleted PrimaryKeyColumns Fingerprint
+ }
+}
+mutation SourceCleanMigrationDuplicates($input: SourceMigrationInput!, $version: String!, $object: String!, $strategy: SourceDuplicateRetentionStrategy!, $fingerprint: String!) {
+ SourceCleanMigrationDuplicates(input: $input, version: $version, object: $object, strategy: $strategy, fingerprint: $fingerprint) {
+  Groups RowsToDelete Deleted PrimaryKeyColumns Fingerprint
+ }
 }

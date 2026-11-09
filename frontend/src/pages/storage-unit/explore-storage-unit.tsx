@@ -93,6 +93,7 @@ import {ExploreConditionsActions} from "../../store/explore-conditions";
 import {usePageSize} from "../../hooks/use-page-size";
 import {useTranslation} from "../../hooks/use-translation";
 import {isDestructiveQuery} from "../../utils/query-utils";
+import {getQueryRowTarget} from "../../utils/query-row-target";
 import { findSourceObjectType } from "../../config/source-types";
 import {buildSourceObjectRef, buildSourceParentRef} from "../../utils/source-refs";
 import {formatAttributeKey, formatAttributeValue} from "../../utils/functions";
@@ -427,6 +428,22 @@ export const ExploreStorageUnit: FC = () => {
         return entries;
     }, [baseTableColumns, storageUnits, t, unitName]);
 
+    const sqlRowTarget = useMemo(() => {
+        if (!activeSqlQuery || rows?.DisableUpdate) return undefined;
+        const target = getQueryRowTarget(activeSqlQuery);
+        if (!target || (target.schema ? target.schema !== schema : schema !== current?.Database && schema !== '')) {
+            return undefined;
+        }
+        return storageUnits.find(object => object.Name === target.table && object.Actions.includes(SourceAction.DeleteData));
+    }, [activeSqlQuery, current?.Database, rows?.DisableUpdate, schema, storageUnits]);
+    const {data: sqlTargetColumns, loading: sqlTargetColumnsLoading} = useQuery(ColumnsDocument, sqlRowTarget
+        ? {variables: {ref: sqlRowTarget.Ref}, fetchPolicy: 'network-only'}
+        : skipToken);
+    const canDeleteSqlRows = Boolean(sqlRowTarget && !sqlTargetColumnsLoading && sqlTargetColumns?.Columns.some(column => column.IsPrimary)
+        && sqlTargetColumns.Columns.length === rows?.Columns.length
+        && sqlTargetColumns.Columns.every((column, index) => column.Name === rows.Columns[index].Name));
+    const tableRowTarget = activeSqlQuery ? sqlRowTarget : unit;
+
     const displayedRows = useMemo(() => {
         if (!rows) {
             return [];
@@ -470,7 +487,7 @@ export const ExploreStorageUnit: FC = () => {
             return;
         }
 
-        void getStorageUnitRows({
+        return getStorageUnitRows({
             variables: {
                 ref,
                 where: currentWhereCondition,
@@ -478,7 +495,7 @@ export const ExploreStorageUnit: FC = () => {
                 pageSize,
                 pageOffset: pageOffset ?? (currentPage - 1) * pageSize,
             },
-        }).then(result => {
+        }).retain().then(result => {
             const isLatest = thisRequestId === latestRequestIdRef.current;
             if (isLatest && result.data) {
                 setActiveSqlQuery(null);
@@ -498,7 +515,7 @@ export const ExploreStorageUnit: FC = () => {
         if (activeSqlQuery != null) {
             return;
         }
-        handleSubmitRequest((page - 1) * pageSize);
+        void handleSubmitRequest((page - 1) * pageSize);
     }, [activeSqlQuery, handleSubmitRequest, pageSize]);
 
     const handleColumnSort = useCallback((columnName: string) => {
@@ -589,6 +606,91 @@ export const ExploreStorageUnit: FC = () => {
         return rows?.Rows.length?.toString() ?? "unknown";
     }, [activeSqlQuery, unit, rows?.TotalCount, rows?.Rows.length]);
 
+    const doScratchpadExecute = useCallback((query: string) => {
+        const trimmed = query.trim();
+        if (!trimmed) {
+            return;
+        }
+        setSqlError(null);
+        latestRequestIdRef.current += 1;
+        const thisRequestId = latestRequestIdRef.current;
+        void rawExecute({
+            variables: { query: trimmed },
+        }).then(result => {
+            if (thisRequestId !== latestRequestIdRef.current) {
+                return;
+            }
+            if (result.error) {
+                setSqlError(result.error.message);
+                dispatch(ExploreConditionsActions.addSqlHistory({
+                    sql: trimmed,
+                    table: unitName,
+                    database: current?.Database ?? schema,
+                    status: false,
+                }));
+                return;
+            }
+            const rawResult = result.data?.RawExecute;
+            if (!rawResult) {
+                return;
+            }
+            dispatch(ExploreConditionsActions.addSqlHistory({
+                sql: trimmed,
+                table: unitName,
+                database: current?.Database ?? schema,
+                status: true,
+                rowCount: rawResult.Rows.length,
+            }));
+            if (conditionKey) {
+                dispatch(ExploreConditionsActions.setLastSql({
+                    key: conditionKey,
+                    sql: trimmed,
+                }));
+            }
+            if (rawResult.Columns.length === 0 && isDestructiveQuery(trimmed, current?.Type)) {
+                toast.success(t('sqlExecutedSuccess'));
+                setActiveSqlQuery(null);
+                void handleSubmitRequest(0);
+                return;
+            }
+            const knownColumnsByName = new Map(
+                baseTableColumnsRef.current.map(col => [col.Name, col])
+            );
+            const enrichedColumns = rawResult.Columns.map(col => {
+                const known = knownColumnsByName.get(col.Name);
+                if (!known) {
+                    return col;
+                }
+                return {
+                    ...col,
+                    Comment: col.Comment ?? known.Comment,
+                    IsPrimary: col.IsPrimary || known.IsPrimary,
+                    IsForeignKey: col.IsForeignKey || known.IsForeignKey,
+                    ReferencedTable: col.ReferencedTable ?? known.ReferencedTable,
+                    ReferencedColumn: col.ReferencedColumn ?? known.ReferencedColumn,
+                    Length: col.Length ?? known.Length,
+                    Precision: col.Precision ?? known.Precision,
+                    Scale: col.Scale ?? known.Scale,
+                };
+            });
+            setCurrentPage(1);
+            setActiveSqlQuery(trimmed);
+            setRows({
+                ...rawResult,
+                Columns: enrichedColumns,
+            });
+        }).catch((err: unknown) => {
+            const message = err instanceof Error ? err.message : String(err);
+            setSqlError(message);
+            dispatch(ExploreConditionsActions.addSqlHistory({
+                sql: trimmed,
+                table: unitName,
+                database: current?.Database ?? schema,
+                status: false,
+            }));
+        });
+    }, [conditionKey, current?.Database, current?.Type, dispatch, handleSubmitRequest, rawExecute, schema, t, unitName]);
+
     useEffect(() => {
         // Reset non-condition state when switching to a new table; preserve cached rows if available
         setCurrentPage(1);
@@ -615,17 +717,27 @@ export const ExploreStorageUnit: FC = () => {
         whereConditionRef.current = restoredWhere;
         setSortConditions(restoredSort);
 
-        // Fetch fresh data for tabular objects only.
-        if (isTabularObject) {
-            handleSubmitRequest();
-        }
+        const restoredQuery = savedLastSql?.trim();
         setCode((savedLastSql?.trim() ? savedLastSql : undefined) ?? initialScratchpadQuery);
+        let cancelled = false;
+        // Load column metadata first, then restore the saved query's result.
+        if (isTabularObject) {
+            void handleSubmitRequest(0)?.then(() => {
+                if (!cancelled && restoredQuery && !isDestructiveQuery(restoredQuery, current?.Type)) {
+                    doScratchpadExecute(restoredQuery);
+                }
+            });
+        }
+        return () => {
+            cancelled = true;
+            latestRequestIdRef.current += 1;
+        };
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [isTabularObject, unit?.Name, conditionKey]);
 
     useEffect(() => {
         if (isTabularObject && sortConditions.length > 0) {
-            handleSubmitRequest();
+            void handleSubmitRequest();
         }
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [isTabularObject, sortConditions]);
@@ -639,7 +751,7 @@ export const ExploreStorageUnit: FC = () => {
             return;
         }
         setCurrentPage(1);
-        handleSubmitRequest(0);
+        void handleSubmitRequest(0);
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [isTabularObject, pageSize]);
 
@@ -807,7 +919,7 @@ export const ExploreStorageUnit: FC = () => {
                 toast.success(t('addRowSuccess'));
                 setShowAdd(false);
                 addRowTimeoutRef.current = setTimeout(() => {
-                    handleSubmitRequest();
+                    void handleSubmitRequest();
                 }, 500);
             },
             onError(e) {
@@ -819,91 +931,6 @@ export const ExploreStorageUnit: FC = () => {
     }, [addRow, addRowData, constraintsData?.SourceFieldConstraints, current, currentTableName, currentUnitRef, handleSubmitRequest, isNoSQL, item, rows?.Columns, schema, t, unit?.Name, unitName]);
 
     const [pendingScratchpadQuery, setPendingScratchpadQuery] = useState<string | null>(null);
-
-    const doScratchpadExecute = useCallback((query: string) => {
-        const trimmed = query.trim();
-        if (!trimmed) {
-            return;
-        }
-        setSqlError(null);
-        latestRequestIdRef.current += 1;
-        const thisRequestId = latestRequestIdRef.current;
-        void rawExecute({
-            variables: { query: trimmed },
-        }).then(result => {
-            if (thisRequestId !== latestRequestIdRef.current) {
-                return;
-            }
-            if (result.error) {
-                setSqlError(result.error.message);
-                dispatch(ExploreConditionsActions.addSqlHistory({
-                    sql: trimmed,
-                    table: unitName,
-                    database: current?.Database ?? schema,
-                    status: false,
-                }));
-                return;
-            }
-            const rawResult = result.data?.RawExecute;
-            if (!rawResult) {
-                return;
-            }
-            dispatch(ExploreConditionsActions.addSqlHistory({
-                sql: trimmed,
-                table: unitName,
-                database: current?.Database ?? schema,
-                status: true,
-                rowCount: rawResult.Rows.length,
-            }));
-            if (conditionKey) {
-                dispatch(ExploreConditionsActions.setLastSql({
-                    key: conditionKey,
-                    sql: trimmed,
-                }));
-            }
-            if (rawResult.Columns.length === 0 && isDestructiveQuery(trimmed, current?.Type)) {
-                toast.success(t('sqlExecutedSuccess'));
-                setActiveSqlQuery(null);
-                handleSubmitRequest(0);
-                return;
-            }
-            const knownColumnsByName = new Map(
-                baseTableColumnsRef.current.map(col => [col.Name, col])
-            );
-            const enrichedColumns = rawResult.Columns.map(col => {
-                const known = knownColumnsByName.get(col.Name);
-                if (!known) {
-                    return col;
-                }
-                return {
-                    ...col,
-                    Comment: col.Comment ?? known.Comment,
-                    IsPrimary: col.IsPrimary || known.IsPrimary,
-                    IsForeignKey: col.IsForeignKey || known.IsForeignKey,
-                    ReferencedTable: col.ReferencedTable ?? known.ReferencedTable,
-                    ReferencedColumn: col.ReferencedColumn ?? known.ReferencedColumn,
-                    Length: col.Length ?? known.Length,
-                    Precision: col.Precision ?? known.Precision,
-                    Scale: col.Scale ?? known.Scale,
-                };
-            });
-            setCurrentPage(1);
-            setActiveSqlQuery(trimmed);
-            setRows({
-                ...rawResult,
-                Columns: enrichedColumns,
-            });
-        }).catch((err: unknown) => {
-            const message = err instanceof Error ? err.message : String(err);
-            setSqlError(message);
-            dispatch(ExploreConditionsActions.addSqlHistory({
-                sql: trimmed,
-                table: unitName,
-                database: current?.Database ?? schema,
-                status: false,
-            }));
-        });
-    }, [conditionKey, current?.Database, current?.Type, dispatch, handleSubmitRequest, rawExecute, schema, t, unitName]);
 
     const handleScratchpad = useCallback((specificCode?: string) => {
         if (current == null) {
@@ -924,7 +951,7 @@ export const ExploreStorageUnit: FC = () => {
         setActiveSqlQuery(null);
         setSqlError(null);
         setCurrentPage(1);
-        handleSubmitRequest(0);
+        void handleSubmitRequest(0);
     }, [handleSubmitRequest]);
 
     const handleTableRefresh = useCallback(() => {
@@ -932,7 +959,7 @@ export const ExploreStorageUnit: FC = () => {
             doScratchpadExecute(activeSqlQuery);
             return;
         }
-        handleSubmitRequest();
+        void handleSubmitRequest();
     }, [activeSqlQuery, doScratchpadExecute, handleSubmitRequest]);
 
 
@@ -1211,6 +1238,7 @@ export const ExploreStorageUnit: FC = () => {
                         <CommandLineIcon className="w-4 h-4 text-muted-foreground shrink-0" />
                         <div className={`ce-inline-sql-editor flex-1 min-w-0 ${ph.noCapture}`}>
                             <CodeEditor
+                                key={conditionKey}
                                 language="sql"
                                 value={code}
                                 setValue={handleCodeChange}
@@ -1303,12 +1331,12 @@ export const ExploreStorageUnit: FC = () => {
                         cellEditing
                         columnTypes={columnTypes}
                         columnComments={columnComments}
-                        columnIsPrimary={columnIsPrimary}
+                        columnIsPrimary={canDeleteSqlRows ? sqlTargetColumns?.Columns.map(column => column.IsPrimary) : columnIsPrimary}
                         columnIsForeignKey={columnIsForeignKey}
                         schema={schema}
-                        storageUnit={unitName}
+                        storageUnit={tableRowTarget?.Name ?? unitName}
                         sourceLabel={current?.Database}
-                        objectRef={currentUnitRef}
+                        objectRef={tableRowTarget?.Ref}
                         rawQuery={activeSqlQuery ?? undefined}
                         onRefresh={handleTableRefresh}
                         onColumnSort={handleColumnSort}
@@ -1327,7 +1355,7 @@ export const ExploreStorageUnit: FC = () => {
                         onEntitySearch={handleEntitySearch}
                         databaseType={current?.Type}
                         allowRowUpdate={allowsUpdateData && activeSqlQuery == null && !rows.DisableUpdate}
-                        allowRowDelete={allowsDeleteData && activeSqlQuery == null && !rows.DisableUpdate}
+                        allowRowDelete={activeSqlQuery ? canDeleteSqlRows : allowsDeleteData && !rows.DisableUpdate}
                         // Mock data control - disabled for views/materialized views
                         isMockDataGenerationAllowed={isMockDataGenerationAllowed}
                         // Import control - enabled for explore view

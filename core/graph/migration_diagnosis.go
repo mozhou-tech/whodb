@@ -88,7 +88,7 @@ func diagnoseSourceMigrations(ctx context.Context, input model.SourceMigrationIn
 				item.Recovery.Error = &plan.Error
 			}
 			for _, step := range plan.Steps {
-				item.Recovery.Steps = append(item.Recovery.Steps, &model.SourceMigrationRecoveryStep{Kind: model.SourceMigrationRecoveryKind(step.Kind), Object: step.Object, Status: model.SourceMigrationRecoveryStatus(step.Status), Reason: step.Reason, SQL: step.SQL})
+				item.Recovery.Steps = append(item.Recovery.Steps, &model.SourceMigrationRecoveryStep{DuplicateDataAvailable: step.DuplicateQuery != "", Kind: model.SourceMigrationRecoveryKind(step.Kind), Object: step.Object, Status: model.SourceMigrationRecoveryStatus(step.Status), Reason: step.Reason, SQL: step.SQL})
 			}
 		}
 		result.Issues = append(result.Issues, item)
@@ -119,4 +119,83 @@ func repairSourceMigrations(ctx context.Context, input model.SourceMigrationRepa
 		result.Steps = append(result.Steps, item)
 	}
 	return result, nil
+}
+
+func diagnosedDuplicateStep(ctx context.Context, req flyway.ExecuteRequest, version, object string) (engine.MigrationRecoveryStep, error) {
+	diagnosis := flyway.Diagnose(ctx, req)
+	if diagnosis.Error != "" {
+		return engine.MigrationRecoveryStep{}, errors.New(diagnosis.Error)
+	}
+	for _, issue := range diagnosis.Issues {
+		if issue.Version != version || issue.Recovery == nil {
+			continue
+		}
+		for _, step := range issue.Recovery.Steps {
+			if step.Object == object && step.Status == "CONFLICT" && step.DuplicateQuery != "" {
+				return step, nil
+			}
+		}
+	}
+	return engine.MigrationRecoveryStep{}, errors.New("该冲突不存在或已消除，请重新诊断")
+}
+
+func migrationDuplicatePlugin(req flyway.ExecuteRequest) (engine.PluginFunctions, *engine.PluginConfig, error) {
+	spec, ok := sourcecatalog.Find(req.Credentials.SourceType)
+	if !ok {
+		return nil, nil, errors.New("数据源不支持重复数据处理")
+	}
+	plugin := src.MainEngine.Choose(engine.DatabaseType(spec.Connector))
+	if plugin == nil {
+		return nil, nil, errors.New("数据源不支持重复数据处理")
+	}
+	credentials := adapters.EngineCredentials(spec, req.Credentials)
+	if req.TargetDatabase != "" {
+		credentials.Database = req.TargetDatabase
+	}
+	return plugin, &engine.PluginConfig{Credentials: credentials}, nil
+}
+
+func sourceMigrationDuplicateRows(ctx context.Context, input model.SourceMigrationInput, version, object string) (*model.RowsResult, error) {
+	req, err := migrationRequest(ctx, input)
+	if err != nil {
+		return nil, err
+	}
+	step, err := diagnosedDuplicateStep(ctx, req, version, object)
+	if err != nil {
+		return nil, err
+	}
+	plugin, config, err := migrationDuplicatePlugin(req)
+	if err != nil {
+		return nil, err
+	}
+	config.Context = ctx
+	result, err := plugin.RawExecute(config, step.DuplicateQuery)
+	if err != nil {
+		return nil, err
+	}
+	return rowsResultToModel(result), nil
+}
+
+func sourceMigrationDuplicateCleanup(ctx context.Context, input model.SourceMigrationInput, version, object string, strategy model.SourceDuplicateRetentionStrategy, fingerprint *string) (*model.SourceMigrationDuplicateCleanup, error) {
+	if strategy != model.SourceDuplicateRetentionStrategyFirst && strategy != model.SourceDuplicateRetentionStrategyLast {
+		return nil, errors.New("请选择保留第一条或最后一条")
+	}
+	req, err := migrationRequest(ctx, input)
+	if err != nil {
+		return nil, err
+	}
+	step, err := diagnosedDuplicateStep(ctx, req, version, object)
+	if err != nil {
+		return nil, err
+	}
+	plugin, config, err := migrationDuplicatePlugin(req)
+	if err != nil {
+		return nil, err
+	}
+	config.Context = ctx
+	result, err := plugin.CleanMigrationDuplicates(config, step, strategy == model.SourceDuplicateRetentionStrategyLast, fingerprint)
+	if err != nil {
+		return nil, err
+	}
+	return &model.SourceMigrationDuplicateCleanup{Groups: result.Groups, RowsToDelete: result.RowsToDelete, Deleted: result.Deleted, PrimaryKeyColumns: result.PrimaryKeyColumns, Fingerprint: result.Fingerprint}, nil
 }

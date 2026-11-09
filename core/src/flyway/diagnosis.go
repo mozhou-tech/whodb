@@ -125,6 +125,32 @@ func recoveryCommandEnv(environment []string) []string {
 	return filtered
 }
 
+const futureMigrationsSeparator = "\n-- WHODB_FUTURE_MIGRATIONS\n"
+
+func plannerSQLForScript(preview DirectoryPreview, script string, sql string) string {
+	seen := false
+	var future []string
+	for _, file := range preview.Files {
+		if file.Type != "VERSIONED" {
+			continue
+		}
+		if file.Filename == script {
+			seen = true
+			continue
+		}
+		if seen {
+			content, err := os.ReadFile(filepath.Join(preview.Directory, file.RelativePath))
+			if err == nil && len(content) > 0 {
+				future = append(future, string(content))
+			}
+		}
+	}
+	if len(future) == 0 {
+		return sql
+	}
+	return sql + futureMigrationsSeparator + strings.Join(future, futureMigrationsSeparator)
+}
+
 func diagnose(ctx context.Context, req ExecuteRequest, run migrationExecutor) (Diagnosis, [32]byte) {
 	result := Diagnosis{Issues: []MigrationIssue{}}
 	preview := InspectDirectory(req.Directory)
@@ -184,7 +210,7 @@ func diagnose(ctx context.Context, req ExecuteRequest, run migrationExecutor) (D
 	if result.RepairAllowed && req.RecoveryPlanner != nil {
 		for i := range result.Issues {
 			issue := &result.Issues[i]
-			plan, planErr := req.RecoveryPlanner(ctx, issue.SQL)
+			plan, planErr := req.RecoveryPlanner(ctx, plannerSQLForScript(preview, issue.Script, issue.SQL))
 			if errors.Is(planErr, errors.ErrUnsupported) {
 				continue
 			}
@@ -344,7 +370,7 @@ func repair(ctx context.Context, req ExecuteRequest, token string, confirmed boo
 	}
 	if structural != nil {
 		started := time.Now()
-		verified, verifyErr := req.RecoveryPlanner(ctx, diagnosis.Issues[0].SQL)
+		verified, verifyErr := req.RecoveryPlanner(ctx, plannerSQLForScript(InspectDirectory(frozen), diagnosis.Issues[0].Script, diagnosis.Issues[0].SQL))
 		step := ExecuteResult{Action: "verify-structure", Success: verifyErr == nil && verified != nil && verified.Safe && verified.Pending == 0 && verified.Matched == structural.Matched+structural.Pending}
 		step.DurationMs = int(time.Since(started).Milliseconds())
 		if step.Success {

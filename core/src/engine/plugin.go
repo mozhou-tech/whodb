@@ -87,6 +87,8 @@ type PluginFunctions interface {
 	RawExecute(config *PluginConfig, sql string, params ...any) (*GetRowsResult, error)
 	// PlanMigrationRecovery compares additive migration DDL with current metadata without writes.
 	PlanMigrationRecovery(config *PluginConfig, schema string, sql string) (*MigrationRecoveryPlan, error)
+	// CleanMigrationDuplicates previews or applies a strategy bound to the reviewed data fingerprint.
+	CleanMigrationDuplicates(config *PluginConfig, step MigrationRecoveryStep, keepLast bool, fingerprint *string) (*MigrationDuplicateCleanup, error)
 	Chat(config *PluginConfig, schema string, previousConversation string, prompt string) ([]*ChatMessage, error)
 	ExportData(config *PluginConfig, schema string, storageUnit string, writer func([]string) error, selectedRows []map[string]any) error
 	FormatValue(val any) string

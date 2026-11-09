@@ -34,6 +34,11 @@ import (
 	"github.com/clidey/whodb/core/src/version"
 )
 
+// SourceCleanMigrationDuplicates is the resolver for the SourceCleanMigrationDuplicates field.
+func (r *mutationResolver) SourceCleanMigrationDuplicates(ctx context.Context, input model.SourceMigrationInput, version string, object string, strategy model.SourceDuplicateRetentionStrategy, fingerprint string) (*model.SourceMigrationDuplicateCleanup, error) {
+	return sourceMigrationDuplicateCleanup(ctx, input, version, object, strategy, &fingerprint)
+}
+
 // LoginOpsControlPlane is the resolver for the LoginOpsControlPlane field.
 func (r *mutationResolver) LoginOpsControlPlane(ctx context.Context, input model.OpsControlPlaneLoginInput) (*model.OpsControlPlaneStatus, error) {
 	endpoint := ""
@@ -1119,6 +1124,16 @@ func (r *queryResolver) SSLStatus(ctx context.Context) (*model.SSLStatus, error)
 // SourceQuerySuggestions is the resolver for the SourceQuerySuggestions field.
 func (r *queryResolver) SourceQuerySuggestions(ctx context.Context, ref *model.SourceObjectRefInput) ([]*model.SourceQuerySuggestion, error) {
 	return sourceQuerySuggestionsForRef(ctx, ref)
+}
+
+// SourceMigrationDuplicateCleanupPreview is the resolver for the SourceMigrationDuplicateCleanupPreview field.
+func (r *queryResolver) SourceMigrationDuplicateCleanupPreview(ctx context.Context, input model.SourceMigrationInput, version string, object string, strategy model.SourceDuplicateRetentionStrategy) (*model.SourceMigrationDuplicateCleanup, error) {
+	return sourceMigrationDuplicateCleanup(ctx, input, version, object, strategy, nil)
+}
+
+// SourceMigrationDuplicateRows is the resolver for the SourceMigrationDuplicateRows field.
+func (r *queryResolver) SourceMigrationDuplicateRows(ctx context.Context, input model.SourceMigrationInput, version string, object string) (*model.RowsResult, error) {
+	return sourceMigrationDuplicateRows(ctx, input, version, object)
 }
 
 // SourceTargetDatabases is the resolver for the SourceTargetDatabases field.

@@ -26,3 +26,8 @@ import (
 func (p *GormPlugin) PlanMigrationRecovery(_ *engine.PluginConfig, _ string, _ string) (*engine.MigrationRecoveryPlan, error) {
 	return nil, errors.ErrUnsupported
 }
+
+// CleanMigrationDuplicates reports unsupported unless the connector implements transactional cleanup.
+func (p *GormPlugin) CleanMigrationDuplicates(_ *engine.PluginConfig, _ engine.MigrationRecoveryStep, _ bool, _ *string) (*engine.MigrationDuplicateCleanup, error) {
+	return nil, errors.ErrUnsupported
+}

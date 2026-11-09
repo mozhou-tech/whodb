@@ -148,3 +148,8 @@ func (b *BasePlugin) WithTransaction(_ *PluginConfig, operation func(tx any) err
 func (b *BasePlugin) GetSSLStatus(_ *PluginConfig) (*SSLStatus, error) {
 	return nil, nil
 }
+
+// CleanMigrationDuplicates reports unsupported unless the connector implements transactional cleanup.
+func (b *BasePlugin) CleanMigrationDuplicates(_ *PluginConfig, _ MigrationRecoveryStep, _ bool, _ *string) (*MigrationDuplicateCleanup, error) {
+	return nil, errors.ErrUnsupported
+}

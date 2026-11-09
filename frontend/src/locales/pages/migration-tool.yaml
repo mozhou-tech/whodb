@@ -1,4 +1,22 @@
 en_US:
+  duplicateCleanupFailed: "Duplicate cleanup failed: {error}"
+  keepLastDuplicate: Keep last duplicate
+  keepFirstDuplicate: Keep first duplicate
+  duplicateCleanupTarget: "Target: {database} · {object}"
+  duplicateCleanupPreviewing: Reading duplicate groups and preparing cleanup preview…
+  duplicateCleanupOrder: "Ascending primary key order ({keys}); strategy: {strategy}."
+  duplicateCleanupCounts: "{groups} duplicate groups; {count} records will be deleted."
+  duplicateCleanupWarning: These records will be permanently deleted. Export duplicates first if you need a reference copy. Changes after this preview require a new preview.
+  duplicateCleanupCancel: Cancel
+  duplicateCleanupConfirm: Confirm cleanup
+  duplicateCleanupRunning: Cleaning…
+  duplicateCleanupSuccess: "Removed {count} duplicate records. Diagnosis is refreshing."
+  duplicateExportNoResult: The duplicate report returned no result.
+  exportDuplicates: Export duplicate rows to Excel
+  exportingDuplicates: Exporting duplicates…
+  duplicateExportFilename: "{database}_{object}_duplicates"
+  duplicateExportEmpty: No duplicate records remain. Run diagnosis again.
+  duplicateExportFailed: "Could not export duplicate rows: {error}"
   recoveryVerifyStructure: Verify recovered schema
   recoveryMatched: Matched
   recoveryPending: To apply
@@ -89,6 +107,24 @@ en_US:
   unsupportedDbWarning: "Current database type ({type}) does not support Flyway JDBC migrations. Supported types: PostgreSQL, MySQL, MariaDB, ClickHouse, SQLite, DuckDB."
 
 zh_CN:
+  duplicateCleanupFailed: "重复数据清理失败：{error}"
+  keepLastDuplicate: 重复数据保留最后一条
+  keepFirstDuplicate: 重复数据保留第一条
+  duplicateCleanupTarget: "目标：{database} · {object}"
+  duplicateCleanupPreviewing: 正在读取重复组并生成清理预览…
+  duplicateCleanupOrder: "按主键（{keys}）升序排列；策略：{strategy}。"
+  duplicateCleanupCounts: "共 {groups} 组重复数据，将删除 {count} 条记录。"
+  duplicateCleanupWarning: 确认后将永久删除其余重复记录。建议先导出留存参考；预览后数据发生变化时，必须重新预览。
+  duplicateCleanupCancel: 取消
+  duplicateCleanupConfirm: 确认清理
+  duplicateCleanupRunning: 正在清理…
+  duplicateCleanupSuccess: "已清理 {count} 条重复记录，正在刷新诊断。"
+  duplicateExportNoResult: 未获取到重复数据，请重新诊断后重试。
+  exportDuplicates: 导出重复数据（Excel）
+  exportingDuplicates: 正在导出重复数据…
+  duplicateExportFilename: "{database}_{object}_重复数据"
+  duplicateExportEmpty: 当前已无重复记录，请重新诊断。
+  duplicateExportFailed: "重复数据导出失败：{error}"
   recoveryVerifyStructure: 核对补齐后的数据库结构
   recoveryMatched: 已匹配
   recoveryPending: 待补齐
@@ -164,11 +200,11 @@ zh_CN:
   baselineOnMigrate: 非空库自动基线化 (-baselineOnMigrate=true)
   validateOnMigrate: 迁移前校验 (-validateOnMigrate=true)
   outOfOrder: 允许乱序执行 (-outOfOrder=true)
-  actionMigrate: 执行迁移 (Migrate)
-  actionInfo: 查看状态 (Info)
-  actionValidate: 校验脚本 (Validate)
-  actionBaseline: 建立基线 (Baseline)
-  actionRepair: 修复记录 (Repair)
+  actionMigrate: 执行迁移
+  actionInfo: 查看状态
+  actionValidate: 校验脚本
+  actionBaseline: 建立基线
+  actionRepair: 修复记录
   runningAction: "正在执行 flyway {action}..."
   executionOutputTitle: 执行日志与结果
   durationLabel: "耗时 {ms} ms"

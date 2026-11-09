@@ -253,6 +253,7 @@ type ComplexityRoot struct {
 		Logout                           func(childComplexity int) int
 		LogoutOpsControlPlane            func(childComplexity int) int
 		RepairSourceMigrations           func(childComplexity int, input model.SourceMigrationRepairInput) int
+		SourceCleanMigrationDuplicates   func(childComplexity int, input model.SourceMigrationInput, version string, object string, strategy model.SourceDuplicateRetentionStrategy, fingerprint string) int
 		SyncOpsControlPlaneProfiles      func(childComplexity int) int
 		TestSourceConnection             func(childComplexity int, credentials model.SourceLoginInput) int
 		UpdateSettings                   func(childComplexity int, newSettings model.SettingsConfigInput) int
@@ -281,37 +282,39 @@ type ComplexityRoot struct {
 	}
 
 	Query struct {
-		AIModel                      func(childComplexity int, providerID *string, modelType string, token *string, endpoint *string) int
-		AIProviders                  func(childComplexity int) int
-		AnalyzeMockDataDependencies  func(childComplexity int, ref model.SourceObjectRefInput, rowCount int, fkDensityRatio *int) int
-		FlywayStatus                 func(childComplexity int) int
-		Health                       func(childComplexity int) int
-		InspectFlywayDirectory       func(childComplexity int, directory string) int
-		MockDataMaxRowCount          func(childComplexity int) int
-		OpsControlPlaneStatus        func(childComplexity int) int
-		RunSourceQuery               func(childComplexity int, query string) int
-		SSLStatus                    func(childComplexity int) int
-		SettingsConfig               func(childComplexity int) int
-		SourceColumns                func(childComplexity int, ref model.SourceObjectRefInput) int
-		SourceColumnsBatch           func(childComplexity int, refs []*model.SourceObjectRefInput) int
-		SourceContent                func(childComplexity int, ref model.SourceObjectRefInput) int
-		SourceFieldConstraints       func(childComplexity int, ref model.SourceObjectRefInput) int
-		SourceFieldOptions           func(childComplexity int, sourceType string, fieldKey string, values []*model.RecordInput) int
-		SourceGraph                  func(childComplexity int, ref *model.SourceObjectRefInput) int
-		SourceMigrationDiagnosis     func(childComplexity int, input model.SourceMigrationInput) int
-		SourceObject                 func(childComplexity int, ref model.SourceObjectRefInput) int
-		SourceObjectCreationMetadata func(childComplexity int, parent *model.SourceObjectRefInput) int
-		SourceObjects                func(childComplexity int, parent *model.SourceObjectRefInput, kinds []model.SourceObjectKind) int
-		SourceProfiles               func(childComplexity int) int
-		SourceQuerySuggestions       func(childComplexity int, ref *model.SourceObjectRefInput) int
-		SourceRows                   func(childComplexity int, ref model.SourceObjectRefInput, where *model.WhereCondition, sort []*model.SortCondition, pageSize int, pageOffset int) int
-		SourceSession                func(childComplexity int) int
-		SourceSessionMetadata        func(childComplexity int) int
-		SourceTargetDatabases        func(childComplexity int, target model.SourceTargetConnectionInput) int
-		SourceTargetSchemas          func(childComplexity int, target model.SourceTargetConnectionInput) int
-		SourceTypes                  func(childComplexity int) int
-		UpdateInfo                   func(childComplexity int) int
-		Version                      func(childComplexity int) int
+		AIModel                                func(childComplexity int, providerID *string, modelType string, token *string, endpoint *string) int
+		AIProviders                            func(childComplexity int) int
+		AnalyzeMockDataDependencies            func(childComplexity int, ref model.SourceObjectRefInput, rowCount int, fkDensityRatio *int) int
+		FlywayStatus                           func(childComplexity int) int
+		Health                                 func(childComplexity int) int
+		InspectFlywayDirectory                 func(childComplexity int, directory string) int
+		MockDataMaxRowCount                    func(childComplexity int) int
+		OpsControlPlaneStatus                  func(childComplexity int) int
+		RunSourceQuery                         func(childComplexity int, query string) int
+		SSLStatus                              func(childComplexity int) int
+		SettingsConfig                         func(childComplexity int) int
+		SourceColumns                          func(childComplexity int, ref model.SourceObjectRefInput) int
+		SourceColumnsBatch                     func(childComplexity int, refs []*model.SourceObjectRefInput) int
+		SourceContent                          func(childComplexity int, ref model.SourceObjectRefInput) int
+		SourceFieldConstraints                 func(childComplexity int, ref model.SourceObjectRefInput) int
+		SourceFieldOptions                     func(childComplexity int, sourceType string, fieldKey string, values []*model.RecordInput) int
+		SourceGraph                            func(childComplexity int, ref *model.SourceObjectRefInput) int
+		SourceMigrationDiagnosis               func(childComplexity int, input model.SourceMigrationInput) int
+		SourceMigrationDuplicateCleanupPreview func(childComplexity int, input model.SourceMigrationInput, version string, object string, strategy model.SourceDuplicateRetentionStrategy) int
+		SourceMigrationDuplicateRows           func(childComplexity int, input model.SourceMigrationInput, version string, object string) int
+		SourceObject                           func(childComplexity int, ref model.SourceObjectRefInput) int
+		SourceObjectCreationMetadata           func(childComplexity int, parent *model.SourceObjectRefInput) int
+		SourceObjects                          func(childComplexity int, parent *model.SourceObjectRefInput, kinds []model.SourceObjectKind) int
+		SourceProfiles                         func(childComplexity int) int
+		SourceQuerySuggestions                 func(childComplexity int, ref *model.SourceObjectRefInput) int
+		SourceRows                             func(childComplexity int, ref model.SourceObjectRefInput, where *model.WhereCondition, sort []*model.SortCondition, pageSize int, pageOffset int) int
+		SourceSession                          func(childComplexity int) int
+		SourceSessionMetadata                  func(childComplexity int) int
+		SourceTargetDatabases                  func(childComplexity int, target model.SourceTargetConnectionInput) int
+		SourceTargetSchemas                    func(childComplexity int, target model.SourceTargetConnectionInput) int
+		SourceTypes                            func(childComplexity int) int
+		UpdateInfo                             func(childComplexity int) int
+		Version                                func(childComplexity int) int
 	}
 
 	Record struct {
@@ -427,6 +430,14 @@ type ComplexityRoot struct {
 		Token         func(childComplexity int) int
 	}
 
+	SourceMigrationDuplicateCleanup struct {
+		Deleted           func(childComplexity int) int
+		Fingerprint       func(childComplexity int) int
+		Groups            func(childComplexity int) int
+		PrimaryKeyColumns func(childComplexity int) int
+		RowsToDelete      func(childComplexity int) int
+	}
+
 	SourceMigrationIssue struct {
 		Code     func(childComplexity int) int
 		Message  func(childComplexity int) int
@@ -445,11 +456,12 @@ type ComplexityRoot struct {
 	}
 
 	SourceMigrationRecoveryStep struct {
-		Kind   func(childComplexity int) int
-		Object func(childComplexity int) int
-		Reason func(childComplexity int) int
-		SQL    func(childComplexity int) int
-		Status func(childComplexity int) int
+		DuplicateDataAvailable func(childComplexity int) int
+		Kind                   func(childComplexity int) int
+		Object                 func(childComplexity int) int
+		Reason                 func(childComplexity int) int
+		SQL                    func(childComplexity int) int
+		Status                 func(childComplexity int) int
 	}
 
 	SourceMigrationRepairResult struct {
@@ -606,6 +618,7 @@ type ComplexityRoot struct {
 // region    ************************** generated!.gotpl **************************
 
 type MutationResolver interface {
+	SourceCleanMigrationDuplicates(ctx context.Context, input model.SourceMigrationInput, version string, object string, strategy model.SourceDuplicateRetentionStrategy, fingerprint string) (*model.SourceMigrationDuplicateCleanup, error)
 	LoginOpsControlPlane(ctx context.Context, input model.OpsControlPlaneLoginInput) (*model.OpsControlPlaneStatus, error)
 	SyncOpsControlPlaneProfiles(ctx context.Context) (*model.OpsControlPlaneStatus, error)
 	LogoutOpsControlPlane(ctx context.Context) (*model.StatusResponse, error)
@@ -660,6 +673,8 @@ type QueryResolver interface {
 	AnalyzeMockDataDependencies(ctx context.Context, ref model.SourceObjectRefInput, rowCount int, fkDensityRatio *int) (*model.MockDataDependencyAnalysis, error)
 	SSLStatus(ctx context.Context) (*model.SSLStatus, error)
 	SourceQuerySuggestions(ctx context.Context, ref *model.SourceObjectRefInput) ([]*model.SourceQuerySuggestion, error)
+	SourceMigrationDuplicateCleanupPreview(ctx context.Context, input model.SourceMigrationInput, version string, object string, strategy model.SourceDuplicateRetentionStrategy) (*model.SourceMigrationDuplicateCleanup, error)
+	SourceMigrationDuplicateRows(ctx context.Context, input model.SourceMigrationInput, version string, object string) (*model.RowsResult, error)
 	SourceTargetDatabases(ctx context.Context, target model.SourceTargetConnectionInput) ([]string, error)
 	SourceTargetSchemas(ctx context.Context, target model.SourceTargetConnectionInput) ([]string, error)
 	FlywayStatus(ctx context.Context) (*model.FlywayStatus, error)
@@ -1645,6 +1660,17 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.Mutation.RepairSourceMigrations(childComplexity, args["input"].(model.SourceMigrationRepairInput)), true
+	case "Mutation.SourceCleanMigrationDuplicates":
+		if e.ComplexityRoot.Mutation.SourceCleanMigrationDuplicates == nil {
+			break
+		}
+
+		args, err := ec.field_Mutation_SourceCleanMigrationDuplicates_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.ComplexityRoot.Mutation.SourceCleanMigrationDuplicates(childComplexity, args["input"].(model.SourceMigrationInput), args["version"].(string), args["object"].(string), args["strategy"].(model.SourceDuplicateRetentionStrategy), args["fingerprint"].(string)), true
 	case "Mutation.SyncOpsControlPlaneProfiles":
 		if e.ComplexityRoot.Mutation.SyncOpsControlPlaneProfiles == nil {
 			break
@@ -1941,6 +1967,28 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.Query.SourceMigrationDiagnosis(childComplexity, args["input"].(model.SourceMigrationInput)), true
+	case "Query.SourceMigrationDuplicateCleanupPreview":
+		if e.ComplexityRoot.Query.SourceMigrationDuplicateCleanupPreview == nil {
+			break
+		}
+
+		args, err := ec.field_Query_SourceMigrationDuplicateCleanupPreview_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.ComplexityRoot.Query.SourceMigrationDuplicateCleanupPreview(childComplexity, args["input"].(model.SourceMigrationInput), args["version"].(string), args["object"].(string), args["strategy"].(model.SourceDuplicateRetentionStrategy)), true
+	case "Query.SourceMigrationDuplicateRows":
+		if e.ComplexityRoot.Query.SourceMigrationDuplicateRows == nil {
+			break
+		}
+
+		args, err := ec.field_Query_SourceMigrationDuplicateRows_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.ComplexityRoot.Query.SourceMigrationDuplicateRows(childComplexity, args["input"].(model.SourceMigrationInput), args["version"].(string), args["object"].(string)), true
 	case "Query.SourceObject":
 		if e.ComplexityRoot.Query.SourceObject == nil {
 			break
@@ -2495,6 +2543,37 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 
 		return e.ComplexityRoot.SourceMigrationDiagnosis.Token(childComplexity), true
 
+	case "SourceMigrationDuplicateCleanup.Deleted":
+		if e.ComplexityRoot.SourceMigrationDuplicateCleanup.Deleted == nil {
+			break
+		}
+
+		return e.ComplexityRoot.SourceMigrationDuplicateCleanup.Deleted(childComplexity), true
+	case "SourceMigrationDuplicateCleanup.Fingerprint":
+		if e.ComplexityRoot.SourceMigrationDuplicateCleanup.Fingerprint == nil {
+			break
+		}
+
+		return e.ComplexityRoot.SourceMigrationDuplicateCleanup.Fingerprint(childComplexity), true
+	case "SourceMigrationDuplicateCleanup.Groups":
+		if e.ComplexityRoot.SourceMigrationDuplicateCleanup.Groups == nil {
+			break
+		}
+
+		return e.ComplexityRoot.SourceMigrationDuplicateCleanup.Groups(childComplexity), true
+	case "SourceMigrationDuplicateCleanup.PrimaryKeyColumns":
+		if e.ComplexityRoot.SourceMigrationDuplicateCleanup.PrimaryKeyColumns == nil {
+			break
+		}
+
+		return e.ComplexityRoot.SourceMigrationDuplicateCleanup.PrimaryKeyColumns(childComplexity), true
+	case "SourceMigrationDuplicateCleanup.RowsToDelete":
+		if e.ComplexityRoot.SourceMigrationDuplicateCleanup.RowsToDelete == nil {
+			break
+		}
+
+		return e.ComplexityRoot.SourceMigrationDuplicateCleanup.RowsToDelete(childComplexity), true
+
 	case "SourceMigrationIssue.Code":
 		if e.ComplexityRoot.SourceMigrationIssue.Code == nil {
 			break
@@ -2563,6 +2642,12 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 
 		return e.ComplexityRoot.SourceMigrationRecoveryPlan.Steps(childComplexity), true
 
+	case "SourceMigrationRecoveryStep.DuplicateDataAvailable":
+		if e.ComplexityRoot.SourceMigrationRecoveryStep.DuplicateDataAvailable == nil {
+			break
+		}
+
+		return e.ComplexityRoot.SourceMigrationRecoveryStep.DuplicateDataAvailable(childComplexity), true
 	case "SourceMigrationRecoveryStep.Kind":
 		if e.ComplexityRoot.SourceMigrationRecoveryStep.Kind == nil {
 			break
@@ -3925,6 +4010,22 @@ func (ec *executionContext) childFields_SourceMigrationDiagnosis(ctx context.Con
 	return nil, fmt.Errorf("no field named %q was found under type SourceMigrationDiagnosis", field.Name)
 }
 
+func (ec *executionContext) childFields_SourceMigrationDuplicateCleanup(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+	switch field.Name {
+	case "Groups":
+		return ec.fieldContext_SourceMigrationDuplicateCleanup_Groups(ctx, field)
+	case "RowsToDelete":
+		return ec.fieldContext_SourceMigrationDuplicateCleanup_RowsToDelete(ctx, field)
+	case "Deleted":
+		return ec.fieldContext_SourceMigrationDuplicateCleanup_Deleted(ctx, field)
+	case "PrimaryKeyColumns":
+		return ec.fieldContext_SourceMigrationDuplicateCleanup_PrimaryKeyColumns(ctx, field)
+	case "Fingerprint":
+		return ec.fieldContext_SourceMigrationDuplicateCleanup_Fingerprint(ctx, field)
+	}
+	return nil, fmt.Errorf("no field named %q was found under type SourceMigrationDuplicateCleanup", field.Name)
+}
+
 func (ec *executionContext) childFields_SourceMigrationIssue(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
 	switch field.Name {
 	case "Version":
@@ -3961,6 +4062,8 @@ func (ec *executionContext) childFields_SourceMigrationRecoveryPlan(ctx context.
 
 func (ec *executionContext) childFields_SourceMigrationRecoveryStep(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
 	switch field.Name {
+	case "DuplicateDataAvailable":
+		return ec.fieldContext_SourceMigrationRecoveryStep_DuplicateDataAvailable(ctx, field)
 	case "Kind":
 		return ec.fieldContext_SourceMigrationRecoveryStep_Kind(ctx, field)
 	case "Object":
@@ -4723,6 +4826,52 @@ func (ec *executionContext) field_Mutation_RepairSourceMigrations_args(ctx conte
 	return args, nil
 }
 
+func (ec *executionContext) field_Mutation_SourceCleanMigrationDuplicates_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "input",
+		func(ctx context.Context, v any) (model.SourceMigrationInput, error) {
+			return ec.unmarshalNSourceMigrationInput2githubᚗcomᚋclideyᚋwhodbᚋcoreᚋgraphᚋmodelᚐSourceMigrationInput(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["input"] = arg0
+	arg1, err := graphql.ProcessArgField(ctx, rawArgs, "version",
+		func(ctx context.Context, v any) (string, error) {
+			return ec.unmarshalNString2string(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["version"] = arg1
+	arg2, err := graphql.ProcessArgField(ctx, rawArgs, "object",
+		func(ctx context.Context, v any) (string, error) {
+			return ec.unmarshalNString2string(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["object"] = arg2
+	arg3, err := graphql.ProcessArgField(ctx, rawArgs, "strategy",
+		func(ctx context.Context, v any) (model.SourceDuplicateRetentionStrategy, error) {
+			return ec.unmarshalNSourceDuplicateRetentionStrategy2githubᚗcomᚋclideyᚋwhodbᚋcoreᚋgraphᚋmodelᚐSourceDuplicateRetentionStrategy(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["strategy"] = arg3
+	arg4, err := graphql.ProcessArgField(ctx, rawArgs, "fingerprint",
+		func(ctx context.Context, v any) (string, error) {
+			return ec.unmarshalNString2string(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["fingerprint"] = arg4
+	return args, nil
+}
+
 func (ec *executionContext) field_Mutation_TestSourceConnection_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
 	var err error
 	args := map[string]any{}
@@ -4988,6 +5137,74 @@ func (ec *executionContext) field_Query_SourceMigrationDiagnosis_args(ctx contex
 		return nil, err
 	}
 	args["input"] = arg0
+	return args, nil
+}
+
+func (ec *executionContext) field_Query_SourceMigrationDuplicateCleanupPreview_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "input",
+		func(ctx context.Context, v any) (model.SourceMigrationInput, error) {
+			return ec.unmarshalNSourceMigrationInput2githubᚗcomᚋclideyᚋwhodbᚋcoreᚋgraphᚋmodelᚐSourceMigrationInput(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["input"] = arg0
+	arg1, err := graphql.ProcessArgField(ctx, rawArgs, "version",
+		func(ctx context.Context, v any) (string, error) {
+			return ec.unmarshalNString2string(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["version"] = arg1
+	arg2, err := graphql.ProcessArgField(ctx, rawArgs, "object",
+		func(ctx context.Context, v any) (string, error) {
+			return ec.unmarshalNString2string(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["object"] = arg2
+	arg3, err := graphql.ProcessArgField(ctx, rawArgs, "strategy",
+		func(ctx context.Context, v any) (model.SourceDuplicateRetentionStrategy, error) {
+			return ec.unmarshalNSourceDuplicateRetentionStrategy2githubᚗcomᚋclideyᚋwhodbᚋcoreᚋgraphᚋmodelᚐSourceDuplicateRetentionStrategy(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["strategy"] = arg3
+	return args, nil
+}
+
+func (ec *executionContext) field_Query_SourceMigrationDuplicateRows_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "input",
+		func(ctx context.Context, v any) (model.SourceMigrationInput, error) {
+			return ec.unmarshalNSourceMigrationInput2githubᚗcomᚋclideyᚋwhodbᚋcoreᚋgraphᚋmodelᚐSourceMigrationInput(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["input"] = arg0
+	arg1, err := graphql.ProcessArgField(ctx, rawArgs, "version",
+		func(ctx context.Context, v any) (string, error) {
+			return ec.unmarshalNString2string(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["version"] = arg1
+	arg2, err := graphql.ProcessArgField(ctx, rawArgs, "object",
+		func(ctx context.Context, v any) (string, error) {
+			return ec.unmarshalNString2string(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["object"] = arg2
 	return args, nil
 }
 
@@ -7998,6 +8215,50 @@ func (ec *executionContext) fieldContext_MockDataTableInfo_UsesExistingData(_ co
 	return graphql.NewScalarFieldContext("MockDataTableInfo", field, false, false, "Boolean")
 }
 
+func (ec *executionContext) _Mutation_SourceCleanMigrationDuplicates(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Mutation_SourceCleanMigrationDuplicates(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.Resolvers.Mutation().SourceCleanMigrationDuplicates(ctx, fc.Args["input"].(model.SourceMigrationInput), fc.Args["version"].(string), fc.Args["object"].(string), fc.Args["strategy"].(model.SourceDuplicateRetentionStrategy), fc.Args["fingerprint"].(string))
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *model.SourceMigrationDuplicateCleanup) graphql.Marshaler {
+			return ec.marshalNSourceMigrationDuplicateCleanup2ᚖgithubᚗcomᚋclideyᚋwhodbᚋcoreᚋgraphᚋmodelᚐSourceMigrationDuplicateCleanup(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Mutation_SourceCleanMigrationDuplicates(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Mutation",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_SourceMigrationDuplicateCleanup(ctx, field)
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Mutation_SourceCleanMigrationDuplicates_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
 func (ec *executionContext) _Mutation_LoginOpsControlPlane(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -10466,6 +10727,94 @@ func (ec *executionContext) fieldContext_Query_SourceQuerySuggestions(ctx contex
 	return fc, nil
 }
 
+func (ec *executionContext) _Query_SourceMigrationDuplicateCleanupPreview(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Query_SourceMigrationDuplicateCleanupPreview(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.Resolvers.Query().SourceMigrationDuplicateCleanupPreview(ctx, fc.Args["input"].(model.SourceMigrationInput), fc.Args["version"].(string), fc.Args["object"].(string), fc.Args["strategy"].(model.SourceDuplicateRetentionStrategy))
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *model.SourceMigrationDuplicateCleanup) graphql.Marshaler {
+			return ec.marshalNSourceMigrationDuplicateCleanup2ᚖgithubᚗcomᚋclideyᚋwhodbᚋcoreᚋgraphᚋmodelᚐSourceMigrationDuplicateCleanup(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Query_SourceMigrationDuplicateCleanupPreview(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Query",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_SourceMigrationDuplicateCleanup(ctx, field)
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Query_SourceMigrationDuplicateCleanupPreview_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Query_SourceMigrationDuplicateRows(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Query_SourceMigrationDuplicateRows(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.Resolvers.Query().SourceMigrationDuplicateRows(ctx, fc.Args["input"].(model.SourceMigrationInput), fc.Args["version"].(string), fc.Args["object"].(string))
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *model.RowsResult) graphql.Marshaler {
+			return ec.marshalNRowsResult2ᚖgithubᚗcomᚋclideyᚋwhodbᚋcoreᚋgraphᚋmodelᚐRowsResult(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Query_SourceMigrationDuplicateRows(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Query",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_RowsResult(ctx, field)
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Query_SourceMigrationDuplicateRows_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
 func (ec *executionContext) _Query_SourceTargetDatabases(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -12437,6 +12786,121 @@ func (ec *executionContext) fieldContext_SourceMigrationDiagnosis_Error(_ contex
 	return graphql.NewScalarFieldContext("SourceMigrationDiagnosis", field, false, false, "String")
 }
 
+func (ec *executionContext) _SourceMigrationDuplicateCleanup_Groups(ctx context.Context, field graphql.CollectedField, obj *model.SourceMigrationDuplicateCleanup) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_SourceMigrationDuplicateCleanup_Groups(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Groups, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v int) graphql.Marshaler {
+			return ec.marshalNInt2int(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_SourceMigrationDuplicateCleanup_Groups(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("SourceMigrationDuplicateCleanup", field, false, false, "Int")
+}
+
+func (ec *executionContext) _SourceMigrationDuplicateCleanup_RowsToDelete(ctx context.Context, field graphql.CollectedField, obj *model.SourceMigrationDuplicateCleanup) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_SourceMigrationDuplicateCleanup_RowsToDelete(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.RowsToDelete, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v int) graphql.Marshaler {
+			return ec.marshalNInt2int(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_SourceMigrationDuplicateCleanup_RowsToDelete(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("SourceMigrationDuplicateCleanup", field, false, false, "Int")
+}
+
+func (ec *executionContext) _SourceMigrationDuplicateCleanup_Deleted(ctx context.Context, field graphql.CollectedField, obj *model.SourceMigrationDuplicateCleanup) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_SourceMigrationDuplicateCleanup_Deleted(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Deleted, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v int) graphql.Marshaler {
+			return ec.marshalNInt2int(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_SourceMigrationDuplicateCleanup_Deleted(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("SourceMigrationDuplicateCleanup", field, false, false, "Int")
+}
+
+func (ec *executionContext) _SourceMigrationDuplicateCleanup_PrimaryKeyColumns(ctx context.Context, field graphql.CollectedField, obj *model.SourceMigrationDuplicateCleanup) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_SourceMigrationDuplicateCleanup_PrimaryKeyColumns(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.PrimaryKeyColumns, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v []string) graphql.Marshaler {
+			return ec.marshalNString2ᚕstringᚄ(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_SourceMigrationDuplicateCleanup_PrimaryKeyColumns(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("SourceMigrationDuplicateCleanup", field, false, false, "String")
+}
+
+func (ec *executionContext) _SourceMigrationDuplicateCleanup_Fingerprint(ctx context.Context, field graphql.CollectedField, obj *model.SourceMigrationDuplicateCleanup) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_SourceMigrationDuplicateCleanup_Fingerprint(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Fingerprint, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_SourceMigrationDuplicateCleanup_Fingerprint(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("SourceMigrationDuplicateCleanup", field, false, false, "String")
+}
+
 func (ec *executionContext) _SourceMigrationIssue_Version(ctx context.Context, field graphql.CollectedField, obj *model.SourceMigrationIssue) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -12706,6 +13170,29 @@ func (ec *executionContext) fieldContext_SourceMigrationRecoveryPlan_Steps(_ con
 		},
 	}
 	return fc, nil
+}
+
+func (ec *executionContext) _SourceMigrationRecoveryStep_DuplicateDataAvailable(ctx context.Context, field graphql.CollectedField, obj *model.SourceMigrationRecoveryStep) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_SourceMigrationRecoveryStep_DuplicateDataAvailable(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.DuplicateDataAvailable, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v bool) graphql.Marshaler {
+			return ec.marshalNBoolean2bool(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_SourceMigrationRecoveryStep_DuplicateDataAvailable(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("SourceMigrationRecoveryStep", field, false, false, "Boolean")
 }
 
 func (ec *executionContext) _SourceMigrationRecoveryStep_Kind(ctx context.Context, field graphql.CollectedField, obj *model.SourceMigrationRecoveryStep) (ret graphql.Marshaler) {
@@ -19000,6 +19487,13 @@ func (ec *executionContext) _Mutation(ctx context.Context, sel ast.SelectionSet)
 		switch field.Name {
 		case "__typename":
 			out.Values[i] = graphql.MarshalString("Mutation")
+		case "SourceCleanMigrationDuplicates":
+			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
+				return ec._Mutation_SourceCleanMigrationDuplicates(ctx, field)
+			})
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
 		case "LoginOpsControlPlane":
 			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
 				return ec._Mutation_LoginOpsControlPlane(ctx, field)
@@ -19504,6 +19998,18 @@ func (ec *executionContext) _Query(ctx context.Context, sel ast.SelectionSet) gr
 				true, true,
 				func(ctx context.Context) graphql.Marshaler {
 					return ec._Query_SourceQuerySuggestions(ctx, field)
+				})
+		case "SourceMigrationDuplicateCleanupPreview":
+			out.ResolveRootConcurrently(innerCtx, ec.OperationContext, i,
+				true, true,
+				func(ctx context.Context) graphql.Marshaler {
+					return ec._Query_SourceMigrationDuplicateCleanupPreview(ctx, field)
+				})
+		case "SourceMigrationDuplicateRows":
+			out.ResolveRootConcurrently(innerCtx, ec.OperationContext, i,
+				true, true,
+				func(ctx context.Context) graphql.Marshaler {
+					return ec._Query_SourceMigrationDuplicateRows(ctx, field)
 				})
 		case "SourceTargetDatabases":
 			out.ResolveRootConcurrently(innerCtx, ec.OperationContext, i,
@@ -20313,6 +20819,59 @@ func (ec *executionContext) _SourceMigrationDiagnosis(ctx context.Context, sel a
 	return out
 }
 
+var sourceMigrationDuplicateCleanupImplementors = []string{"SourceMigrationDuplicateCleanup"}
+
+func (ec *executionContext) _SourceMigrationDuplicateCleanup(ctx context.Context, sel ast.SelectionSet, obj *model.SourceMigrationDuplicateCleanup) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, sourceMigrationDuplicateCleanupImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferred := graphql.NewDeferredGroup(ctx)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("SourceMigrationDuplicateCleanup")
+		case "Groups":
+			out.Values[i] = ec._SourceMigrationDuplicateCleanup_Groups(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "RowsToDelete":
+			out.Values[i] = ec._SourceMigrationDuplicateCleanup_RowsToDelete(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "Deleted":
+			out.Values[i] = ec._SourceMigrationDuplicateCleanup_Deleted(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "PrimaryKeyColumns":
+			out.Values[i] = ec._SourceMigrationDuplicateCleanup_PrimaryKeyColumns(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "Fingerprint":
+			out.Values[i] = ec._SourceMigrationDuplicateCleanup_Fingerprint(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	if n := len(deferred.Defers); n > 0 {
+		atomic.AddInt32(&ec.Deferred, int32(min(n, math.MaxInt32)))
+		ec.ProcessDeferredGroup(deferred)
+	}
+
+	return out
+}
+
 var sourceMigrationIssueImplementors = []string{"SourceMigrationIssue"}
 
 func (ec *executionContext) _SourceMigrationIssue(ctx context.Context, sel ast.SelectionSet, obj *model.SourceMigrationIssue) graphql.Marshaler {
@@ -20435,6 +20994,11 @@ func (ec *executionContext) _SourceMigrationRecoveryStep(ctx context.Context, se
 		switch field.Name {
 		case "__typename":
 			out.Values[i] = graphql.MarshalString("SourceMigrationRecoveryStep")
+		case "DuplicateDataAvailable":
+			out.Values[i] = ec._SourceMigrationRecoveryStep_DuplicateDataAvailable(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
 		case "Kind":
 			out.Values[i] = ec._SourceMigrationRecoveryStep_Kind(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
@@ -22627,6 +23191,16 @@ func (ec *executionContext) marshalNSourceDiscoveryPrefill2ᚖgithubᚗcomᚋcli
 	return ec._SourceDiscoveryPrefill(ctx, sel, v)
 }
 
+func (ec *executionContext) unmarshalNSourceDuplicateRetentionStrategy2githubᚗcomᚋclideyᚋwhodbᚋcoreᚋgraphᚋmodelᚐSourceDuplicateRetentionStrategy(ctx context.Context, v any) (model.SourceDuplicateRetentionStrategy, error) {
+	var res model.SourceDuplicateRetentionStrategy
+	err := res.UnmarshalGQL(v)
+	return res, graphql.ErrorOnPath(ctx, err)
+}
+
+func (ec *executionContext) marshalNSourceDuplicateRetentionStrategy2githubᚗcomᚋclideyᚋwhodbᚋcoreᚋgraphᚋmodelᚐSourceDuplicateRetentionStrategy(ctx context.Context, sel ast.SelectionSet, v model.SourceDuplicateRetentionStrategy) graphql.Marshaler {
+	return v
+}
+
 func (ec *executionContext) marshalNSourceFieldConstraints2ᚕᚖgithubᚗcomᚋclideyᚋwhodbᚋcoreᚋgraphᚋmodelᚐSourceFieldConstraintsᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.SourceFieldConstraints) graphql.Marshaler {
 	ret := graphql.MarshalSliceConcurrently(ctx, len(v), 0, false, func(ctx context.Context, i int) graphql.Marshaler {
 		fc := graphql.GetFieldContext(ctx)
@@ -22700,6 +23274,14 @@ func (ec *executionContext) marshalNSourceMigrationDiagnosis2ᚖgithubᚗcomᚋc
 		return graphql.Null
 	}
 	return ec._SourceMigrationDiagnosis(ctx, sel, v)
+}
+
+func (ec *executionContext) marshalNSourceMigrationDuplicateCleanup2ᚖgithubᚗcomᚋclideyᚋwhodbᚋcoreᚋgraphᚋmodelᚐSourceMigrationDuplicateCleanup(ctx context.Context, sel ast.SelectionSet, v *model.SourceMigrationDuplicateCleanup) graphql.Marshaler {
+	if v == nil {
+		graphql.AddInvalidNullError(ctx, "SourceMigrationDuplicateCleanup!")
+		return graphql.Null
+	}
+	return ec._SourceMigrationDuplicateCleanup(ctx, sel, v)
 }
 
 func (ec *executionContext) unmarshalNSourceMigrationInput2githubᚗcomᚋclideyᚋwhodbᚋcoreᚋgraphᚋmodelᚐSourceMigrationInput(ctx context.Context, v any) (model.SourceMigrationInput, error) {

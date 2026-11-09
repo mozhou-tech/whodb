@@ -33,7 +33,8 @@ export const useExportToCSV = (
     selectedRows?: Record<string, any>[],
     format: 'csv' | 'excel' | 'ndjson' = 'csv'
 ) => {
-    return useCallback(async () => {
+    return useCallback(async (rowsOverride?: Record<string, any>[]) => {
+        const rowsToExport = rowsOverride ?? selectedRows;
         // Prepare request body
         const requestBody: any = {
           ref: objectRef,
@@ -45,12 +46,12 @@ export const useExportToCSV = (
         // Add selected rows if provided
         // For now, we'll use the full row data approach for selections
         // In the future, we can optimize this by detecting primary keys
-        if (selectedOnly && selectedRows && selectedRows.length > 0) {
+        if (selectedOnly && rowsToExport && rowsToExport.length > 0) {
           // Threshold: if more than 1000 rows selected, warn the user
-          if (selectedRows.length > 1000) {
-            console.warn(`Exporting ${selectedRows.length} rows. Large selections may be slow.`);
+          if (rowsToExport.length > 1000) {
+            console.warn(`Exporting ${rowsToExport.length} rows. Large selections may be slow.`);
           }
-          requestBody.selectedRows = selectedRows;
+          requestBody.selectedRows = rowsToExport;
         }
 
         // Use backend export endpoint for full data export

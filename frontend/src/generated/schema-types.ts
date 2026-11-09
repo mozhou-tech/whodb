@@ -394,6 +394,8 @@ export type Mutation = {
   LogoutOpsControlPlane: StatusResponse;
   /** Recheck the diagnosis, repair history, validate, and retry migration once. */
   RepairSourceMigrations: SourceMigrationRepairResult;
+  /** Deletes only reviewed duplicates in one transaction; rejects changes since the preview. */
+  SourceCleanMigrationDuplicates: SourceMigrationDuplicateCleanup;
   SyncOpsControlPlaneProfiles: OpsControlPlaneStatus;
   TestSourceConnection: StatusResponse;
   UpdateSettings: StatusResponse;
@@ -506,6 +508,15 @@ export type MutationRepairSourceMigrationsArgs = {
 };
 
 
+export type MutationSourceCleanMigrationDuplicatesArgs = {
+  fingerprint: Scalars['String']['input'];
+  input: SourceMigrationInput;
+  object: Scalars['String']['input'];
+  strategy: SourceDuplicateRetentionStrategy;
+  version: Scalars['String']['input'];
+};
+
+
 export type MutationTestSourceConnectionArgs = {
   credentials: SourceLoginInput;
 };
@@ -576,6 +587,10 @@ export type Query = {
   SourceGraph: Array<GraphUnit>;
   /** Inspect migration history and validate scripts without executing callbacks. */
   SourceMigrationDiagnosis: SourceMigrationDiagnosis;
+  /** Previews duplicate cleanup, ordered by the complete primary key; performs no writes. */
+  SourceMigrationDuplicateCleanupPreview: SourceMigrationDuplicateCleanup;
+  /** Reads all records involved in one diagnosed unique-index conflict without modifying data. */
+  SourceMigrationDuplicateRows: RowsResult;
   SourceObject?: Maybe<SourceObject>;
   SourceObjectCreationMetadata: ObjectCreationMetadata;
   SourceObjects: Array<SourceObject>;
@@ -651,6 +666,21 @@ export type QuerySourceGraphArgs = {
 
 export type QuerySourceMigrationDiagnosisArgs = {
   input: SourceMigrationInput;
+};
+
+
+export type QuerySourceMigrationDuplicateCleanupPreviewArgs = {
+  input: SourceMigrationInput;
+  object: Scalars['String']['input'];
+  strategy: SourceDuplicateRetentionStrategy;
+  version: Scalars['String']['input'];
+};
+
+
+export type QuerySourceMigrationDuplicateRowsArgs = {
+  input: SourceMigrationInput;
+  object: Scalars['String']['input'];
+  version: Scalars['String']['input'];
 };
 
 
@@ -847,6 +877,12 @@ export type SourceDiscoveryPrefill = {
   AdvancedDefaults: Array<SourceDiscoveryAdvancedDefault>;
 };
 
+/** Retains the smallest or largest primary key under ascending database key ordering. */
+export enum SourceDuplicateRetentionStrategy {
+  First = 'FIRST',
+  Last = 'LAST'
+}
+
 export type SourceFieldConstraints = {
   __typename?: 'SourceFieldConstraints';
   AllowedValues: Array<Scalars['String']['output']>;
@@ -913,6 +949,16 @@ export type SourceMigrationDiagnosis = {
   Token?: Maybe<Scalars['String']['output']>;
 };
 
+/** Read-only cleanup preview, or the result of an atomic cleanup confirmed against its fingerprint. */
+export type SourceMigrationDuplicateCleanup = {
+  __typename?: 'SourceMigrationDuplicateCleanup';
+  Deleted: Scalars['Int']['output'];
+  Fingerprint: Scalars['String']['output'];
+  Groups: Scalars['Int']['output'];
+  PrimaryKeyColumns: Array<Scalars['String']['output']>;
+  RowsToDelete: Scalars['Int']['output'];
+};
+
 /** A selected source and the local migration files to diagnose or repair. */
 export type SourceMigrationInput = {
   BaselineOnMigrate?: InputMaybe<Scalars['Boolean']['input']>;
@@ -961,6 +1007,8 @@ export enum SourceMigrationRecoveryStatus {
 /** A schema operation that will be skipped, applied, or blocked. */
 export type SourceMigrationRecoveryStep = {
   __typename?: 'SourceMigrationRecoveryStep';
+  /** Whether the connector can export complete records for this duplicate-data conflict. */
+  DuplicateDataAvailable: Scalars['Boolean']['output'];
   Kind: SourceMigrationRecoveryKind;
   Object: Scalars['String']['output'];
   Reason: Scalars['String']['output'];

@@ -474,6 +474,15 @@ type SourceMigrationDiagnosis struct {
 	Error         *string                 `json:"Error,omitempty"`
 }
 
+// Read-only cleanup preview, or the result of an atomic cleanup confirmed against its fingerprint.
+type SourceMigrationDuplicateCleanup struct {
+	Groups            int      `json:"Groups"`
+	RowsToDelete      int      `json:"RowsToDelete"`
+	Deleted           int      `json:"Deleted"`
+	PrimaryKeyColumns []string `json:"PrimaryKeyColumns"`
+	Fingerprint       string   `json:"Fingerprint"`
+}
+
 // A selected source and the local migration files to diagnose or repair.
 type SourceMigrationInput struct {
 	Target            *SourceTargetConnectionInput `json:"Target"`
@@ -505,11 +514,13 @@ type SourceMigrationRecoveryPlan struct {
 
 // A schema operation that will be skipped, applied, or blocked.
 type SourceMigrationRecoveryStep struct {
-	Kind   SourceMigrationRecoveryKind   `json:"Kind"`
-	Object string                        `json:"Object"`
-	Status SourceMigrationRecoveryStatus `json:"Status"`
-	Reason string                        `json:"Reason"`
-	SQL    string                        `json:"SQL"`
+	// Whether the connector can export complete records for this duplicate-data conflict.
+	DuplicateDataAvailable bool                          `json:"DuplicateDataAvailable"`
+	Kind                   SourceMigrationRecoveryKind   `json:"Kind"`
+	Object                 string                        `json:"Object"`
+	Status                 SourceMigrationRecoveryStatus `json:"Status"`
+	Reason                 string                        `json:"Reason"`
+	SQL                    string                        `json:"SQL"`
 }
 
 // A single-use diagnosis plan with explicit authorization for structural recovery or completed manual cleanup.
@@ -1467,6 +1478,62 @@ func (e *SourceConnectionTransport) UnmarshalJSON(b []byte) error {
 }
 
 func (e SourceConnectionTransport) MarshalJSON() ([]byte, error) {
+	var buf bytes.Buffer
+	e.MarshalGQL(&buf)
+	return buf.Bytes(), nil
+}
+
+// Retains the smallest or largest primary key under ascending database key ordering.
+type SourceDuplicateRetentionStrategy string
+
+const (
+	SourceDuplicateRetentionStrategyFirst SourceDuplicateRetentionStrategy = "FIRST"
+	SourceDuplicateRetentionStrategyLast  SourceDuplicateRetentionStrategy = "LAST"
+)
+
+var AllSourceDuplicateRetentionStrategy = []SourceDuplicateRetentionStrategy{
+	SourceDuplicateRetentionStrategyFirst,
+	SourceDuplicateRetentionStrategyLast,
+}
+
+func (e SourceDuplicateRetentionStrategy) IsValid() bool {
+	switch e {
+	case SourceDuplicateRetentionStrategyFirst, SourceDuplicateRetentionStrategyLast:
+		return true
+	}
+	return false
+}
+
+func (e SourceDuplicateRetentionStrategy) String() string {
+	return string(e)
+}
+
+func (e *SourceDuplicateRetentionStrategy) UnmarshalGQL(v any) error {
+	str, ok := v.(string)
+	if !ok {
+		return fmt.Errorf("enums must be strings")
+	}
+
+	*e = SourceDuplicateRetentionStrategy(str)
+	if !e.IsValid() {
+		return fmt.Errorf("%s is not a valid SourceDuplicateRetentionStrategy", str)
+	}
+	return nil
+}
+
+func (e SourceDuplicateRetentionStrategy) MarshalGQL(w io.Writer) {
+	_, _ = fmt.Fprint(w, strconv.Quote(e.String()))
+}
+
+func (e *SourceDuplicateRetentionStrategy) UnmarshalJSON(b []byte) error {
+	s, err := strconv.Unquote(string(b))
+	if err != nil {
+		return err
+	}
+	return e.UnmarshalGQL(s)
+}
+
+func (e SourceDuplicateRetentionStrategy) MarshalJSON() ([]byte, error) {
 	var buf bytes.Buffer
 	e.MarshalGQL(&buf)
 	return buf.Bytes(), nil

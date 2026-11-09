@@ -23,6 +23,10 @@ type MigrationRecoveryStep struct {
 	Status string
 	Reason string
 	SQL    string
+	// DuplicateQuery reads complete records involved in a verified unique-index conflict.
+	DuplicateQuery   string
+	DuplicateTable   string
+	DuplicateColumns []string
 }
 
 // MigrationRecoveryPlan contains a read-only comparison with the current schema.
@@ -35,4 +39,13 @@ type MigrationRecoveryPlan struct {
 	Matched      int
 	Pending      int
 	Error        string
+}
+
+// MigrationDuplicateCleanup summarizes a repeatable preview or committed duplicate cleanup.
+type MigrationDuplicateCleanup struct {
+	Groups            int
+	RowsToDelete      int
+	Deleted           int
+	PrimaryKeyColumns []string
+	Fingerprint       string
 }

@@ -28,7 +28,10 @@ import (
 	_ "github.com/pingcap/tidb/pkg/parser/test_driver"
 )
 
-type migrationDefaults struct{ Engine, Charset, Collation, CharsetCollation string }
+type migrationDefaults struct {
+	Engine, Charset, Collation, CharsetCollation string
+	CharsetDefaults                              map[string]string
+}
 
 type migrationColumn struct {
 	Type                                           byte
@@ -49,6 +52,7 @@ type migrationIndex struct {
 }
 type migrationTable struct {
 	Engine, Charset, Collation, Comment string
+	RowFormat                           uint64
 	Order                               []string
 	Columns                             map[string]migrationColumn
 	Indexes                             map[string]migrationIndex
@@ -85,7 +89,7 @@ func migrationDefaultValue(expr ast.ExprNode) (string, error) {
 	return restoreMigrationNode(expr)
 }
 
-func migrationColumnDefinition(column *ast.ColumnDef, table migrationTable, primary bool) (migrationColumn, error) {
+func migrationColumnDefinition(column *ast.ColumnDef, table migrationTable, primary bool, charsetDefaults map[string]string) (migrationColumn, error) {
 	tp := column.Tp
 	result := migrationColumn{Type: tp.GetType(), Length: tp.GetFlen(), Scale: tp.GetDecimal(), Unsigned: parsermysql.HasUnsignedFlag(tp.GetFlag()), Zerofill: parsermysql.HasZerofillFlag(tp.GetFlag()), Nullable: !primary, Elements: tp.GetElems()}
 	switch result.Type {
@@ -94,13 +98,15 @@ func migrationColumnDefinition(column *ast.ColumnDef, table migrationTable, prim
 	case parsermysql.TypeVarchar, parsermysql.TypeVarString, parsermysql.TypeString, parsermysql.TypeTinyBlob, parsermysql.TypeBlob, parsermysql.TypeMediumBlob, parsermysql.TypeLongBlob, parsermysql.TypeEnum, parsermysql.TypeSet:
 		result.Charset, result.Collation = table.Charset, table.Collation
 		if tp.GetCharset() != "" {
-			if tp.GetCharset() != "binary" {
-				return result, fmt.Errorf("字段 %s 单独指定了字符集，需要人工核对", column.Name.Name.O)
+			charset := strings.ToLower(tp.GetCharset())
+			collation, ok := charsetDefaults[charset]
+			if !ok {
+				return result, fmt.Errorf("无法获取字段 %s 的字符集 %s 默认排序规则", column.Name.Name.O, charset)
 			}
-			result.Charset, result.Collation = "binary", "binary"
+			result.Charset, result.Collation = charset, collation
 		}
 		if tp.GetCollate() != "" {
-			result.Collation = tp.GetCollate()
+			result.Collation = strings.ToLower(tp.GetCollate())
 		}
 	}
 	hasDefault := false
@@ -134,10 +140,11 @@ func migrationColumnDefinition(column *ast.ColumnDef, table migrationTable, prim
 			}
 			result.Comment = value
 		case ast.ColumnOptionCollate:
-			if !strings.HasPrefix(strings.ToLower(option.StrValue), strings.ToLower(result.Charset)+"_") {
+			collation := strings.ToLower(option.StrValue)
+			if !(result.Charset == "binary" && collation == "binary") && !strings.HasPrefix(collation, result.Charset+"_") {
 				return result, fmt.Errorf("字段 %s 的排序规则需要人工核对", column.Name.Name.O)
 			}
-			result.Collation = option.StrValue
+			result.Collation = collation
 		case ast.ColumnOptionUniqKey, ast.ColumnOptionNoOption:
 		default:
 			return result, fmt.Errorf("字段 %s 使用了自动对齐尚不支持的约束", column.Name.Name.O)
@@ -190,8 +197,22 @@ func migrationTableDefinition(node *ast.CreateTableStmt, defaults migrationDefau
 		case ast.TableOptionComment:
 			result.Comment = option.StrValue
 		case ast.TableOptionAutoIncrement:
+		case ast.TableOptionRowFormat:
+			switch option.UintValue {
+			case ast.RowFormatDefault:
+				result.RowFormat = 0
+			case ast.RowFormatDynamic, ast.RowFormatFixed, ast.RowFormatCompressed, ast.RowFormatRedundant, ast.RowFormatCompact:
+				result.RowFormat = option.UintValue
+			default:
+				return result, fmt.Errorf("该 ROW_FORMAT 行存储格式尚不支持自动核对")
+			}
 		default:
-			return result, fmt.Errorf("表选项尚不支持自动核对")
+			text, err := restoreMigrationNode(option)
+			if err != nil {
+				return result, fmt.Errorf("无法核对表选项（类型 %d）：%w", option.Tp, err)
+			}
+			name, _, _ := strings.Cut(text, " ")
+			return result, fmt.Errorf("表选项 %s（类型 %d）尚不支持自动核对", name, option.Tp)
 		}
 	}
 	if explicitCollation != "" {
@@ -237,7 +258,7 @@ func migrationTableDefinition(node *ast.CreateTableStmt, defaults migrationDefau
 				result.Indexes[name] = migrationIndex{Unique: true, Parts: []migrationIndexPart{{Name: name}}}
 			}
 		}
-		definition, err := migrationColumnDefinition(column, result, primary)
+		definition, err := migrationColumnDefinition(column, result, primary, defaults.CharsetDefaults)
 		if err != nil {
 			return result, err
 		}

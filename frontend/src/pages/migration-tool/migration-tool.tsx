@@ -70,6 +70,8 @@ import {
 import { type FC, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { InternalPage } from "../../components/page";
 import { Loading } from "../../components/loading";
+import { MigrationDuplicateExport } from "./migration-duplicate-export";
+import { MigrationDuplicateCleanup } from "./migration-duplicate-cleanup";
 import { InternalRoutes } from "../../config/routes";
 import { useTranslation } from "../../hooks/use-translation";
 import { useSourceContract } from "../../hooks/useSourceContract";
@@ -1194,6 +1196,10 @@ export const MigrationToolPage: FC = () => {
                                                     <span>{recoveryKindLabels[step.Kind]}</span><code className="break-all">{step.Object}</code>
                                                 </div>
                                                 <p className="text-xs text-muted-foreground">{step.Reason}</p>
+                                                {step.DuplicateDataAvailable && diagnosisInput && <div className="flex flex-wrap gap-2">
+                                                    <MigrationDuplicateExport input={diagnosisInput} version={issue.Version} object={step.Object} />
+                                                    <MigrationDuplicateCleanup input={diagnosisInput} version={issue.Version} object={step.Object} onCleaned={() => {void handleDiagnose();}} />
+                                                </div>}
                                             </li>)}
                                         </ul>
                                     </div>}

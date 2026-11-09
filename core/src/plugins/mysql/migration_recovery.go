@@ -25,6 +25,7 @@ import (
 	"reflect"
 	"strings"
 
+	"github.com/pingcap/tidb/pkg/parser"
 	"github.com/pingcap/tidb/pkg/parser/ast"
 	"gorm.io/gorm"
 
@@ -51,13 +52,18 @@ type mysqlMigrationPlanner struct {
 	plan          *engine.MigrationRecoveryPlan
 }
 
+const futureMigrationsSeparator = "\n-- WHODB_FUTURE_MIGRATIONS\n"
+
 // PlanMigrationRecovery verifies additive MySQL DDL against live metadata without writes.
 // MariaDB and compatible wrapper plugins inherit the same conservative verifier.
 func (p *MySQLPlugin) PlanMigrationRecovery(config *engine.PluginConfig, schema string, sql string) (*engine.MigrationRecoveryPlan, error) {
 	if schema != "" && schema != config.Credentials.Database {
 		return &engine.MigrationRecoveryPlan{Error: "目标架构与数据库不一致，不能自动核对", Steps: []engine.MigrationRecoveryStep{}}, nil
 	}
-	nodes, err := parseMigrationSQL(sql)
+	parts := strings.Split(sql, futureMigrationsSeparator)
+	currentSQL := parts[0]
+	futureScripts := parts[1:]
+	nodes, err := parseMigrationSQL(currentSQL)
 	if err != nil {
 		return &engine.MigrationRecoveryPlan{Error: err.Error(), Steps: []engine.MigrationRecoveryStep{}}, nil
 	}
@@ -82,40 +88,37 @@ func (p *MySQLPlugin) PlanMigrationRecovery(config *engine.PluginConfig, schema 
 			return &engine.MigrationRecoveryPlan{Error: "当前数据库使用特殊引号或反斜杠 SQL 模式，需要人工核对脚本", Steps: []engine.MigrationRecoveryStep{}}, nil
 		}
 		planner.defaults = migrationDefaults{Engine: strings.ToLower(storageEngine), Charset: strings.ToLower(defaults.Charset), Collation: strings.ToLower(defaults.Collation)}
-		if err := db.Raw("SELECT DEFAULT_COLLATE_NAME FROM information_schema.CHARACTER_SETS WHERE CHARACTER_SET_NAME = ?", defaults.Charset).Scan(&planner.defaults.CharsetCollation).Error; err != nil {
+		var charsets []struct {
+			Name      string `gorm:"column:CHARACTER_SET_NAME"`
+			Collation string `gorm:"column:DEFAULT_COLLATE_NAME"`
+		}
+		if err := db.Raw("SELECT CHARACTER_SET_NAME, DEFAULT_COLLATE_NAME FROM information_schema.CHARACTER_SETS").Scan(&charsets).Error; err != nil {
 			return nil, err
 		}
-		if defaults.Charset == "utf8mb4" {
-			var variables []struct {
-				Name  string `gorm:"column:Variable_name"`
-				Value string `gorm:"column:Value"`
-			}
-			if err := db.Raw("SHOW VARIABLES LIKE 'default_collation_for_utf8mb4'").Scan(&variables).Error; err != nil {
-				return nil, err
-			}
-			if len(variables) == 1 {
-				planner.defaults.CharsetCollation = variables[0].Value
-			}
+		planner.defaults.CharsetDefaults = map[string]string{}
+		for _, charset := range charsets {
+			planner.defaults.CharsetDefaults[strings.ToLower(charset.Name)] = strings.ToLower(charset.Collation)
 		}
+		var variables []struct {
+			Name  string `gorm:"column:Variable_name"`
+			Value string `gorm:"column:Value"`
+		}
+		if err := db.Raw("SHOW VARIABLES LIKE 'default_collation_for_utf8mb4'").Scan(&variables).Error; err != nil {
+			return nil, err
+		}
+		if len(variables) == 1 {
+			planner.defaults.CharsetDefaults["utf8mb4"] = strings.ToLower(variables[0].Value)
+		}
+		planner.defaults.CharsetCollation = planner.defaults.CharsetDefaults[planner.defaults.Charset]
 		planner.futureColumns, planner.futureIndexes = map[string]map[string]bool{}, map[string]map[string]bool{}
 		for _, node := range nodes {
-			switch statement := node.(type) {
-			case *ast.AlterTableStmt:
-				if planner.futureColumns[statement.Table.Name.O] == nil {
-					planner.futureColumns[statement.Table.Name.O] = map[string]bool{}
+			planner.recordFutureAdditions(node)
+		}
+		for _, futureScript := range futureScripts {
+			if futureNodes, _, parseErr := parser.New().ParseSQL(futureScript); parseErr == nil {
+				for _, node := range futureNodes {
+					planner.recordFutureAdditions(node)
 				}
-				for _, spec := range statement.Specs {
-					if spec.Tp == ast.AlterTableAddColumns {
-						for _, column := range spec.NewColumns {
-							planner.futureColumns[statement.Table.Name.O][strings.ToLower(column.Name.Name.O)] = true
-						}
-					}
-				}
-			case *ast.CreateIndexStmt:
-				if planner.futureIndexes[statement.Table.Name.O] == nil {
-					planner.futureIndexes[statement.Table.Name.O] = map[string]bool{}
-				}
-				planner.futureIndexes[statement.Table.Name.O][strings.ToLower(statement.IndexName)] = true
 			}
 		}
 		for _, node := range nodes {
@@ -123,6 +126,10 @@ func (p *MySQLPlugin) PlanMigrationRecovery(config *engine.PluginConfig, schema 
 				planner.plan.Safe, planner.plan.Error = false, err.Error()
 				return planner.plan, nil
 			}
+		}
+		if planner.plan.Matched == 0 && planner.plan.Pending == 0 {
+			planner.plan.Safe, planner.plan.Error = false, "脚本包含建表、加字段、建索引以外的操作，不能自动补齐"
+			return planner.plan, nil
 		}
 		encoded, err := json.Marshal(planner.observed)
 		if err != nil {
@@ -138,6 +145,41 @@ func (p *MySQLPlugin) PlanMigrationRecovery(config *engine.PluginConfig, schema 
 		}
 		return planner.plan, nil
 	})
+}
+
+func (p *mysqlMigrationPlanner) recordFutureAdditions(node ast.StmtNode) {
+	switch statement := node.(type) {
+	case *ast.AlterTableStmt:
+		if p.futureColumns[statement.Table.Name.O] == nil {
+			p.futureColumns[statement.Table.Name.O] = map[string]bool{}
+		}
+		if p.futureIndexes[statement.Table.Name.O] == nil {
+			p.futureIndexes[statement.Table.Name.O] = map[string]bool{}
+		}
+		for _, spec := range statement.Specs {
+			switch spec.Tp {
+			case ast.AlterTableAddColumns:
+				for _, column := range spec.NewColumns {
+					p.futureColumns[statement.Table.Name.O][strings.ToLower(column.Name.Name.O)] = true
+				}
+			case ast.AlterTableAddConstraint:
+				if spec.Constraint != nil {
+					indexName := strings.ToLower(spec.Constraint.Name)
+					if indexName == "" && len(spec.Constraint.Keys) > 0 && spec.Constraint.Keys[0].Column != nil {
+						indexName = strings.ToLower(spec.Constraint.Keys[0].Column.Name.O)
+					}
+					if indexName != "" {
+						p.futureIndexes[statement.Table.Name.O][indexName] = true
+					}
+				}
+			}
+		}
+	case *ast.CreateIndexStmt:
+		if p.futureIndexes[statement.Table.Name.O] == nil {
+			p.futureIndexes[statement.Table.Name.O] = map[string]bool{}
+		}
+		p.futureIndexes[statement.Table.Name.O][strings.ToLower(statement.IndexName)] = true
+	}
 }
 
 func (p *mysqlMigrationPlanner) table(name *ast.TableName) (*migrationTableState, error) {
@@ -186,7 +228,7 @@ func (p *mysqlMigrationPlanner) table(name *ast.TableName) (*migrationTableState
 		}
 		state.Definition, err = migrationTableDefinition(create, p.defaults)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("核对表 %s 时失败：%w", name.Name.O, err)
 		}
 		state.Exists = true
 		for column := range state.Definition.Columns {
@@ -229,11 +271,15 @@ func (p *mysqlMigrationPlanner) createConflict(table string, actual, expected mi
 	// Objects added later in this same script are checked by their own steps.
 	// Unrelated extra columns or indexes still prevent automatic reconciliation.
 	projected := actual
+	// An unspecified storage format does not constrain an existing table's
+	// physical layout. Explicit requirements must still match exactly.
+	if expected.RowFormat == 0 {
+		projected.RowFormat = 0
+	}
 	projected.Columns, projected.Indexes = maps.Clone(actual.Columns), maps.Clone(actual.Indexes)
 	if len(actual.Order) < len(expected.Order) {
 		return "已有表缺少脚本要求的字段"
 	}
-	projected.Order = actual.Order[:len(expected.Order)]
 	for name := range actual.Columns {
 		if _, exists := expected.Columns[name]; !exists {
 			if !p.futureColumns[table][name] {
@@ -242,6 +288,16 @@ func (p *mysqlMigrationPlanner) createConflict(table string, actual, expected mi
 			delete(projected.Columns, name)
 		}
 	}
+	filteredOrder := make([]string, 0, len(actual.Order))
+	for _, name := range actual.Order {
+		if _, exists := projected.Columns[name]; exists {
+			filteredOrder = append(filteredOrder, name)
+		}
+	}
+	if len(filteredOrder) < len(expected.Order) {
+		return "已有表缺少脚本要求的字段"
+	}
+	projected.Order = filteredOrder
 	for name := range actual.Indexes {
 		if _, exists := expected.Indexes[name]; !exists {
 			if !p.futureIndexes[table][name] {
@@ -269,6 +325,9 @@ func (p *mysqlMigrationPlanner) createConflict(table string, actual, expected mi
 	}
 	if projected.Charset != expected.Charset || projected.Collation != expected.Collation {
 		return "已有表的字符集或排序规则与脚本不同"
+	}
+	if projected.RowFormat != expected.RowFormat {
+		return "已有表的 ROW_FORMAT 行存储格式与脚本不同"
 	}
 	return "已有表的备注或其他属性与脚本不同"
 }
@@ -298,18 +357,8 @@ func (p *mysqlMigrationPlanner) inspect(node ast.StmtNode) error {
 			state.Definition = expected
 		}
 	case *ast.AlterTableStmt:
-		if len(statement.Specs) != 1 || statement.Specs[0].Tp != ast.AlterTableAddColumns {
-			return fmt.Errorf("自动恢复只支持单字段 ADD COLUMN，不处理删除或修改字段")
-		}
-		spec := statement.Specs[0]
-		if len(spec.NewColumns) != 1 || len(spec.NewConstraints) != 0 || (spec.Position != nil && spec.Position.Tp != ast.ColumnPositionNone) {
-			return fmt.Errorf("带字段位置或附加约束的 ALTER TABLE 需要人工处理")
-		}
-		column := spec.NewColumns[0]
-		for _, option := range column.Options {
-			if option.Tp == ast.ColumnOptionPrimaryKey || option.Tp == ast.ColumnOptionUniqKey || option.Tp == ast.ColumnOptionAutoIncrement {
-				return fmt.Errorf("带主键、唯一或自增约束的新增字段需要人工处理")
-			}
+		if len(statement.Specs) == 0 {
+			return fmt.Errorf("自动恢复只支持 ADD COLUMN 和 ADD INDEX/KEY，不处理删除或修改字段")
 		}
 		state, err := p.table(statement.Table)
 		if err != nil {
@@ -318,20 +367,105 @@ func (p *mysqlMigrationPlanner) inspect(node ast.StmtNode) error {
 		if state.Definition.Columns == nil {
 			return fmt.Errorf("表 %s 不存在，且脚本中尚未创建该表", statement.Table.Name.O)
 		}
-		expected, err := migrationColumnDefinition(column, state.Definition, false)
-		if err != nil {
-			return err
-		}
-		name := strings.ToLower(column.Name.Name.O)
-		actual, exists := state.Definition.Columns[name]
-		object := statement.Table.Name.O + "." + column.Name.Name.O
-		if exists && !reflect.DeepEqual(actual, expected) {
-			return p.conflict("ADD_COLUMN", object, sql, "已有字段的类型、可空性或默认值与脚本不同")
-		}
-		p.step("ADD_COLUMN", object, sql, exists)
-		if !exists {
-			state.Definition.Columns[name] = expected
-			state.Definition.Order = append(state.Definition.Order, name)
+		for _, spec := range statement.Specs {
+			specSQL, err := restoreMigrationNode(&ast.AlterTableStmt{Table: statement.Table, Specs: []*ast.AlterTableSpec{spec}})
+			if err != nil {
+				return err
+			}
+			switch spec.Tp {
+			case ast.AlterTableAddColumns:
+				if len(spec.NewColumns) != 1 || len(spec.NewConstraints) != 0 {
+					return fmt.Errorf("带附加约束或多字段合并子句的 ALTER TABLE 需要人工处理")
+				}
+				if spec.Position != nil && spec.Position.Tp != ast.ColumnPositionNone && spec.Position.Tp != ast.ColumnPositionFirst && spec.Position.Tp != ast.ColumnPositionAfter {
+					return fmt.Errorf("不支持的字段位置定义需要人工处理")
+				}
+				if spec.Position != nil && spec.Position.Tp == ast.ColumnPositionAfter && spec.Position.RelativeColumn != nil {
+					relName := strings.ToLower(spec.Position.RelativeColumn.Name.O)
+					if _, relExists := state.Definition.Columns[relName]; !relExists {
+						return fmt.Errorf("新增字段位置引用的前置字段 %s 不存在", spec.Position.RelativeColumn.Name.O)
+					}
+				}
+				column := spec.NewColumns[0]
+				for _, option := range column.Options {
+					if option.Tp == ast.ColumnOptionPrimaryKey || option.Tp == ast.ColumnOptionUniqKey || option.Tp == ast.ColumnOptionAutoIncrement {
+						return fmt.Errorf("带主键、唯一或自增约束的新增字段需要人工处理")
+					}
+				}
+				expected, err := migrationColumnDefinition(column, state.Definition, false, p.defaults.CharsetDefaults)
+				if err != nil {
+					return err
+				}
+				name := strings.ToLower(column.Name.Name.O)
+				actual, exists := state.Definition.Columns[name]
+				object := statement.Table.Name.O + "." + column.Name.Name.O
+				if exists && !reflect.DeepEqual(actual, expected) {
+					return p.conflict("ADD_COLUMN", object, specSQL, "已有字段的类型、可空性或默认值与脚本不同")
+				}
+				p.step("ADD_COLUMN", object, specSQL, exists)
+				if !exists {
+					state.Definition.Columns[name] = expected
+					state.Definition.Order = append(state.Definition.Order, name)
+				}
+			case ast.AlterTableAddConstraint:
+				if spec.Constraint == nil {
+					return fmt.Errorf("ALTER TABLE 缺少索引约束定义")
+				}
+				unique := false
+				switch spec.Constraint.Tp {
+				case ast.ConstraintKey, ast.ConstraintIndex:
+				case ast.ConstraintUniq, ast.ConstraintUniqKey, ast.ConstraintUniqIndex:
+					unique = true
+				default:
+					return fmt.Errorf("仅支持普通索引和唯一索引")
+				}
+				expected, err := migrationIndexDefinition(spec.Constraint.Keys, unique, spec.Constraint.Option)
+				if err != nil {
+					return err
+				}
+				rawName := spec.Constraint.Name
+				if rawName == "" {
+					rawName = expected.Parts[0].Name
+				}
+				name := strings.ToLower(rawName)
+				object := statement.Table.Name.O + "." + rawName
+				actual, exists := state.Definition.Indexes[name]
+				if exists && !reflect.DeepEqual(actual, expected) {
+					return p.conflict("CREATE_INDEX", object, specSQL, "同名索引的字段、顺序或唯一性与脚本不同")
+				}
+				for _, part := range expected.Parts {
+					if _, ok := state.Definition.Columns[part.Name]; !ok {
+						return p.conflict("CREATE_INDEX", object, specSQL, "索引引用的字段不存在")
+					}
+				}
+				if !exists && expected.Unique && state.Exists {
+					for _, part := range expected.Parts {
+						if !state.OriginalColumns[part.Name] {
+							return p.conflict("CREATE_INDEX", object, specSQL, "唯一索引依赖尚未创建的字段，无法提前核对重复数据")
+						}
+					}
+					duplicate, duplicateQuery, err := p.uniqueConflict(statement.Table.Name.O, expected)
+					if err != nil {
+						return err
+					}
+					if duplicate {
+						err := p.conflict("CREATE_INDEX", object, specSQL, "已有重复数据，无法创建唯一索引；不会自动删除或合并数据")
+						step := &p.plan.Steps[len(p.plan.Steps)-1]
+						step.DuplicateQuery = duplicateQuery
+						step.DuplicateTable = statement.Table.Name.O
+						for _, part := range expected.Parts {
+							step.DuplicateColumns = append(step.DuplicateColumns, part.Name)
+						}
+						return err
+					}
+				}
+				p.step("CREATE_INDEX", object, specSQL, exists)
+				if !exists {
+					state.Definition.Indexes[name] = expected
+				}
+			default:
+				return fmt.Errorf("自动恢复只支持 ADD COLUMN 和 ADD INDEX/KEY，不处理删除或修改字段")
+			}
 		}
 	case *ast.CreateIndexStmt:
 		if statement.KeyType != ast.IndexKeyTypeNone && statement.KeyType != ast.IndexKeyTypeUnique {
@@ -365,47 +499,69 @@ func (p *mysqlMigrationPlanner) inspect(node ast.StmtNode) error {
 					return p.conflict("CREATE_INDEX", object, sql, "唯一索引依赖尚未创建的字段，无法提前核对重复数据")
 				}
 			}
-			duplicate, err := p.uniqueConflict(statement.Table.Name.O, expected)
+			duplicate, duplicateQuery, err := p.uniqueConflict(statement.Table.Name.O, expected)
 			if err != nil {
 				return err
 			}
 			if duplicate {
-				return p.conflict("CREATE_INDEX", object, sql, "已有重复数据，无法创建唯一索引；不会自动删除或合并数据")
+				err := p.conflict("CREATE_INDEX", object, sql, "已有重复数据，无法创建唯一索引；不会自动删除或合并数据")
+				step := &p.plan.Steps[len(p.plan.Steps)-1]
+				step.DuplicateQuery = duplicateQuery
+				step.DuplicateTable = statement.Table.Name.O
+				for _, part := range expected.Parts {
+					step.DuplicateColumns = append(step.DuplicateColumns, part.Name)
+				}
+				return err
 			}
 		}
 		p.step("CREATE_INDEX", object, sql, exists)
 		if !exists {
 			state.Definition.Indexes[name] = expected
 		}
+	case *ast.UpdateStmt:
+		hasJoin := statement.TableRefs != nil && statement.TableRefs.TableRefs != nil && statement.TableRefs.TableRefs.Right != nil
+		if statement.Where == nil && !hasJoin {
+			return fmt.Errorf("无条件 UPDATE 语句不能自动补齐")
+		}
+		p.remaining = append(p.remaining, sql)
+	case *ast.InsertStmt:
+		if statement.Select == nil || !strings.Contains(strings.ToUpper(sql), "NOT EXISTS") {
+			return fmt.Errorf("非幂等 INSERT 语句不能自动补齐")
+		}
+		p.remaining = append(p.remaining, sql)
 	default:
 		return fmt.Errorf("脚本包含建表、加字段、建索引以外的操作，不能自动补齐")
 	}
 	return nil
 }
 
-func (p *mysqlMigrationPlanner) uniqueConflict(table string, index migrationIndex) (bool, error) {
+func (p *mysqlMigrationPlanner) uniqueConflict(table string, index migrationIndex) (bool, string, error) {
 	identifier, err := sqlident.New(p.database, table)
 	if err != nil {
-		return false, err
+		return false, "", err
 	}
 	quoted, err := identifier.SQL(sqlident.Backtick)
 	if err != nil {
-		return false, err
+		return false, "", err
 	}
-	columns, nonNull := []string{}, []string{}
+	columns, nonNull, matches, order := []string{}, []string{}, []string{}, []string{}
 	for _, part := range index.Parts {
 		identifier, err := sqlident.New("", part.Name)
 		if err != nil {
-			return false, err
+			return false, "", err
 		}
 		column, err := identifier.SQL(sqlident.Backtick)
 		if err != nil {
-			return false, err
+			return false, "", err
 		}
 		columns = append(columns, column)
 		nonNull = append(nonNull, column+" IS NOT NULL")
+		matches = append(matches, "t."+column+" = d."+column)
+		order = append(order, "t."+column)
 	}
+	grouped := " FROM " + quoted + " WHERE " + strings.Join(nonNull, " AND ") + " GROUP BY " + strings.Join(columns, ", ") + " HAVING COUNT(*) > 1"
 	var duplicates []int
-	err = p.db.Raw("SELECT 1 FROM " + quoted + " WHERE " + strings.Join(nonNull, " AND ") + " GROUP BY " + strings.Join(columns, ", ") + " HAVING COUNT(*) > 1 LIMIT 1").Scan(&duplicates).Error
-	return len(duplicates) > 0, err
+	err = p.db.Raw("SELECT 1" + grouped + " LIMIT 1").Scan(&duplicates).Error
+	duplicateQuery := "SELECT t.* FROM " + quoted + " AS t JOIN (SELECT " + strings.Join(columns, ", ") + grouped + ") AS d ON " + strings.Join(matches, " AND ") + " ORDER BY " + strings.Join(order, ", ")
+	return len(duplicates) > 0, duplicateQuery, err
 }
