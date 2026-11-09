@@ -574,6 +574,34 @@ export const MigrationToolPage: FC = () => {
         }
     }, [allInstances, current, reduxSchema]);
 
+    const handleDiagnose = useCallback(async () => {
+        if (!selectedInstance || !directory.trim()) return;
+        recordDirectoryHistory(directory.trim());
+        const target = buildTargetInput(selectedInstance, selectedTargetDatabase);
+        if (!target) return;
+        const input: SourceMigrationInput = {
+            Target: target,
+            TargetSchema: !usesDatabaseInsteadOfSchema && supportsSchema ? selectedTargetSchema : undefined,
+            Directory: directory.trim(),
+            BaselineOnMigrate: baselineOnMigrate,
+            OutOfOrder: outOfOrder,
+            ValidateOnMigrate: true,
+        };
+        setDiagnosisInput(input);
+        setDiagnosisTarget(`${selectedInstance.displayName} · ${selectedTargetDatabase}${input.TargetSchema ? ` · ${input.TargetSchema}` : ''}`);
+        setDiagnosis(null);
+        setDiagnosisError(null);
+        setCleanupConfirmed(false);
+        setRepairResult(null);
+        setDiagnosisOpen(true);
+        try {
+            const response = await diagnoseMigration({ variables: { input } });
+            setDiagnosis(response.data?.SourceMigrationDiagnosis ?? null);
+        } catch (error) {
+            setDiagnosisError(error instanceof Error ? error.message : String(error));
+        }
+    }, [baselineOnMigrate, buildTargetInput, diagnoseMigration, directory, outOfOrder, recordDirectoryHistory, selectedInstance, selectedTargetDatabase, selectedTargetSchema, supportsSchema, usesDatabaseInsteadOfSchema]);
+
     const handleRunFlywayAction = useCallback(async (action: string) => {
         if (!selectedInstance) {
             return;
@@ -613,6 +641,9 @@ export const MigrationToolPage: FC = () => {
                     toast.success(t("migrateSuccess", { action }));
                 } else {
                     toast.error(t("migrateFailed", { action, error: data.Error ?? "" }));
+                    if (action === "migrate") {
+                        void handleDiagnose();
+                    }
                 }
             }
         } catch (err) {
@@ -626,6 +657,7 @@ export const MigrationToolPage: FC = () => {
         buildTargetInput,
         directory,
         executeFlywayMutation,
+        handleDiagnose,
         outOfOrder,
         recordDirectoryHistory,
         selectedInstance,
@@ -636,34 +668,6 @@ export const MigrationToolPage: FC = () => {
         usesDatabaseInsteadOfSchema,
         validateOnMigrate,
     ]);
-
-    const handleDiagnose = useCallback(async () => {
-        if (!selectedInstance || !directory.trim()) return;
-        recordDirectoryHistory(directory.trim());
-        const target = buildTargetInput(selectedInstance, selectedTargetDatabase);
-        if (!target) return;
-        const input: SourceMigrationInput = {
-            Target: target,
-            TargetSchema: !usesDatabaseInsteadOfSchema && supportsSchema ? selectedTargetSchema : undefined,
-            Directory: directory.trim(),
-            BaselineOnMigrate: baselineOnMigrate,
-            OutOfOrder: outOfOrder,
-            ValidateOnMigrate: true,
-        };
-        setDiagnosisInput(input);
-        setDiagnosisTarget(`${selectedInstance.displayName} · ${selectedTargetDatabase}${input.TargetSchema ? ` · ${input.TargetSchema}` : ''}`);
-        setDiagnosis(null);
-        setDiagnosisError(null);
-        setCleanupConfirmed(false);
-        setRepairResult(null);
-        setDiagnosisOpen(true);
-        try {
-            const response = await diagnoseMigration({ variables: { input } });
-            setDiagnosis(response.data?.SourceMigrationDiagnosis ?? null);
-        } catch (error) {
-            setDiagnosisError(error instanceof Error ? error.message : String(error));
-        }
-    }, [baselineOnMigrate, buildTargetInput, diagnoseMigration, directory, outOfOrder, recordDirectoryHistory, selectedInstance, selectedTargetDatabase, selectedTargetSchema, supportsSchema, usesDatabaseInsteadOfSchema]);
 
     const handleDiagnosedRepair = useCallback(async () => {
         if (!diagnosisInput || !diagnosis?.Token || !cleanupConfirmed || repairing || repairResult) return;
@@ -1101,16 +1105,6 @@ export const MigrationToolPage: FC = () => {
                                 onClick={() => { void handleRunFlywayAction("repair"); }}
                             >
                                 {activeAction === "repair" ? t("runningAction", { action: "repair" }) : t("actionRepair")}
-                            </Button>
-                            <Button
-                                variant="outline"
-                                size="sm"
-                                className="h-9 text-xs gap-1.5"
-                                disabled={!canExecute}
-                                onClick={() => { void handleDiagnose(); }}
-                                data-testid="diagnose-migrations"
-                            >
-                                {t("diagnoseAndRepair")}
                             </Button>
                         </div>
                     </div>
