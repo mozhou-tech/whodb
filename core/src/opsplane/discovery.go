@@ -103,13 +103,38 @@ func RetrieveProfiles() ([]types.DatabaseCredentials, error) {
 	return profiles, nil
 }
 
+func filterProfilesForSession(profiles []types.DatabaseCredentials, session *AuthStatus) ([]types.DatabaseCredentials, int) {
+	if session == nil || session.AllowAllEnvs {
+		envsSeen := make(map[string]bool)
+		for _, p := range profiles {
+			if p.ProjectID != "" {
+				envsSeen[p.ProjectID] = true
+			}
+		}
+		return slices.Clone(profiles), len(envsSeen)
+	}
+	if len(session.AllowedEnvSlugs) == 0 {
+		return nil, 0
+	}
+	filtered := make([]types.DatabaseCredentials, 0, len(profiles))
+	envsSeen := make(map[string]bool)
+	for _, p := range profiles {
+		if slices.Contains(session.AllowedEnvSlugs, p.ProjectID) {
+			filtered = append(filtered, p)
+			if p.ProjectID != "" {
+				envsSeen[p.ProjectID] = true
+			}
+		}
+	}
+	return filtered, len(envsSeen)
+}
+
 func getOrDiscoverProfilesForSession(session *AuthStatus) ([]types.DatabaseCredentials, int, error) {
 	cacheMu.Lock()
 	if time.Now().Before(cacheExpiresAt) && len(cachedProfiles) > 0 {
-		cloned := slices.Clone(cachedProfiles)
-		envCount := cachedEnvCount
+		filtered, envCount := filterProfilesForSession(cachedProfiles, session)
 		cacheMu.Unlock()
-		return cloned, envCount, nil
+		return filtered, envCount, nil
 	}
 	cacheMu.Unlock()
 
@@ -118,22 +143,22 @@ func getOrDiscoverProfilesForSession(session *AuthStatus) ([]types.DatabaseCrede
 
 	cacheMu.Lock()
 	if time.Now().Before(cacheExpiresAt) && len(cachedProfiles) > 0 {
-		cloned := slices.Clone(cachedProfiles)
-		envCount := cachedEnvCount
+		filtered, envCount := filterProfilesForSession(cachedProfiles, session)
 		cacheMu.Unlock()
-		return cloned, envCount, nil
+		return filtered, envCount, nil
 	}
 	staleProfiles := slices.Clone(cachedProfiles)
-	staleEnvCount := cachedEnvCount
 	cacheMu.Unlock()
 
 	profiles, envCount, err := discoverProfilesForSession(session)
-	if err != nil || len(profiles) == 0 {
-		if len(staleProfiles) > 0 {
+	hasAuthorizedScope := session == nil || session.AllowAllEnvs || len(session.AllowedEnvSlugs) > 0
+	if err != nil || (len(profiles) == 0 && hasAuthorizedScope) {
+		staleFiltered, staleCount := filterProfilesForSession(staleProfiles, session)
+		if len(staleFiltered) > 0 {
 			cacheMu.Lock()
 			cacheExpiresAt = time.Now().Add(staleCacheRetryTTL)
 			cacheMu.Unlock()
-			return staleProfiles, staleEnvCount, nil
+			return staleFiltered, staleCount, nil
 		}
 		if err != nil {
 			return nil, 0, err
@@ -175,15 +200,25 @@ func discoverProfilesForSession(session *AuthStatus) ([]types.DatabaseCredential
 	ctx, cancel := context.WithTimeout(context.Background(), 12*time.Second)
 	defer cancel()
 
+	// Refresh user's role & project-group permissions from Ops Console before discovering environments.
+	refreshSessionPermissions(ctx, session)
+	if session != nil && !session.AllowAllEnvs && len(session.AllowedEnvSlugs) == 0 {
+		return nil, 0, nil
+	}
+
 	var envs []environmentRow
+	httpWorkspaceAuthoritative := false
 	projectEnvVars := make(map[string]map[string]string)
 
 	// 1. Try HTTP API discovery via the Ops Control Plane platform URL + token
 	if session != nil && session.Token != "" && session.Endpoint != "" {
-		if httpEnvs, err := queryCustomerEnvironmentsViaHTTP(ctx, session.Endpoint, session.Token); err == nil && len(httpEnvs) > 0 {
+		if httpEnvs, err := queryCustomerEnvironmentsViaHTTP(ctx, session.Endpoint, session.Token); err == nil {
 			envs = httpEnvs
-			for slug, vars := range queryProjectEnvVarsViaHTTP(ctx, session.Endpoint, session.Token, httpEnvs) {
-				projectEnvVars[slug] = vars
+			httpWorkspaceAuthoritative = true
+			if len(httpEnvs) > 0 {
+				for slug, vars := range queryProjectEnvVarsViaHTTP(ctx, session.Endpoint, session.Token, httpEnvs) {
+					projectEnvVars[slug] = vars
+				}
 			}
 		}
 	}
@@ -200,9 +235,19 @@ func discoverProfilesForSession(session *AuthStatus) ([]types.DatabaseCredential
 	if dsn != "" {
 		if db, err := sql.Open("pgx", dsn); err == nil {
 			defer func() { _ = db.Close() }()
-			if len(envs) == 0 {
-				if dbEnvs, err := queryCustomerEnvironments(ctx, db); err == nil {
+			if dbEnvs, err := queryCustomerEnvironments(ctx, db); err == nil {
+				if len(envs) == 0 && !httpWorkspaceAuthoritative {
 					envs = dbEnvs
+				} else if len(envs) > 0 {
+					bySlug := make(map[string]environmentRow, len(dbEnvs))
+					for _, row := range dbEnvs {
+						bySlug[row.Slug] = row
+					}
+					for i := range envs {
+						if full, ok := bySlug[envs[i].Slug]; ok {
+							envs[i] = mergeEnvironmentRow(envs[i], full)
+						}
+					}
 				}
 			}
 			for slug, vars := range queryProjectEnvVars(ctx, db, keyring) {
@@ -271,8 +316,57 @@ func discoverProfilesForSession(session *AuthStatus) ([]types.DatabaseCredential
 	return profiles, matchedEnvCount, nil
 }
 
+func mergeEnvironmentRow(base environmentRow, full environmentRow) environmentRow {
+	if base.Name == "" {
+		base.Name = full.Name
+	}
+	if base.GroupName == "" {
+		base.GroupName = full.GroupName
+	}
+	if len(full.ProxyRaw) > 0 && string(full.ProxyRaw) != "null" {
+		base.ProxyRaw = full.ProxyRaw
+	}
+	if len(full.Postgres) > 0 && string(full.Postgres) != "null" {
+		base.Postgres = full.Postgres
+	}
+	if len(full.MySQL) > 0 && string(full.MySQL) != "null" {
+		base.MySQL = full.MySQL
+	}
+	if len(full.Redis) > 0 && string(full.Redis) != "null" {
+		base.Redis = full.Redis
+	}
+	if len(full.TDengine) > 0 && string(full.TDengine) != "null" {
+		base.TDengine = full.TDengine
+	}
+	if len(full.OpenObserve) > 0 && string(full.OpenObserve) != "null" {
+		base.OpenObserve = full.OpenObserve
+	}
+	return base
+}
+
 func queryCustomerEnvironmentsViaHTTP(ctx context.Context, baseURL string, token string) ([]environmentRow, error) {
-	endpoint := strings.TrimRight(baseURL, "/") + "/api/v1/environments"
+	trimmedBase := strings.TrimRight(baseURL, "/")
+	workspaceEnvs, wsErr := fetchEnvironmentEndpointViaHTTP(ctx, trimmedBase+"/api/v1/workspace/environments", token)
+	if wsErr == nil {
+		if len(workspaceEnvs) > 0 {
+			if regEnvs, regErr := fetchEnvironmentEndpointViaHTTP(ctx, trimmedBase+"/api/v1/environments", token); regErr == nil && len(regEnvs) > 0 {
+				bySlug := make(map[string]environmentRow, len(regEnvs))
+				for _, row := range regEnvs {
+					bySlug[row.Slug] = row
+				}
+				for i := range workspaceEnvs {
+					if full, ok := bySlug[workspaceEnvs[i].Slug]; ok {
+						workspaceEnvs[i] = mergeEnvironmentRow(workspaceEnvs[i], full)
+					}
+				}
+			}
+		}
+		return workspaceEnvs, nil
+	}
+	return fetchEnvironmentEndpointViaHTTP(ctx, trimmedBase+"/api/v1/environments", token)
+}
+
+func fetchEnvironmentEndpointViaHTTP(ctx context.Context, endpoint string, token string) ([]environmentRow, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
 		return nil, err

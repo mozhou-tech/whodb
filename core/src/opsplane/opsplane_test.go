@@ -61,6 +61,59 @@ func TestAuthenticateViaHTTPEnvelope(t *testing.T) {
 	}
 }
 
+func TestProjectGroupConstraintOnGlobalAndScopedRoles(t *testing.T) {
+	// 1. A non-super-admin user with global scope_type and environment_permissions=["*"]
+	// must still be constrained by group_environment_slugs (project group membership).
+	globalReader := httpUserAccount{
+		Username:               "pm@mozyun.cn",
+		Role:                   "user",
+		EnvironmentPermissions: []string{"*"},
+		AuthorizationGrants: &[]httpAuthorizationGrant{
+			{
+				RoleCode:              "project_manager",
+				RoleName:              "项目经理",
+				IsSuperAdmin:          false,
+				ScopeType:             "global",
+				EnvironmentSlugs:      []string{},
+				GroupEnvironmentSlugs: []string{"nj-zsjd-zhyq-2026", "lyg-zhewang-swhyjg-2026"},
+				Permissions:           []string{"environments:read", "environments:registry:read"},
+			},
+		},
+	}
+	allowAll, slugs, roleDisplay := resolveHTTPUserEnvironmentAccess(globalReader)
+	if allowAll {
+		t.Fatal("expected non-super-admin with global role to NOT have allowAll=true")
+	}
+	if len(slugs) != 2 || slugs[0] != "nj-zsjd-zhyq-2026" || slugs[1] != "lyg-zhewang-swhyjg-2026" {
+		t.Fatalf("expected project-group slugs [nj-zsjd-zhyq-2026 lyg-zhewang-swhyjg-2026], got %v", slugs)
+	}
+	if roleDisplay != "项目经理" {
+		t.Fatalf("expected roleDisplay=项目经理, got %q", roleDisplay)
+	}
+
+	// 2. A non-super-admin user without any bound project group gets an empty project list even with global read.
+	noGroupUser := httpUserAccount{
+		Username:               "registry@mozyun.cn",
+		Role:                   "user",
+		EnvironmentPermissions: []string{"*"},
+		AuthorizationGrants: &[]httpAuthorizationGrant{
+			{
+				RoleCode:              "environment_registry_viewer",
+				RoleName:              "环境登记查看",
+				IsSuperAdmin:          false,
+				ScopeType:             "global",
+				EnvironmentSlugs:      []string{},
+				GroupEnvironmentSlugs: []string{},
+				Permissions:           []string{"environments:read", "environments:registry:read"},
+			},
+		},
+	}
+	allowAllNoGroup, slugsNoGroup, _ := resolveHTTPUserEnvironmentAccess(noGroupUser)
+	if allowAllNoGroup || len(slugsNoGroup) != 0 {
+		t.Fatalf("expected allowAll=false and empty slugs when no project group is bound, got allowAll=%v slugs=%v", allowAllNoGroup, slugsNoGroup)
+	}
+}
+
 func TestBuildEnvironmentProfilesAndProxyRouting(t *testing.T) {
 	env := environmentRow{
 		Slug:      "nj-test",

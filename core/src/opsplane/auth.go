@@ -55,9 +55,10 @@ type AuthStatus struct {
 }
 
 var (
-	authMu        sync.Mutex
-	authLoaded    bool
-	activeSession *AuthStatus
+	authMu                 sync.Mutex
+	authLoaded             bool
+	testingSessionOverride bool
+	activeSession          *AuthStatus
 )
 
 // GetAuthStatus returns the current ops-control-plane login and sync status.
@@ -138,11 +139,7 @@ func SyncProfiles(ctx context.Context) (*AuthStatus, error) {
 		return nil, errors.New("请先登录 Ops Control Plane 平台")
 	}
 
-	if updated, err := refreshUserPermissionsFromDB(ctx, session.Endpoint, session.Username); err == nil && updated != nil {
-		session.Role = updated.Role
-		session.AllowAllEnvs = updated.AllowAllEnvs
-		session.AllowedEnvSlugs = updated.AllowedEnvSlugs
-	}
+	refreshSessionPermissions(ctx, session)
 
 	InvalidateProfileCache()
 	profiles, envCount, err := discoverProfilesForSession(session)
@@ -195,6 +192,7 @@ func InvalidateProfileCache() {
 func SetSessionForTesting(session *AuthStatus) {
 	authMu.Lock()
 	authLoaded = true
+	testingSessionOverride = session != nil
 	if session == nil {
 		activeSession = nil
 	} else {
@@ -216,6 +214,9 @@ func loadOrGetSession() *AuthStatus {
 				var s AuthStatus
 				if err := json.Unmarshal(data, &s); err == nil && s.Authenticated && s.Username != "" {
 					s.Endpoint = normalizePlatformEndpoint(s.Endpoint)
+					if s.Token == "" {
+						s.Token = lookupOpsBrowserToken(s.Username)
+					}
 					activeSession = &s
 				}
 			}
@@ -225,9 +226,41 @@ func loadOrGetSession() *AuthStatus {
 	if activeSession == nil {
 		return nil
 	}
+	if activeSession.Token == "" && !testingSessionOverride {
+		if token := lookupOpsBrowserToken(activeSession.Username); token != "" {
+			activeSession.Token = token
+		}
+	}
 	cp := *activeSession
 	cp.AllowedEnvSlugs = slices.Clone(activeSession.AllowedEnvSlugs)
 	return &cp
+}
+
+func lookupOpsBrowserToken(username string) string {
+	username = strings.TrimSpace(username)
+	if username == "" {
+		return ""
+	}
+	configDir, err := os.UserConfigDir()
+	if err != nil || configDir == "" {
+		return ""
+	}
+	sessionPath := filepath.Join(configDir, "cn.mozyun.ops-browser", "session.json")
+	data, err := os.ReadFile(sessionPath)
+	if err != nil {
+		return ""
+	}
+	var parsed struct {
+		Username string `json:"username"`
+		Token    string `json:"token"`
+	}
+	if json.Unmarshal(data, &parsed) != nil {
+		return ""
+	}
+	if !strings.EqualFold(strings.TrimSpace(parsed.Username), username) {
+		return ""
+	}
+	return strings.TrimSpace(parsed.Token)
 }
 
 func saveSessionToDisk(session *AuthStatus) {
@@ -371,27 +404,148 @@ func authenticateUser(ctx context.Context, endpoint string, username string, pas
 	return nil, dbErr
 }
 
+type httpAuthorizationGrant struct {
+	RoleCode              string   `json:"role_code"`
+	RoleName              string   `json:"role_name"`
+	IsSuperAdmin          bool     `json:"is_super_admin"`
+	ScopeType             string   `json:"scope_type"`
+	EnvironmentSlugs      []string `json:"environment_slugs"`
+	GroupEnvironmentSlugs []string `json:"group_environment_slugs"`
+	Permissions           []string `json:"permissions"`
+}
+
+type httpUserAccount struct {
+	Username               string                    `json:"username"`
+	Role                   string                    `json:"role"`
+	IsActive               *bool                     `json:"is_active"`
+	FeaturePermissions     []string                  `json:"feature_permissions"`
+	EnvironmentPermissions []string                  `json:"environment_permissions"`
+	AuthorizationGrants    *[]httpAuthorizationGrant `json:"authorization_grants"`
+	Roles                  []struct {
+		Code             string   `json:"code"`
+		Name             string   `json:"name"`
+		ScopeType        string   `json:"scope_type"`
+		EnvironmentSlugs []string `json:"environment_slugs"`
+	} `json:"roles"`
+}
+
 type httpLoginResponse struct {
 	Code    int    `json:"code"`
 	Success *bool  `json:"success"`
 	Message string `json:"message"`
 	Error   string `json:"error"`
 	Data    struct {
-		Token    string `json:"token"`
-		ExpireAt string `json:"expire_at"`
-		User     struct {
-			Username               string   `json:"username"`
-			Role                   string   `json:"role"`
-			IsActive               bool     `json:"is_active"`
-			EnvironmentPermissions []string `json:"environment_permissions"`
-			Roles                  []struct {
-				Code             string   `json:"code"`
-				Name             string   `json:"name"`
-				ScopeType        string   `json:"scope_type"`
-				EnvironmentSlugs []string `json:"environment_slugs"`
-			} `json:"roles"`
-		} `json:"user"`
+		Token    string          `json:"token"`
+		ExpireAt string          `json:"expire_at"`
+		User     httpUserAccount `json:"user"`
 	} `json:"data"`
+}
+
+func resolveHTTPUserEnvironmentAccess(user httpUserAccount) (allowAll bool, allowedSlugs []string, roleDisplay string) {
+	var roleNames []string
+	if user.AuthorizationGrants != nil {
+		for _, g := range *user.AuthorizationGrants {
+			if g.RoleName != "" && !slices.Contains(roleNames, g.RoleName) {
+				roleNames = append(roleNames, g.RoleName)
+			}
+		}
+	}
+	for _, r := range user.Roles {
+		if r.Name != "" && !slices.Contains(roleNames, r.Name) {
+			roleNames = append(roleNames, r.Name)
+		}
+	}
+	roleDisplay = user.Role
+	if len(roleNames) > 0 {
+		roleDisplay = strings.Join(roleNames, ", ")
+	}
+	roleDisplay = firstNonEmpty(roleDisplay, "user")
+
+	// When RBAC authorization_grants are present, follow Ops Console's selectableEnvironments(user):
+	// only super-admin grants have unrestricted workspace selection; all other RBAC users are
+	// constrained to the project groups (group_environment_slugs) bound to their active roles
+	// that are also readable under environments:read.
+	if user.AuthorizationGrants != nil {
+		grants := *user.AuthorizationGrants
+		for _, g := range grants {
+			if g.IsSuperAdmin || strings.EqualFold(g.RoleCode, "system_admin") || strings.EqualFold(g.RoleCode, "super_admin") {
+				return true, nil, roleDisplay
+			}
+		}
+
+		readableAll := false
+		readableSlugs := make([]string, 0)
+		groupSlugs := make([]string, 0)
+		for _, g := range grants {
+			for _, slug := range g.GroupEnvironmentSlugs {
+				if slug != "" && slug != "*" && !slices.Contains(groupSlugs, slug) {
+					groupSlugs = append(groupSlugs, slug)
+				}
+			}
+			hasRead := slices.Contains(g.Permissions, "environments:read") || slices.Contains(g.Permissions, "*")
+			if !hasRead {
+				continue
+			}
+			if strings.EqualFold(g.ScopeType, "global") {
+				readableAll = true
+				continue
+			}
+			for _, slug := range g.EnvironmentSlugs {
+				if slug == "*" {
+					readableAll = true
+				} else if slug != "" && !slices.Contains(readableSlugs, slug) {
+					readableSlugs = append(readableSlugs, slug)
+				}
+			}
+			for _, slug := range g.GroupEnvironmentSlugs {
+				if slug != "" && slug != "*" && !slices.Contains(readableSlugs, slug) {
+					readableSlugs = append(readableSlugs, slug)
+				}
+			}
+		}
+
+		allowed := make([]string, 0, len(groupSlugs))
+		for _, slug := range groupSlugs {
+			if readableAll || slices.Contains(readableSlugs, slug) {
+				allowed = append(allowed, slug)
+			}
+		}
+		return false, allowed, roleDisplay
+	}
+
+	// Legacy fallback when authorization_grants is absent from the response.
+	for _, r := range user.Roles {
+		if strings.EqualFold(r.Code, "system_admin") || strings.EqualFold(r.Code, "super_admin") {
+			return true, nil, roleDisplay
+		}
+	}
+	if strings.EqualFold(user.Role, "admin") {
+		return true, nil, roleDisplay
+	}
+	if len(user.FeaturePermissions) > 0 &&
+		!slices.Contains(user.FeaturePermissions, "*") &&
+		!slices.Contains(user.FeaturePermissions, "environments:read") {
+		return false, nil, roleDisplay
+	}
+
+	allowed := make([]string, 0)
+	for _, slug := range user.EnvironmentPermissions {
+		if slug == "*" {
+			if len(user.Roles) == 0 {
+				allowAll = true
+			}
+		} else if slug != "" && !slices.Contains(allowed, slug) {
+			allowed = append(allowed, slug)
+		}
+	}
+	for _, r := range user.Roles {
+		for _, slug := range r.EnvironmentSlugs {
+			if slug != "" && slug != "*" && !slices.Contains(allowed, slug) {
+				allowed = append(allowed, slug)
+			}
+		}
+	}
+	return allowAll, allowed, roleDisplay
 }
 
 func authenticateViaHTTP(ctx context.Context, baseURL string, username string, password string) (*AuthStatus, error) {
@@ -431,33 +585,7 @@ func authenticateViaHTTP(ctx context.Context, baseURL string, username string, p
 		return nil, &authRejectedError{msg: msg}
 	}
 
-	allowAll := strings.EqualFold(parsed.Data.User.Role, "admin") || slices.Contains(parsed.Data.User.EnvironmentPermissions, "*")
-	allowed := make([]string, 0)
-	for _, slug := range parsed.Data.User.EnvironmentPermissions {
-		if slug != "" && slug != "*" && !slices.Contains(allowed, slug) {
-			allowed = append(allowed, slug)
-		}
-	}
-	var roleNames []string
-	for _, r := range parsed.Data.User.Roles {
-		if r.Name != "" && !slices.Contains(roleNames, r.Name) {
-			roleNames = append(roleNames, r.Name)
-		}
-		if strings.EqualFold(r.ScopeType, "global") || strings.EqualFold(r.Code, "super_admin") {
-			allowAll = true
-		}
-		for _, slug := range r.EnvironmentSlugs {
-			if slug == "*" {
-				allowAll = true
-			} else if slug != "" && !slices.Contains(allowed, slug) {
-				allowed = append(allowed, slug)
-			}
-		}
-	}
-	roleLabel := parsed.Data.User.Role
-	if len(roleNames) > 0 {
-		roleLabel = strings.Join(roleNames, ", ")
-	}
+	allowAll, allowed, roleLabel := resolveHTTPUserEnvironmentAccess(parsed.Data.User)
 
 	return &AuthStatus{
 		Authenticated:   true,
@@ -468,6 +596,107 @@ func authenticateViaHTTP(ctx context.Context, baseURL string, username string, p
 		AllowAllEnvs:    allowAll,
 		AllowedEnvSlugs: allowed,
 	}, nil
+}
+
+func refreshUserPermissionsViaHTTP(ctx context.Context, baseURL string, token string) (*AuthStatus, error) {
+	baseURL = strings.TrimSpace(baseURL)
+	token = strings.TrimSpace(token)
+	if baseURL == "" || token == "" {
+		return nil, errors.New("missing platform URL or token")
+	}
+
+	meURL := strings.TrimRight(baseURL, "/") + "/api/v1/auth/me"
+	reqCtx, cancel := context.WithTimeout(ctx, 6*time.Second)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, meURL, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Accept-Language", "zh-CN,zh;q=0.9")
+
+	resp, err := opsHTTPClient().Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode >= 400 {
+		return nil, fmt.Errorf("HTTP %d from %s", resp.StatusCode, meURL)
+	}
+
+	var envelope struct {
+		Code int             `json:"code"`
+		Data httpUserAccount `json:"data"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&envelope); err != nil {
+		return nil, err
+	}
+	user := envelope.Data
+	if user.Username == "" {
+		return nil, errors.New("empty user in /api/v1/auth/me")
+	}
+	if user.IsActive != nil && !*user.IsActive {
+		return nil, errors.New("user disabled")
+	}
+
+	allowAll, allowed, roleDisplay := resolveHTTPUserEnvironmentAccess(user)
+	return &AuthStatus{
+		Authenticated:   true,
+		Username:        user.Username,
+		Role:            roleDisplay,
+		Endpoint:        baseURL,
+		Token:           token,
+		AllowAllEnvs:    allowAll,
+		AllowedEnvSlugs: allowed,
+	}, nil
+}
+
+func refreshSessionPermissions(ctx context.Context, session *AuthStatus) bool {
+	if session == nil || !session.Authenticated {
+		return false
+	}
+	authMu.Lock()
+	isTestSession := testingSessionOverride
+	authMu.Unlock()
+
+	var updated *AuthStatus
+	if session.Token != "" && session.Endpoint != "" {
+		if u, err := refreshUserPermissionsViaHTTP(ctx, session.Endpoint, session.Token); err == nil && u != nil {
+			updated = u
+		}
+	}
+	if updated == nil && !isTestSession && session.Username != "" {
+		if u, err := refreshUserPermissionsFromDB(ctx, session.Endpoint, session.Username); err == nil && u != nil {
+			updated = u
+		}
+	}
+	if updated == nil {
+		return false
+	}
+
+	changed := session.AllowAllEnvs != updated.AllowAllEnvs ||
+		session.Role != updated.Role ||
+		!slices.Equal(session.AllowedEnvSlugs, updated.AllowedEnvSlugs)
+
+	session.Role = updated.Role
+	session.AllowAllEnvs = updated.AllowAllEnvs
+	session.AllowedEnvSlugs = slices.Clone(updated.AllowedEnvSlugs)
+
+	if changed && !isTestSession {
+		authMu.Lock()
+		if activeSession != nil && activeSession.Authenticated && strings.EqualFold(activeSession.Username, session.Username) {
+			activeSession.Role = session.Role
+			activeSession.AllowAllEnvs = session.AllowAllEnvs
+			activeSession.AllowedEnvSlugs = slices.Clone(session.AllowedEnvSlugs)
+			if session.Token != "" && activeSession.Token == "" {
+				activeSession.Token = session.Token
+			}
+			saveSessionToDisk(activeSession)
+		}
+		authMu.Unlock()
+	}
+	return changed
 }
 
 func authenticateViaDatabase(ctx context.Context, customEndpoint string, username string, password string) (*AuthStatus, error) {
@@ -586,24 +815,13 @@ func queryUserEnvironmentAccess(
 	legacyEnvPermsRaw string,
 ) (allowAll bool, allowedSlugs []string, roleDisplay string) {
 	roleDisplay = strings.TrimSpace(legacyRole)
-	if strings.EqualFold(roleDisplay, "admin") {
-		allowAll = true
-	}
-
-	legacySlugs := parseStringArrayColumn(legacyEnvPermsRaw)
-	for _, s := range legacySlugs {
-		if s == "*" {
-			allowAll = true
-		} else if s != "" && !slices.Contains(allowedSlugs, s) {
-			allowedSlugs = append(allowedSlugs, s)
-		}
-	}
 
 	const assignmentQuery = `
 		SELECT
 			a.id,
 			a.scope_type,
 			r.id,
+			r.code,
 			r.name,
 			r.is_super_admin
 		FROM rbac_user_role_assignments a
@@ -616,6 +834,16 @@ func queryUserEnvironmentAccess(
 	`
 	rows, err := db.QueryContext(ctx, assignmentQuery, userID)
 	if err != nil {
+		if strings.EqualFold(roleDisplay, "admin") {
+			allowAll = true
+		}
+		for _, s := range parseStringArrayColumn(legacyEnvPermsRaw) {
+			if s == "*" {
+				allowAll = true
+			} else if s != "" && !slices.Contains(allowedSlugs, s) {
+				allowedSlugs = append(allowedSlugs, s)
+			}
+		}
 		return allowAll, allowedSlugs, firstNonEmpty(roleDisplay, "user")
 	}
 	defer func() { _ = rows.Close() }()
@@ -624,6 +852,7 @@ func queryUserEnvironmentAccess(
 		assignmentID int64
 		scopeType    string
 		roleID       int64
+		roleCode     string
 		roleName     string
 		isSuperAdmin bool
 	}
@@ -631,14 +860,14 @@ func queryUserEnvironmentAccess(
 	var roleNames []string
 	for rows.Next() {
 		var g grantRow
-		if err := rows.Scan(&g.assignmentID, &g.scopeType, &g.roleID, &g.roleName, &g.isSuperAdmin); err != nil {
+		if err := rows.Scan(&g.assignmentID, &g.scopeType, &g.roleID, &g.roleCode, &g.roleName, &g.isSuperAdmin); err != nil {
 			continue
 		}
 		grants = append(grants, g)
 		if g.roleName != "" && !slices.Contains(roleNames, g.roleName) {
 			roleNames = append(roleNames, g.roleName)
 		}
-		if g.isSuperAdmin || strings.EqualFold(g.scopeType, "global") {
+		if g.isSuperAdmin || strings.EqualFold(g.roleCode, "system_admin") || strings.EqualFold(g.roleCode, "super_admin") {
 			allowAll = true
 		}
 	}
@@ -646,24 +875,33 @@ func queryUserEnvironmentAccess(
 	if len(roleNames) > 0 {
 		roleDisplay = strings.Join(roleNames, ", ")
 	}
-	if allowAll || len(grants) == 0 {
-		return allowAll, allowedSlugs, firstNonEmpty(roleDisplay, "user")
+	if allowAll {
+		return true, nil, firstNonEmpty(roleDisplay, "user")
+	}
+	if len(grants) == 0 {
+		if strings.EqualFold(legacyRole, "admin") {
+			return true, nil, firstNonEmpty(roleDisplay, "admin")
+		}
+		return false, nil, firstNonEmpty(roleDisplay, "user")
 	}
 
-	for _, g := range grants {
-		// Direct assignment environments
-		envRows, err := db.QueryContext(ctx, `SELECT env_slug FROM rbac_assignment_environments WHERE assignment_id = $1`, g.assignmentID)
-		if err == nil {
-			for envRows.Next() {
-				var slug string
-				if err := envRows.Scan(&slug); err == nil && slug != "" && !slices.Contains(allowedSlugs, slug) {
-					allowedSlugs = append(allowedSlugs, slug)
-				}
-			}
-			_ = envRows.Close()
-		}
+	// Non-super-admin RBAC users follow Ops Console's selectableEnvironments(user):
+	// selectable environments are restricted to the project groups (rbac_role_environment_groups)
+	// bound to active assigned roles, intersected with readable environments (environments:read).
+	readableAll := false
+	readableSlugs := make([]string, 0)
+	groupSlugs := make([]string, 0)
 
-		// Role environment group members
+	for _, g := range grants {
+		var hasReadPerm bool
+		_ = db.QueryRowContext(ctx, `
+			SELECT EXISTS (
+				SELECT 1 FROM rbac_role_permissions
+				WHERE role_id = $1 AND permission_key IN ('environments:read', '*')
+			)
+		`, g.roleID).Scan(&hasReadPerm)
+
+		roleGroupSlugs := make([]string, 0)
 		grpRows, err := db.QueryContext(ctx, `
 			SELECT egm.env_slug
 			FROM rbac_role_environment_groups reg
@@ -673,15 +911,50 @@ func queryUserEnvironmentAccess(
 		if err == nil {
 			for grpRows.Next() {
 				var slug string
-				if err := grpRows.Scan(&slug); err == nil && slug != "" && !slices.Contains(allowedSlugs, slug) {
-					allowedSlugs = append(allowedSlugs, slug)
+				if err := grpRows.Scan(&slug); err == nil && slug != "" {
+					if !slices.Contains(roleGroupSlugs, slug) {
+						roleGroupSlugs = append(roleGroupSlugs, slug)
+					}
+					if !slices.Contains(groupSlugs, slug) {
+						groupSlugs = append(groupSlugs, slug)
+					}
 				}
 			}
 			_ = grpRows.Close()
 		}
+
+		if !hasReadPerm {
+			continue
+		}
+		if strings.EqualFold(g.scopeType, "global") {
+			readableAll = true
+			continue
+		}
+
+		for _, slug := range roleGroupSlugs {
+			if !slices.Contains(readableSlugs, slug) {
+				readableSlugs = append(readableSlugs, slug)
+			}
+		}
+		envRows, err := db.QueryContext(ctx, `SELECT env_slug FROM rbac_assignment_environments WHERE assignment_id = $1`, g.assignmentID)
+		if err == nil {
+			for envRows.Next() {
+				var slug string
+				if err := envRows.Scan(&slug); err == nil && slug != "" && !slices.Contains(readableSlugs, slug) {
+					readableSlugs = append(readableSlugs, slug)
+				}
+			}
+			_ = envRows.Close()
+		}
 	}
 
-	return allowAll, allowedSlugs, firstNonEmpty(roleDisplay, "user")
+	for _, slug := range groupSlugs {
+		if readableAll || slices.Contains(readableSlugs, slug) {
+			allowedSlugs = append(allowedSlugs, slug)
+		}
+	}
+
+	return false, allowedSlugs, firstNonEmpty(roleDisplay, "user")
 }
 
 func parseStringArrayColumn(raw string) []string {
