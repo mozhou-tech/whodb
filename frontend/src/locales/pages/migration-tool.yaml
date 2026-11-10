@@ -95,7 +95,6 @@ en_US:
   actionMigrate: Run Migrate (flyway migrate)
   actionInfo: Check Status (flyway info)
   actionValidate: Validate (flyway validate)
-  actionBaseline: Baseline (flyway baseline)
   actionRepair: Repair (flyway repair)
   runningAction: "Running flyway {action}..."
   executionOutputTitle: Execution Output
@@ -203,7 +202,6 @@ zh_CN:
   actionMigrate: 执行迁移
   actionInfo: 查看状态
   actionValidate: 校验脚本
-  actionBaseline: 建立基线
   actionRepair: 修复记录
   runningAction: "正在执行 flyway {action}..."
   executionOutputTitle: 执行日志与结果

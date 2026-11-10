@@ -1076,35 +1076,9 @@ export const MigrationToolPage: FC = () => {
                                 className="h-9 text-xs gap-1.5"
                                 disabled={!canExecute}
                                 onClick={() => { void handleRunFlywayAction("info"); }}
+                                data-testid="flyway-info-button"
                             >
                                 {activeAction === "info" ? t("runningAction", { action: "info" }) : t("actionInfo")}
-                            </Button>
-                            <Button
-                                variant="outline"
-                                size="sm"
-                                className="h-9 text-xs gap-1.5"
-                                disabled={!canExecute}
-                                onClick={() => { void handleRunFlywayAction("validate"); }}
-                            >
-                                {activeAction === "validate" ? t("runningAction", { action: "validate" }) : t("actionValidate")}
-                            </Button>
-                            <Button
-                                variant="outline"
-                                size="sm"
-                                className="h-9 text-xs gap-1.5"
-                                disabled={!canExecute}
-                                onClick={() => { void handleRunFlywayAction("baseline"); }}
-                            >
-                                {activeAction === "baseline" ? t("runningAction", { action: "baseline" }) : t("actionBaseline")}
-                            </Button>
-                            <Button
-                                variant="outline"
-                                size="sm"
-                                className="h-9 text-xs gap-1.5"
-                                disabled={!canExecute}
-                                onClick={() => { void handleRunFlywayAction("repair"); }}
-                            >
-                                {activeAction === "repair" ? t("runningAction", { action: "repair" }) : t("actionRepair")}
                             </Button>
                         </div>
                     </div>
